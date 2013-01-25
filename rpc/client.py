@@ -20,6 +20,18 @@ def get_client(conn):
 import time
 
 
+class Target(object):
+    wwn = None
+    volumes = None
+
+
+resources = ['dpool/%s' % i for i in ['r0', 'r1', 'r2']]
+
+
+def become_target_primary(target):
+    pass
+
+
 def storage_pool_health_loop():
     c = get_client('ipc://sock/storage')
 

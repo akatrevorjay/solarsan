@@ -12,6 +12,7 @@ from storage.pool import Pool
 from storage.dataset import Volume
 
 #import sh
+import drbd
 
 
 class StorageRPC(object):
@@ -68,6 +69,11 @@ class StorageRPC(object):
     Volumes
     """
 
+    def volume_create(self, volume, size, sparse=False, block_size=None):
+        """Create Volume"""
+        vol = Volume(name=volume)
+        return vol.create(size, sparse=sparse, block_size=block_size)
+
     def volume_list(self, props=None):
         """List Volumes"""
         return Volume.list(props=props, ret=dict, ret_obj=False)
@@ -87,6 +93,20 @@ class StorageRPC(object):
         vol = Volume(name=volume)
         vol.properties[name] = value
         return True
+
+    """
+    DRBD
+    """
+
+    def cluster_volume_drbd_status(self):
+        """Get status of all DRBD replicated resources"""
+        return drbd.status()
+
+    def cluster_volume_setup(self, volume, peer):
+        """Setup synchronous replication on an existing volume with a cluster peer."""
+        vol = Volume(name=volume)
+        #cvol = CVolume(name=volume, peer=peer)
+        pass
 
 
 SOCK_DIR = '/opt/solarsan/rpc/sock'
