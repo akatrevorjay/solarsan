@@ -3,11 +3,16 @@ from solarsan.utils import LoggedException, FormattedException
 
 import sh
 import re
-import unittest
+#import unittest
 
-from conftemplate import config_from_template
+#from conftemplate import config_from_template
+from solarsan.utils.template import config_from_template
+
 import random
 from django.conf import settings
+
+
+DRBD_START_PORT = 7800
 
 
 class DrbdPeer(object):
