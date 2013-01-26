@@ -69,6 +69,9 @@ def status():
     """Returns dict of parsed /proc/drbd"""
     return _parse_proc_drbd(list(sh.cat('/proc/drbd')))
 
+#def get_free_minor():
+#    """Returns next free minor number"""
+#    status()
 
 def _parse_proc_drbd(lines):
     """Parse [lines] (from /proc/drbd) and return a dictionary"""

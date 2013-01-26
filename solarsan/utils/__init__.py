@@ -21,5 +21,4 @@ from decorator import decorator
 
 from .exceptions import FormattedException, LoggedException
 from .conversions import convert_bytes_to_human, convert_human_to_bytes
-#from .dicts import FilterableDict, dict_diff, qdct_as_kwargs
-from .dicts import FilterableDict
+from .dicts import FilterableDict, dict_diff, qdct_as_kwargs

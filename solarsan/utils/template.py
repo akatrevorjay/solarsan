@@ -2,7 +2,7 @@
 
 from django.template import Context, Template
 from django.template.loader import get_template
-from . import burp
+from .files import burp
 
 
 def config_from_template(template, context=None, is_file=False, out_file=None):
