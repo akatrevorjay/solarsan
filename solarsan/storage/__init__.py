@@ -1,1 +1,1 @@
-from .glue import Pool, Volume
+from .glue import Pool, Volume, Snapshot

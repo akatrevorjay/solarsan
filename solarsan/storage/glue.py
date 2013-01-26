@@ -13,9 +13,11 @@ def glue_get_type(cls, objtype):
 
 from .pool import Pool
 from .volume import Volume
+from .snapshot import Snapshot
 
 
 _GET_TYPE_LOOKUP.update(dict(
     pool=Pool,
     volume=Volume,
+    snapshot=Snapshot,
 ))
