@@ -18,12 +18,8 @@ class ClientWithRetry(zerorpc.Client):
         for i in ['retry_attempts', 'retry_delay']:
             if i in kwargs:
                 setattr(self, '_%s' % i, kwargs.pop(i))
-        #super(ClientWithRetry, self).__init__(*args, **kwargs)
         zerorpc.Client.__init__(self, *args, **kwargs)
-
         self._inspect_cache = {}
-        #self._filled_methods = []
-        #self._zerorpc_inspect_fill()
 
     def __call__(self, method, *args, **kwargs):
         retry_attempts = kwargs.pop('_retry_attempts', self._retry_attempts)
@@ -31,7 +27,6 @@ class ClientWithRetry(zerorpc.Client):
         for attempt in xrange(-1, retry_attempts):
             try:
                 ret = zerorpc.Client.__call__(self, method, *args, **kwargs)
-                #ret = super(ClientWithRetry, self).__call__(method, *args, **kwargs)
                 return ret
             except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
                 log_msg = 'Timeout during RPC: "%s".'
@@ -61,30 +56,6 @@ class ClientWithRetry(zerorpc.Client):
                 pass
         return self._inspect_cache
 
-    '''
-    def _zerorpc_fill_method(self, method):
-        # TODO arguments, doc
-        setattr(self, method, functools.partial(self.__call__, method))
-        self._filled_methods.append(method)
-
-    def _zerorpc_inspect_fill(self):
-        methods = self._zerorpc_cache['methods']
-        filled_methods = self._filled_methods
-
-        # Remove filled methods that no longer exist, just in case
-        for i, k in enumerate(filled_methods):
-            if k in methods:
-                continue
-            logging.warning('Method "%s" has disappeared; Removing.', k)
-            delattr(self, 'filled_methods')
-            del filled_methods[i]
-
-        # Fill methods
-        for k in methods.iterkeys():
-            if k not in filled_methods:
-                self._zerorpc_fill_method(k)
-    '''
-
     def __repr__(self):
         cls_name = self.__class__.__name__
         rpc_name = self._zerorpc_cache.get('name', 'Unknown')
@@ -96,8 +67,11 @@ class ClientWithRetry(zerorpc.Client):
             methods = self._zerorpc_list(_retry_attempts=0)
         return methods
 
-    #def __getattr__(self, method):
-    #    if not method.isalnum():
+    def __getattr__(self, method):
+        # Don't fake hidden methods
+        if method.startswith('_'):
+            raise AttributeError
+        return zerorpc.Client.__getattr__(method)
 
     """
     Helpers for builtin ZeroRPC functions
