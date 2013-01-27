@@ -2,10 +2,7 @@
 
 import logging
 import zerorpc
-import functools
 from solarsan.utils.stack import get_current_func_name
-#from solarsan.utils.funcs import func_to_method
-#from datetime import datetime, timedelta
 
 
 class ClientWithRetry(zerorpc.Client):
@@ -19,7 +16,6 @@ class ClientWithRetry(zerorpc.Client):
             if i in kwargs:
                 setattr(self, '_%s' % i, kwargs.pop(i))
         zerorpc.Client.__init__(self, *args, **kwargs)
-        self._inspect_cache = {}
 
     def __call__(self, method, *args, **kwargs):
         retry_attempts = kwargs.pop('_retry_attempts', self._retry_attempts)
@@ -29,16 +25,16 @@ class ClientWithRetry(zerorpc.Client):
                 ret = zerorpc.Client.__call__(self, method, *args, **kwargs)
                 return ret
             except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
-                log_msg = 'Timeout during RPC: "%s".'
+                log_msg = 'Connection error: "%s".' % e
                 if attempt >= retry_attempts:
                     # raise exception on last attempt
                     logging.error('%s Retry count exeeded (%d/%d), giving up.',
-                                  log_msg, e.name, attempt, retry_attempts)
-                    raise
+                                  log_msg, attempt, retry_attempts)
+                    raise e
                 else:
                     # try again a little later
                     logging.warning('%s Retrying in %ds (%d/%d).',
-                                    log_msg, e.name, retry_delay, attempt, retry_attempts)
+                                    log_msg, retry_delay, attempt + 2, retry_attempts + 1)
                     time.sleep(retry_delay)
                     continue
 
@@ -47,44 +43,47 @@ class ClientWithRetry(zerorpc.Client):
     Makes tab completion work, for instance.
     """
 
-    @property
-    def _zerorpc_cache(self):
-        if not self._inspect_cache:
-            try:
-                self._inspect_cache = self._zerorpc_inspect(retry_attempts=0)
-            except (zerorpc.TimeoutExpired, zerorpc.LostRemote):
-                pass
-        return self._inspect_cache
-
     def __repr__(self):
         cls_name = self.__class__.__name__
-        rpc_name = self._zerorpc_cache.get('name', 'Unknown')
+        rpc_name = self._zerorpc_name(_cached=True)
         return "<%s '%s'>" % (cls_name, rpc_name)
 
-    def __dir__(self):
-        methods = self._zerorpc_cache.get('methods', {}).keys()
-        if not methods:
-            methods = self._zerorpc_list(_retry_attempts=0)
-        return methods
+    _zerorpc_builtin_methods = ['_zerorpc_list', '_zerorpc_name', '_zerorpc_ping',
+                                '_zerorpc_help', '_zerorpc_args', '_zerorpc_inspect']
 
-    def __getattr__(self, method):
-        # Don't fake hidden methods
-        if method.startswith('_'):
-            raise AttributeError
-        return zerorpc.Client.__getattr__(method)
+    def __dir__(self):
+        return list(self._zerorpc_list(_cached=True)) + self._zerorpc_builtin_methods
 
     """
     Helpers for builtin ZeroRPC functions
     """
 
+    def _zerorpc_name(self, *args, **kwargs):
+        if not (kwargs.get('_cached') and self.__dict__.get('_remote_name')):
+            self._remote_name = self(get_current_func_name(), *args, **kwargs)
+        return self._remote_name
+
     def _zerorpc_list(self, *args, **kwargs):
-        return self(get_current_func_name(), *args, **kwargs)
+        if not (kwargs.get('_cached') and self.__dict__.get('_remote_methods')):
+            self._remote_methods = self(get_current_func_name(), *args, **kwargs)
+        return self._remote_methods
 
     def _zerorpc_inspect(self, *args, **kwargs):
-        return self(get_current_func_name(), *args, **kwargs)
+        ret = self(get_current_func_name(), *args, **kwargs)
+        if ret:
+            # Save remote name and methods
+            self._remote_name = ret.get('name')
+            self._remote_methods = ret.get('methods').keys()
+        return ret
 
     def _zerorpc_ping(self, *args, **kwargs):
-        return self(get_current_func_name(), *args, **kwargs)
+        ret = self(get_current_func_name(), *args, **kwargs)
+        if ret:
+            try:
+                self._remote_name = ret[1]
+            except:
+                pass
+        return ret
 
 
 class Client(ClientWithRetry):
