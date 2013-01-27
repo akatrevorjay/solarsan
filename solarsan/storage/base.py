@@ -4,7 +4,20 @@
 #import sh
 
 
-class Base(object):
+class ReprMixIn(object):
+    def __repr__(self):
+        for k in ['name', 'guid', 'id']:
+            name = getattr(self, k, None)
+            if name:
+                break
+        return "<%s: %s>" % (self.__class__.__name__, name)
+
+    def __unicode__(self):
+        name = getattr(self, 'name', self.__repr__())
+        return name
+
+
+class Base(ReprMixIn):
     def __init__(self, *args, **kwargs):
         super(Base, self).__init__()
 
@@ -13,7 +26,7 @@ class Base(object):
         return self.name.split('/')[start:len]
 
 
-class BaseProperty(object):
+class BaseProperty(ReprMixIn):
     """Storage Dataset Property object
     """
 

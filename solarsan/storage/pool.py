@@ -11,7 +11,7 @@ from analytics.cube import CubeAnalytics
 from pypercube.expression import EventExpression, MetricExpression, CompoundMetricExpression
 from pypercube.expression import Sum, Min, Max, Median, Distinct
 
-from . import base
+from .base import Base, BaseProperty
 #from . import device
 from .parsers.pool import ZpoolStatusParser
 
@@ -41,7 +41,7 @@ class PoolAnalytics(CubeAnalytics):
         return self._render('alloc', 'free', **kwargs)
 
 
-class PoolProperty(base.BaseProperty):
+class PoolProperty(BaseProperty):
     """Storage Pool Property object
     """
     pass
@@ -160,7 +160,7 @@ class PoolProperties(object):
 
 
 # TODO Enumerate devices on pool from status
-class Pool(base.Base):
+class Pool(Base):
     """Storage Pool object
     """
     type = 'pool'

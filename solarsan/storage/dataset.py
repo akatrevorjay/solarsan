@@ -3,7 +3,6 @@ from solarsan.utils import LoggedException
 #import logging
 import sh
 from .base import BaseProperty, Base
-from .glue import glue_get_type
 
 
 class DatasetProperty(BaseProperty):
@@ -236,4 +235,6 @@ class Dataset(Base):
 
     @classmethod
     def _get_type(cls, objtype):
+        # TODO Find a better way
+        from .glue import glue_get_type
         return glue_get_type(cls, objtype)
