@@ -1,15 +1,7 @@
 #!/usr/bin/env python
 
-import logging
-logger = logging.getLogger('rpc.client')
-logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s.%(module)s %(message)s @%(funcName)s:%(lineno)d')
-#formatter = logging.Formatter('%(name)s.%(module)s/%(processName)s[%(process)d]: [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d')
-ch.formatter = formatter
-logger.addHandler(ch)
-
+#from ..core import logger
+from solarsan.core import logger
 
 import zerorpc
 from solarsan.utils.stack import get_current_func_name
@@ -31,7 +23,7 @@ class ClientWithRetry(zerorpc.Client):
     def __call__(self, method, *args, **kwargs):
         retry_attempts = kwargs.pop('_retry_attempts', self._retry_attempts)
         retry_delay = kwargs.pop('_retry_delay', self._retry_delay)
-        for attempt in xrange(0, retry_attempts+1):
+        for attempt in xrange(0, retry_attempts + 1):
             try:
                 ret = zerorpc.Client.__call__(self, method, *args, **kwargs)
                 return ret
@@ -40,12 +32,12 @@ class ClientWithRetry(zerorpc.Client):
                 if attempt >= retry_attempts:
                     # raise exception on last attempt
                     logger.debug('%s Retry count exeeded (%d/%d), giving up.',
-                                  log_msg, attempt, retry_attempts)
+                                 log_msg, attempt, retry_attempts)
                     raise
                 else:
                     # try again a little later
                     logger.debug('%s Retrying in %ds (%d/%d).',
-                                    log_msg, retry_delay, attempt, retry_attempts)
+                                 log_msg, retry_delay, attempt, retry_attempts)
                     time.sleep(retry_delay)
                     #continue
 
@@ -132,13 +124,6 @@ class Target(object):
     volumes = None
 
 
-resources = ['dpool/%s' % i for i in ['r0', 'r1', 'r2']]
-
-
-def become_target_primary(target):
-    pass
-
-
 from socket import gethostname
 
 
@@ -165,8 +150,25 @@ class Host(object):
             setattr(self, v, k)
 
         self.is_local = gethostname() == hostname
-        self.state = self.ONLINE
+        self._state = self.ONLINE
         self._lost_count = 0
+
+    @apply
+    def state():
+        doc = '''Host State'''
+
+        def fget(self):
+            return self._state
+
+        def fset(self, value):
+            logger.info('Peer "%s" changed state to "%s"', self.hostname, STATES[value])
+            self._state = value
+
+        def fdel(self):
+            #delattr(self, '_state')
+            pass
+
+        return property(**locals())
 
     @property
     def storage(self):
@@ -181,7 +183,6 @@ class Host(object):
             ret = self.storage(method, *args, **kwargs)
 
             if self.state != self.ONLINE:
-                logger.error('Peer "%s" went ONLINE!', self.hostname)
                 self.state = self.ONLINE
                 self._lost_count = 0
 
@@ -191,7 +192,6 @@ class Host(object):
 
             #if self._lost_count < 5 and self.state != self.OFFLINE:
             if self.state != self.OFFLINE:
-                logger.error('Peer "%s" went OFFLINE!', self.hostname)
                 self.state = self.OFFLINE
             #elif self.state != self.DEAD:
             #    logger.error('Peer "%s" went DEAD!', self.hostname)
@@ -207,17 +207,23 @@ class Host(object):
     #def __getattr__(self, method):
     #    return zerorpc.Client.__getattr__(self, method)
 
-    @cached_property(ttl=300)
+    @cached_property(ttl=10)
     def pools(self):
-        if not getattr(self, '_%s' % get_current_func_name(), None):
-            self._pools = self('pool_list', _default_on_timeout={})
-        return self._pools
+        return self('pool_list', _default_on_timeout={})
 
-    @cached_property(ttl=300)
+    @cached_property(ttl=10)
     def cvols(self):
-        if not getattr(self, '_%s' % get_current_func_name(), None):
-            self._cvols = self('cluster_volume_list', _default_on_timeout=[])
-        return self._cvols
+        return self('cluster_volume_list', _default_on_timeout=[])
+
+    def promote(self):
+        # TODO Health checks to make sure uptodate
+        logger.info('Promoting all replicated volumes to primary')
+        self('volume_repl_promote')
+        logger.info('Starting targets on "%s"', self.hostname)
+        self('target_start')
+
+    def demote(self):
+        pass
 
 
 def storage_pool_health_loop():

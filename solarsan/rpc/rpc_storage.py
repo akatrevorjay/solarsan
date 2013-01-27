@@ -1,28 +1,22 @@
 #!/usr/bin/env python
 
-from solarsanweb.settings.base import _register_mongo_databases
-from django.conf import settings
-
-
-import logging
-#from django.conf import settings
-import zerorpc
-
-#from solarsan.utils import LoggedException
-from solarsan.models import Config
-from configure.models import Nic, get_all_local_ipv4_addrs
-#from configure.models import Nic
-#from storage.models import Pool
+from solarsan.core import logger
+#from solarsan.utils.exceptions import LoggedException
 
 from storage.pool import Pool
 from storage.dataset import Volume
-import storage.models as sm
+from storage.parsers.drbd import drbd_overview_parser
 
+from solarsan.models import Config
+from configure.models import Nic, get_all_local_ipv4_addrs
+from cluster.models import Peer
+
+#from . import client
+import solarsan.rpc.client as client
+
+import zerorpc
 import sh
-import drbd
-
-#from .client import get_client
-#from cluster.models import Peer
+from socket import gethostname
 
 
 class StorageRPC(object):
@@ -79,7 +73,7 @@ class StorageRPC(object):
     Volumes
     """
 
-    def volume_create(self, volume, size, sparse=False, block_size=None):
+    def volume_create(self, volume, size, sparse=None, block_size=None):
         """Create Volume"""
         vol = Volume(name=volume)
         return vol.create(size, sparse=sparse, block_size=block_size)
@@ -138,33 +132,79 @@ class StorageRPC(object):
 
     def peer_hostname(self):
         """Returns hostname"""
-        return settings.SERVER_NAME
+        return gethostname()
 
     """
     Cluster Volumes
     """
 
-    def cluster_volume_status(self):
+    def volume_repl_status(self, volume=None):
         """Get status of all DRBD replicated resources"""
-        return drbd.status()
+        if volume:
+            vol = Volume(name=Volume)
+            return vol.replication_status
+        else:
+            return drbd_overview_parser()
 
-    def cluster_volume_list(self, hostname=None):
+    def volume_repl_list(self, hostname=None):
         """Lists Cluster Volumes"""
         ret = []
-        for line in sh.zfs('get', '-s', 'local', '-H', '-t', 'volume', 'solarsan:cluster_volume',
+        for line in sh.zfs('get', '-s', 'local', '-H', '-t', 'volume', 'solarsan:vol_repl',
                            _iter=True):
             line = line.rstrip("\n")
             name, prop, val, source = line.split("\t", 3)
             if val != 'true':
-                logging.warning('Volume "%s" has cluster volume property of "%s", which is not "true". Ignoring property.')
+                logger.warning('Volume "%s" has vol_repl="%s" (not "true"). Ignoring property.')
                 continue
             ret.append(name)
         return ret
 
-    def cluster_volume_setup(self, volume, peer_hostname, is_source=True):
-        """Setup synchronous replication on an existing volume with a cluster peer."""
-        svol = sm.Volume(name=volume)
-        return svol.replication_setup(is_source=is_source, peer_hostname=peer_hostname)
+    def volume_repl_setup(self, volume, peer_volume, size, peer_hostname, is_source=None):
+        """Create new volume and setup Setup synchronous replication with a cluster peer."""
+        peer = Peer.objects.get(hostname=peer_hostname)
+        p_hostname = peer.hostname
+        p_cluster_addr = peer.cluster_addr
+
+        hostname = gethostname()
+        local = client.Host(hostname, 'localhost')
+        remote = client.Host(p_hostname, p_cluster_addr)
+
+        # Create volumes
+        local('volume_create', volume, size)
+        local('volume_set_prop', volume, 'solarsan:vol_repl', 'pending')
+        remote('volume_create', peer_volume, size)
+        remote('volume_set_prop', peer_volume, 'solarsan:vol_repl', 'pending')
+
+        # Set properties
+        local('volume_set_prop', volume, 'solarsan:vol_repl_peer', remote.hostname)
+        remote('volume_set_prop', peer_volume, 'solarsan:vol_repl_peer', local.hostname)
+
+        # TODO Use UUID per vol and peer
+
+        # Write DRBD config on each box
+        local('volume_repl_write_config', volume)
+        remote('volume_repl_write_config', peer_volume)
+
+        #return svol.replication_setup(is_source=is_source, peer_hostname=peer_hostname)
+
+    def volume_repl_write_config(self, volume):
+        pass
+
+    """
+    Target
+    """
+
+    def target_scst_status(self):
+        return sh.service('scst', 'status')
+
+    def target_scst_start(self):
+        return sh.service('scst', 'start')
+
+    def target_scst_stop(self):
+        return sh.service('scst', 'stop')
+
+    #def target_rts_status(self):
+    #    pass
 
 
 #SOCK_DIR = '/opt/solarsan/rpc/sock'
@@ -172,11 +212,11 @@ class StorageRPC(object):
 
 def get_sock_path(name):
     #return 'ipc://%s/%s' % (SOCK_DIR, name)
-    return 'tcp://0.0.0.0:%d' % settings.CLUSTER_DISCOVERY_PORT
+    return 'tcp://0.0.0.0:%d' % 1785
 
 
 def run_server():
-    logging.info("Starting Storage RPC Server..")
+    logger.info("Starting Storage RPC Server..")
     s = zerorpc.Server(StorageRPC())
     s.bind(get_sock_path('storage'))
     s.run()
@@ -187,5 +227,4 @@ def main():
 
 
 if __name__ == '__main__':
-    _register_mongo_databases()
     main()

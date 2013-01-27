@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 
-from django.template import Context, Template
-from django.template.loader import get_template
+from ..template import env
+from jinja2 import Template
 from .files import burp
 
 
-def config_from_template(template, context=None, is_file=False, out_file=None):
+def quick_template(template, context=None, is_file=False, out_file=None):
     if is_file:
-        t = get_template(template)
+        t = env.get_template(template)
     else:
         t = Template(template)
-    ctx = Context(context)
-
-    ret = t.render(ctx)
+    ret = t.render(context)
 
     if out_file:
         burp(out_file, ret)
