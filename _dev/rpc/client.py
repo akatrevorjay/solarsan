@@ -5,14 +5,15 @@ logger = logging.getLogger('rpc.client')
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('solarsan/%(name)s.%(module)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d')
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s.%(module)s %(message)s @%(funcName)s:%(lineno)d')
+#formatter = logging.Formatter('%(name)s.%(module)s/%(processName)s[%(process)d]: [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d')
 ch.formatter = formatter
 logger.addHandler(ch)
 
 
 import zerorpc
 from solarsan.utils.stack import get_current_func_name
-from solarsan.utils.cache import Memoize
+from solarsan.utils.cache import cached_property
 
 
 class ClientWithRetry(zerorpc.Client):
@@ -203,20 +204,19 @@ class Host(object):
             else:
                 return default_on_timeout
 
-    @property
+    #def __getattr__(self, method):
+    #    return zerorpc.Client.__getattr__(self, method)
+
+    @cached_property(ttl=300)
     def pools(self):
-        #return self._pools = self('pool_list')
         if not getattr(self, '_%s' % get_current_func_name(), None):
             self._pools = self('pool_list', _default_on_timeout={})
-            #self._pools = self('pool_list')
         return self._pools
 
-    @property
+    @cached_property(ttl=300)
     def cvols(self):
-        #return  self('cluster_volume_list')
         if not getattr(self, '_%s' % get_current_func_name(), None):
             self._cvols = self('cluster_volume_list', _default_on_timeout=[])
-            #self._cvols = self('cluster_volume_list')
         return self._cvols
 
 
@@ -239,10 +239,10 @@ def storage_pool_health_loop():
                 raise Exception('Found two Peers with my hostname!')
             local = clients[hostname]
 
-    for p_host, p in clients.iteritems():
-        logger.info('Peer "%s" pools found: "%s".', p_host, p.pools.keys())
-        # TODO get hostname of peer for each replicated volume
-        logger.info('Peer "%s" replicated volumes found: "%s".', p_host, p.cvols)
+    #for p_host, p in clients.iteritems():
+    #    logger.info('Peer "%s" pools found: "%s".', p_host, p.pools.keys())
+    #    # TODO get hostname of peer for each replicated volume
+    #    logger.info('Peer "%s" replicated volumes found: "%s".', p_host, p.cvols)
 
     while True:
         for p_host, p in clients.iteritems():
@@ -258,17 +258,13 @@ def storage_pool_health_loop():
                     continue
 
             for pool in p.pools:
-                if p.state == p.OFFLINE:
-                    logger.debug('Pool "%s" is unknown on "%s".', pool, p_host)
-                else:
-                    try:
-                        if not p('pool_is_healthy', pool):
-                            logger.error('Pool "%s" is NOT healthy on "%s".', pool, p_host)
-                        else:
-                            logger.debug('Pool "%s" is healthy on "%s".', pool, p_host)
-
-                        p.lost_count = 0
-                    except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
-                        logger.error('Peer "%s" comms lost: "%s"', p_host, e.message)
+                try:
+                    if not p('pool_is_healthy', pool):
+                        logger.error('Pool "%s" is NOT healthy on "%s".', pool, p_host)
+                    #else:
+                    #    logger.debug('Pool "%s" is healthy on "%s".', pool, p_host)
+                except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
+                    #logger.error('Peer "%s" comms lost: "%s"', p_host, e.message)
+                    pass
 
         time.sleep(1)
