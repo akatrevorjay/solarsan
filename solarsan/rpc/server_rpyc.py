@@ -32,17 +32,3 @@ class StorageService(rpyc.Service):
 
     def exposed_ping(self):
         return True
-
-
-def main():
-    from rpyc.utils.server import ThreadedServer
-    local = Peer.get_local()
-    cluster_iface_bcast = local.cluster_nic.broadcast
-    t = ThreadedServer(StorageService, port=18861,
-                       registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast, logger=logger),
-                       auto_register=True, logger=logger)
-    t.start()
-
-
-if __name__ == '__main__':
-    main()
