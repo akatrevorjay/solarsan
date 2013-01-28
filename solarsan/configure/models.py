@@ -8,7 +8,7 @@
 import mongoengine as m
 
 #import re
-#import ipcalc
+import ipcalc
 import IPy
 import netifaces
 import pynetlinux
@@ -125,7 +125,8 @@ class Nic(object):
 
     def __init__(self, name=None):
         self.name = name
-        self._obj = get_interface(name)
+        # This has to be a basestring
+        self._obj = get_interface(str(name))
 
     #@property
     #def _global_conf(self):
@@ -136,6 +137,11 @@ class Nic(object):
         if not hasattr(self, '_config'):
             self._config, created = NicConfig.objects.get_or_create(name=self.name)
         return self._config
+
+    @property
+    def broadcast(self):
+        net = ipcalc.Network('%s/%s' % (self.ipaddr, self.cidr))
+        return str(net.broadcast())
 
     @property
     def ipaddr(self):

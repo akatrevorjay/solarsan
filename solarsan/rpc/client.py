@@ -139,15 +139,15 @@ def storage_pool_health_loop():
 
     while True:
         for p_host, p in peers.iteritems():
-            print
-            logger.debug('Peer "%s"' % p_host)
+            #print
+            #logger.debug('Peer "%s"' % p_host)
 
             if not p.is_online:
                 try:
                     p('peer_ping', _retry_attempts=0)
-                    logger.error('Peer "%s" came back up!', p_host)
-                except (zerorpc.TimeoutExpired, zerorpc.LostRemote):
-                    logger.warning('Peer "%s" is still down.', p_host)
+                    logger.warning('Peer "%s" came back up!', p_host)
+                except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
+                    logger.error('Peer "%s" is still down: "%s"', p_host, e.message)
                     continue
 
             for pool in p.pools:
@@ -156,8 +156,8 @@ def storage_pool_health_loop():
                         logger.error('Pool "%s" is NOT healthy on "%s".', pool, p_host)
                     #else:
                     #    logger.debug('Pool "%s" is healthy on "%s".', pool, p_host)
-                except (zerorpc.TimeoutExpired, zerorpc.LostRemote):
-                    #logger.error('Peer "%s" comms lost: "%s"', p_host, e.message)
+                except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
+                    logger.error('Peer "%s" went down: "%s"', p_host, e.message)
                     pass
 
-        time.sleep(1)
+        time.sleep(15)

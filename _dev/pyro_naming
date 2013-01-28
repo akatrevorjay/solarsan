@@ -1,0 +1,1 @@
+python -Wignore -m Pyro4.naming -n ${HOSTNAME}.rpl

@@ -1,13 +1,13 @@
 
-from solarsan.core import logger
+from solarsan.core import logger, conf
 from solarsan.rpc.client import StorageClient
 from solarsan.utils.cache import cached_property
+from solarsan.models import Config, CreatedModifiedDocMixIn
+from solarsan.configure.models import Nic
 #from ..utils.cache import cached_property
 #from ..utils.stack import get_current_func_name
 
 import mongoengine as m
-from datetime import datetime
-from socket import gethostname
 import zerorpc
 
 
@@ -16,7 +16,12 @@ Cluster
 """
 
 
-class Peer(m.Document):
+def get_cluster_config():
+    created, ret = Config.objects.get_or_create(name='cluster')
+    return ret
+
+
+class Peer(m.Document, CreatedModifiedDocMixIn):
     #uuid = m.StringField(required=True, unique=True)
     hostname = m.StringField(required=True, unique=True)
     #is_local = m.BooleanField()
@@ -30,21 +35,6 @@ class Peer(m.Document):
     cluster_iface = m.StringField()
 
     """
-    Created/Modified
-    """
-
-    created = m.DateTimeField(default=datetime.utcnow())
-    modified = m.DateTimeField(default=datetime.utcnow())
-
-    def save(self, *args, **kwargs):
-        """Overrides save for created and modified properties"""
-        if not self.pk:
-            self.created = datetime.utcnow()
-        if self._changed_fields:
-            self.modified = datetime.utcnow()
-        super(Peer, self).save(*args, **kwargs)
-
-    """
     General
     """
 
@@ -56,11 +46,15 @@ class Peer(m.Document):
     # TODO Manager
     @classmethod
     def get_local(cls):
-        return Peer.objects.get(hostname=gethostname())
+        return Peer.objects.get(hostname=conf.hostname)
 
     @property
     def is_local(self):
-        return gethostname() == self.hostname
+        return self.hostname == conf.hostname
+
+    @property
+    def cluster_nic(self):
+        return Nic(self.cluster_iface)
 
     """
     Newer RPC

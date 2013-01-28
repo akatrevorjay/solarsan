@@ -1,0 +1,14 @@
+#!/usr/bin/env python
+
+from solarsan.core import logger
+from cluster.models import Peer
+#from rpyc_registry import UDPRegistryServer
+from rpyc.utils.registry import UDPRegistryServer
+
+if __name__ == '__main__':
+    peer = Peer.get_local()
+    reg = UDPRegistryServer(
+        #host=peer.cluster_addr,
+        pruning_timeout=30,
+        logger=logger)
+    reg.start()
