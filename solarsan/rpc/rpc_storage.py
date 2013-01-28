@@ -2,19 +2,19 @@
 
 from solarsan.core import logger
 #from solarsan.utils.exceptions import LoggedException
-from solarsan.template import quick_template
+#from solarsan.template import quick_template
 
 from storage.pool import Pool
-from storage.dataset import Volume
+from storage.volume import Volume
 from storage.parsers.drbd import drbd_overview_parser
-from storage.drbd import DrbdResource, DrbdPeer
+from storage.drbd import DrbdResource, DrbdPeer, drbd_find_free_minor
 
 from solarsan.models import Config
 from configure.models import Nic, get_all_local_ipv4_addrs
 from cluster.models import Peer
 
 #from . import client
-import solarsan.rpc.client as client
+#import solarsan.rpc.client as client
 
 import zerorpc
 import sh
@@ -161,41 +161,47 @@ class StorageRPC(object):
             ret.append(name)
         return ret
 
-    def volume_repl_setup(self, volume, peer_volume, size, peer_hostname, is_source=None):
+    def drbd_res_setup(self, name, size, pool, peer_pool, peer_hostname):
         """Create new volume and setup Setup synchronous replication with a cluster peer."""
-        peer = Peer.objects.get(hostname=peer_hostname)
-        p_hostname = peer.hostname
-        p_cluster_addr = peer.cluster_addr
+        local = Peer.get_local()
+        remote = Peer.objects.get(hostname=peer_hostname)
 
-        hostname = gethostname()
-        local = client.Host(hostname, 'localhost')
-        remote = client.Host(p_hostname, p_cluster_addr)
+        res = DrbdResource(name=name, size=size)
+        res.peers.append(DrbdPeer(peer=local, pool=pool))
+        res.peers.append(DrbdPeer(peer=remote, pool=peer_pool))
+
+        # HACK
+        res.local.minor = 2
+        res.remote.minor = 2
 
         # Create volumes
-        local('volume_create', volume, size)
-        local('volume_set_prop', volume, 'solarsan:vol_repl', 'pending')
-        remote('volume_create', peer_volume, size)
-        remote('volume_set_prop', peer_volume, 'solarsan:vol_repl', 'pending')
+        local('volume_create', res.local.volume_full_name, size)
+        local('volume_set_prop', res.local.volume_full_name, 'solarsan:vol_repl', 'pending')
+        remote('volume_create', res.remote.volume_full_name, size)
+        remote('volume_set_prop', res.remote.volume_full_name, 'solarsan:vol_repl', 'pending')
 
         # Set properties
-        local('volume_set_prop', volume, 'solarsan:vol_repl_peer', remote.hostname)
-        remote('volume_set_prop', peer_volume, 'solarsan:vol_repl_peer', local.hostname)
+        #local('volume_set_prop', volume, 'solarsan:vol_repl_peer', remote.hostname)
+        #remote('volume_set_prop', peer_volume, 'solarsan:vol_repl_peer', local.hostname)
 
         # TODO Use UUID per vol and peer
 
         # Write DRBD config on each box
-        local('volume_repl_write_config', volume)
-        remote('volume_repl_write_config', peer_volume)
-
-        #return svol.replication_setup(is_source=is_source, peer_hostname=peer_hostname)
+        res = DrbdResource(name=name)
+        local('drbd_res_write_config', res.name)
+        remote('drbd_res_write_config', res.name)
 
     def drbd_res_write_config(self, resource, confirm=None):
         """Writes configuration for DrbdResource"""
         res = DrbdResource.objects.get(name=resource)
-        ret = res.write_config(confirm=confirm)
-        if not confirm:
-            return ret
-        return True
+        return res.write_config(confirm=confirm)
+
+    def drbd_res_create_md(self, resource):
+        res = DrbdResource.objects.get(name=resource)
+        return res.local.create_md()
+
+    def drbd_find_free_minor(self):
+        return drbd_find_free_minor()
 
     """
     Target

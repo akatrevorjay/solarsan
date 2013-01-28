@@ -3,19 +3,22 @@
 import sh
 #from collections import defaultdict, OrderedDict
 #import re
-from solarsan.utils import LoggedException, FormattedException
+from solarsan.utils import LoggedException
 from datetime import datetime
 from django.utils import timezone
 
+'''
 from analytics.cube import CubeAnalytics
 from pypercube.expression import EventExpression, MetricExpression, CompoundMetricExpression
 from pypercube.expression import Sum, Min, Max, Median, Distinct
+'''
 
 from .base import Base, BaseProperty
 #from . import device
 from .parsers.pool import ZpoolStatusParser
 
 
+'''
 class PoolAnalytics(CubeAnalytics):
     """Storage Pool Analytics object
     """
@@ -39,6 +42,7 @@ class PoolAnalytics(CubeAnalytics):
 
     def usage(self, **kwargs):
         return self._render('alloc', 'free', **kwargs)
+'''
 
 
 class PoolProperty(BaseProperty):
@@ -174,7 +178,7 @@ class Pool(Base):
 
     def _init(self, *args, **kwargs):
         self.properties = PoolProperties(self)
-        self.analytics = PoolAnalytics(self)
+        #self.analytics = PoolAnalytics(self)
 
     """
     General

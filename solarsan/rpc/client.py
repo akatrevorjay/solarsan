@@ -5,7 +5,7 @@ from solarsan.core import logger
 
 import zerorpc
 from solarsan.utils.stack import get_current_func_name
-from solarsan.utils.cache import cached_property
+#from solarsan.utils.cache import cached_property
 
 
 class ClientWithRetry(zerorpc.Client):
@@ -126,7 +126,7 @@ class Target(object):
 
 from socket import gethostname
 
-
+'''
 STATES = {
     0: 'ONLINE',
     1: 'OFFLINE',
@@ -142,9 +142,13 @@ class Host(object):
 
     state = None
 
-    def __init__(self, hostname, cluster_addr):
-        self.hostname = hostname
-        self.cluster_addr = cluster_addr
+    def __init__(self, hostname=None, cluster_addr=None, peer=None):
+        if peer:
+
+        if hostname:
+            self.hostname = hostname
+        if cluster_addr:
+            self.cluster_addr = cluster_addr
 
         for k, v in STATES.iteritems():
             setattr(self, v, k)
@@ -155,7 +159,7 @@ class Host(object):
 
     @apply
     def state():
-        doc = '''Host State'''
+        doc = """Host State"""
 
         def fget(self):
             return self._state
@@ -225,41 +229,50 @@ class Host(object):
     def demote(self):
         pass
 
+    @classmethod
+    def get_local(cls):
+        peer = Peer.objects.get(hostname=gethostname())
+        return self.get_from_peer(peer)
+
+    @classmethod
+    def get_from_peer(cls, peer):
+        return cls(peer.hostname, peer.cluster_addr)
+'''
+
 
 def storage_pool_health_loop():
     hostname = gethostname()
     from cluster.models import Peer
 
-    peers = Peer.objects.all()
-    clients = {}
+    peers = {}
     local = None
-    for peer in peers:
+    for peer in Peer.objects.all():
         p_hostname = peer.hostname
         p_cluster_addr = peer.cluster_addr
-
         logger.info('Connecting to Peer "%s" via "%s".', p_hostname, p_cluster_addr)
-        clients[p_hostname] = Host(p_hostname, p_cluster_addr)
 
-        if clients[p_hostname].is_local:
+        peers[p_hostname] = peer
+
+        if peers[p_hostname].is_local:
             if local:
                 raise Exception('Found two Peers with my hostname!')
-            local = clients[hostname]
+            local = peers[hostname]
 
-    #for p_host, p in clients.iteritems():
+    #for p_host, p in peers.iteritems():
     #    logger.info('Peer "%s" pools found: "%s".', p_host, p.pools.keys())
     #    # TODO get hostname of peer for each replicated volume
     #    logger.info('Peer "%s" replicated volumes found: "%s".', p_host, p.cvols)
 
     while True:
-        for p_host, p in clients.iteritems():
+        for p_host, p in peers.iteritems():
             print
             logger.debug('Peer "%s"' % p_host)
 
-            if p.state == p.OFFLINE:
+            if not p.is_online:
                 try:
                     p('peer_ping', _retry_attempts=0)
                     logger.error('Peer "%s" came back up!', p_host)
-                except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
+                except (zerorpc.TimeoutExpired, zerorpc.LostRemote):
                     logger.warning('Peer "%s" is still down.', p_host)
                     continue
 
@@ -269,7 +282,7 @@ def storage_pool_health_loop():
                         logger.error('Pool "%s" is NOT healthy on "%s".', pool, p_host)
                     #else:
                     #    logger.debug('Pool "%s" is healthy on "%s".', pool, p_host)
-                except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
+                except (zerorpc.TimeoutExpired, zerorpc.LostRemote):
                     #logger.error('Peer "%s" comms lost: "%s"', p_host, e.message)
                     pass
 
