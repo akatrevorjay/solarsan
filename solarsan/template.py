@@ -1,8 +1,8 @@
-#!/usr/bin/env python
 
-from ..template import env
-from jinja2 import Template
-from .files import burp
+from jinja2 import Environment, PackageLoader, Template
+env = Environment(loader=PackageLoader('solarsan', 'templates'))
+
+from .utils.files import burp
 
 
 def quick_template(template, context=None, is_file=False, out_file=None):

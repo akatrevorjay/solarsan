@@ -2,10 +2,12 @@
 
 from solarsan.core import logger
 #from solarsan.utils.exceptions import LoggedException
+from solarsan.template import quick_template
 
 from storage.pool import Pool
 from storage.dataset import Volume
 from storage.parsers.drbd import drbd_overview_parser
+from storage.drbd import DrbdResource, DrbdPeer
 
 from solarsan.models import Config
 from configure.models import Nic, get_all_local_ipv4_addrs
@@ -187,8 +189,13 @@ class StorageRPC(object):
 
         #return svol.replication_setup(is_source=is_source, peer_hostname=peer_hostname)
 
-    def volume_repl_write_config(self, volume):
-        pass
+    def drbd_res_write_config(self, resource, confirm=None):
+        """Writes configuration for DrbdResource"""
+        res = DrbdResource.objects.get(name=resource)
+        ret = res.write_config(confirm=confirm)
+        if not confirm:
+            return ret
+        return True
 
     """
     Target
