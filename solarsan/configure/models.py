@@ -5,6 +5,9 @@
 #import datetime
 #import logging
 
+#from solarsan.core import logger, conf
+from solarsan.models import Config, CreatedModifiedDocMixIn
+from solarsan.template import quick_template
 import mongoengine as m
 
 #import re
@@ -19,8 +22,6 @@ import os
 """
 Network
 """
-
-from solarsan.models import Config
 
 
 def get_network_config():
@@ -82,10 +83,7 @@ def get_interface(name):
     return pynetlinux.ifconfig.Interface(name)
 
 
-from solarsan.template import quick_template
-
-
-class NicConfig(m.Document):
+class NicConfig(m.Document, CreatedModifiedDocMixIn):
     mac = m.StringField()
     name = m.StringField()
     PROTO_CHOICES = (
@@ -99,10 +97,6 @@ class NicConfig(m.Document):
     mtu = m.IntField()
 
     gateway = m.StringField()
-
-    # TODO
-    modified = m.DateTimeField()
-    created = m.DateTimeField()
 
     is_enabled = m.BooleanField()
 
