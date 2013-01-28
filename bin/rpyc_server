@@ -3,11 +3,11 @@
 from solarsan.core import logger
 from solarsan.cluster.models import Peer
 from solarsan.rpc.server_rpyc import StorageService
+from rpyc.utils.server import ThreadedServer
 import rpyc
 
 
 def main():
-    from rpyc.utils.server import ThreadedServer
     local = Peer.get_local()
     cluster_iface_bcast = local.cluster_nic.broadcast
     t = ThreadedServer(StorageService, port=18861,

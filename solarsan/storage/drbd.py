@@ -1,12 +1,11 @@
 
-from solarsan.core import logger
-from .parsers.drbd import drbd_overview_parser
+from solarsan.core import logger, conf
 from solarsan.template import quick_template
+from .parsers.drbd import drbd_overview_parser
 from .volume import Volume
 #from ..cluster.models import Peer
 from cluster.models import Peer
 
-from socket import gethostname
 from random import getrandbits
 import mongoengine as m
 
@@ -54,7 +53,7 @@ class DrbdPeer(m.EmbeddedDocument):
     @property
     def is_local(self):
         """Checks if this DrbdPeer is localhost"""
-        return self.hostname == gethostname()
+        return self.hostname == conf.hostname
 
     @property
     def hostname(self):

@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
 #from ..core import logger
-from solarsan.core import logger
+from solarsan.core import logger, conf
 
 import zerorpc
 from solarsan.utils.stack import get_current_func_name
 #from solarsan.utils.cache import cached_property
-from socket import gethostname
 import time
 
 
@@ -119,7 +118,7 @@ class StorageClient(Client):
 
 
 def storage_pool_health_loop():
-    hostname = gethostname()
+    hostname = conf.hostname
     from cluster.models import Peer
 
     peers = {}

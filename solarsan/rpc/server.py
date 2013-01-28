@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from solarsan.core import logger
+from solarsan.core import logger, conf
 #from solarsan.utils.exceptions import LoggedException
 #from solarsan.template import quick_template
 
@@ -16,9 +16,8 @@ from cluster.models import Peer
 #from . import client
 #import solarsan.rpc.client as client
 
-import zerorpc
+#import zerorpc
 import sh
-from socket import gethostname
 
 
 class StorageRPC(object):
@@ -134,7 +133,7 @@ class StorageRPC(object):
 
     def peer_hostname(self):
         """Returns hostname"""
-        return gethostname()
+        return conf.hostname
 
     """
     Replicated Volumes
@@ -234,18 +233,3 @@ def get_sock_path(name):
     #SOCK_DIR = '/opt/solarsan/rpc/sock'
     #return 'ipc://%s/%s' % (SOCK_DIR, name)
     return 'tcp://0.0.0.0:%d' % 1785
-
-
-def run_server():
-    logger.info("Starting Storage RPC Server..")
-    s = zerorpc.Server(StorageRPC())
-    s.bind(get_sock_path('storage'))
-    s.run()
-
-
-def main():
-    run_server()
-
-
-if __name__ == '__main__':
-    main()

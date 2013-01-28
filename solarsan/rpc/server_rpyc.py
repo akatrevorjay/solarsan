@@ -1,7 +1,6 @@
 
 #from solarsan import conf
 from solarsan.core import logger
-from solarsan.cluster.models import Peer
 import rpyc
 
 

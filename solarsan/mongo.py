@@ -1,7 +1,9 @@
 
-import socket
+from solarsan.core import conf
+
+
 PROJECT_NAME = 'solarsanweb'
-SERVER_ID = socket.gethostname()
+SERVER_ID = conf.hostname
 
 
 import mongoengine
