@@ -6,6 +6,8 @@ from solarsan.core import logger
 import zerorpc
 from solarsan.utils.stack import get_current_func_name
 #from solarsan.utils.cache import cached_property
+from socket import gethostname
+import time
 
 
 class ClientWithRetry(zerorpc.Client):
@@ -116,130 +118,6 @@ class StorageClient(Client):
         super(StorageClient, self).__init__(connect=endpoint)
 
 
-import time
-
-
-class Target(object):
-    wwn = None
-    volumes = None
-
-
-from socket import gethostname
-
-'''
-STATES = {
-    0: 'ONLINE',
-    1: 'OFFLINE',
-    #5: 'DEAD',
-}
-
-
-class Host(object):
-    hostname = None
-    cluster_addr = None
-
-    is_local = None
-
-    state = None
-
-    def __init__(self, hostname=None, cluster_addr=None, peer=None):
-        if peer:
-
-        if hostname:
-            self.hostname = hostname
-        if cluster_addr:
-            self.cluster_addr = cluster_addr
-
-        for k, v in STATES.iteritems():
-            setattr(self, v, k)
-
-        self.is_local = gethostname() == hostname
-        self._state = self.ONLINE
-        self._lost_count = 0
-
-    @apply
-    def state():
-        doc = """Host State"""
-
-        def fget(self):
-            return self._state
-
-        def fset(self, value):
-            logger.info('Peer "%s" changed state to "%s"', self.hostname, STATES[value])
-            self._state = value
-
-        def fdel(self):
-            #delattr(self, '_state')
-            pass
-
-        return property(**locals())
-
-    @property
-    def storage(self):
-        if not hasattr(self, '_storage'):
-            self._storage = StorageClient(self.cluster_addr)
-        return self._storage
-
-    def __call__(self, method, *args, **kwargs):
-        default_on_timeout = kwargs.pop('_default_on_timeout', 'exception')
-
-        try:
-            ret = self.storage(method, *args, **kwargs)
-
-            if self.state != self.ONLINE:
-                self.state = self.ONLINE
-                self._lost_count = 0
-
-            return ret
-        except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
-            self._lost_count += 1
-
-            #if self._lost_count < 5 and self.state != self.OFFLINE:
-            if self.state != self.OFFLINE:
-                self.state = self.OFFLINE
-            #elif self.state != self.DEAD:
-            #    logger.error('Peer "%s" went DEAD!', self.hostname)
-            #    self.state = self.DEAD
-            #else:
-            #    logger.error('Peer "%s" is still %s', self.hostname, self.state)
-
-            if default_on_timeout == 'exception':
-                raise e
-            else:
-                return default_on_timeout
-
-    #def __getattr__(self, method):
-    #    return zerorpc.Client.__getattr__(self, method)
-
-    @cached_property(ttl=10)
-    def pools(self):
-        return self('pool_list', _default_on_timeout={})
-
-    @cached_property(ttl=10)
-    def cvols(self):
-        return self('cluster_volume_list', _default_on_timeout=[])
-
-    def promote(self):
-        # TODO Health checks to make sure uptodate
-        logger.info('Promoting all replicated volumes to primary')
-        self('volume_repl_promote')
-        logger.info('Starting targets on "%s"', self.hostname)
-        self('target_start')
-
-    def demote(self):
-        pass
-
-    @classmethod
-    def get_local(cls):
-        peer = Peer.objects.get(hostname=gethostname())
-        return self.get_from_peer(peer)
-
-    @classmethod
-    def get_from_peer(cls, peer):
-        return cls(peer.hostname, peer.cluster_addr)
-'''
-
-
 def storage_pool_health_loop():
     hostname = gethostname()
     from cluster.models import Peer
@@ -248,11 +126,7 @@ def storage_pool_health_loop():
     local = None
     for peer in Peer.objects.all():
         p_hostname = peer.hostname
-        p_cluster_addr = peer.cluster_addr
-        logger.info('Connecting to Peer "%s" via "%s".', p_hostname, p_cluster_addr)
-
         peers[p_hostname] = peer
-
         if peers[p_hostname].is_local:
             if local:
                 raise Exception('Found two Peers with my hostname!')

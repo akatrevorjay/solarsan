@@ -137,16 +137,8 @@ class StorageRPC(object):
         return gethostname()
 
     """
-    Cluster Volumes
+    Replicated Volumes
     """
-
-    def volume_repl_status(self, volume=None):
-        """Get status of all DRBD replicated resources"""
-        if volume:
-            vol = Volume(name=Volume)
-            return vol.replication_status
-        else:
-            return drbd_overview_parser()
 
     def volume_repl_list(self, hostname=None):
         """Lists Cluster Volumes"""
@@ -160,6 +152,21 @@ class StorageRPC(object):
                 continue
             ret.append(name)
         return ret
+
+    def drbd_res_list(self):
+        """Lists DRBD replicated resources"""
+        ret = []
+        for res in DrbdResource.objects.all():
+            ret.append(res.name)
+        return ret
+
+    def drbd_res_status(self, volume=None):
+        """Get status of all DRBD replicated resources"""
+        if volume:
+            vol = Volume(name=Volume)
+            return vol.replication_status
+        else:
+            return drbd_overview_parser()
 
     def drbd_res_setup(self, name, size, pool, peer_pool, peer_hostname):
         """Create new volume and setup Setup synchronous replication with a cluster peer."""
@@ -207,6 +214,9 @@ class StorageRPC(object):
     Target
     """
 
+    #def target_scst_create_target(self, wwn, blah):
+    #    pass
+
     def target_scst_status(self):
         return sh.service('scst', 'status')
 
@@ -220,10 +230,8 @@ class StorageRPC(object):
     #    pass
 
 
-#SOCK_DIR = '/opt/solarsan/rpc/sock'
-
-
 def get_sock_path(name):
+    #SOCK_DIR = '/opt/solarsan/rpc/sock'
     #return 'ipc://%s/%s' % (SOCK_DIR, name)
     return 'tcp://0.0.0.0:%d' % 1785
 
