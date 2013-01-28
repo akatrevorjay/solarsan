@@ -1,0 +1,72 @@
+Django==1.4.3
+IPy
+ipaddr
+PyYAML
+Pygments
+SimpleParse
+South
+amqp
+anyjson
+argparse
+billiard
+bpython
+celery
+decorator
+distribute
+django-bootstrap-toolkit
+django-breadcrumbs
+django-celery
+django-crispy-forms
+django-debug-toolbar
+django-devserver
+django-extensions
+django-jsonify
+djangorestframework
+gevent
+greenlet
+httplib2
+ipcalc
+ipython
+
+iterpipes
+
+#kombu
+
+line-profiler
+mongoengine
+msgpack-python
+netbeacon
+oauth
+pymongo
+pyparsing
+pypercube
+python-dateutil
+pytz
+pyzmq
+requests
+sh
+wsgiref
+zerorpc
+
+threadpool
+
+-e git+git://github.com/mwana/django-app-settings.git#egg=djangoappsettings
+-e git+git://github.com/hmarr/django-debug-toolbar-mongo.git#egg=debug_toolbar_mongo
+
+# Linux
+#-e git+git://fedorapeople.org/home/fedora/dsommers/public_git/python-ethtool.git#egg=ethtool
+#netifaces
+
+#ethtool
+#configshell
+#rtslib
+#targetcli
+
+
+
+# Linux and GNU/kFreeBSD
+#python-udisks
+
+# Optional
+#librabbitmq
+

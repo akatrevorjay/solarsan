@@ -1,0 +1,18 @@
+-r dev.txt
+
+# Linux
+-e git+git://fedorapeople.org/home/fedora/dsommers/public_git/python-ethtool.git#egg=ethtool
+netifaces
+
+# Handled by symlink in lib to /usr/local/lib/python2.7 copy
+#configshell
+#rtslib
+#targetcli
+
+# Linux and GNU/kFreeBSD
+#python-udisks
+-e git+git://github.com/umago/python-udisks.git#egg=udisks
+
+# Optional
+librabbitmq
+
