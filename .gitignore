@@ -8,3 +8,8 @@
 .zfs
 tmp
 
+_dev/
+_dev_lib/
+_*
+.ropeproject/
+
