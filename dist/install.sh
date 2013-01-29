@@ -1,5 +1,8 @@
 #!/bin/bash
 
+export HOME="/root"
+export WORKON_HOME="/root/.virtualenvs"
+
 . /etc/bash.bashrc
 . /etc/bash_completion
 
