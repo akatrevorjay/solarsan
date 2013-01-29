@@ -1,0 +1,31 @@
+#!/bin/bash -e
+basedir_raw=$(readlink -f "${BASH_SOURCE[0]%/*}")
+basedir=$(readlink -f "${basedir_raw%/bin}")
+virtualenv="$HOME/.virtualenvs/solarsan"
+
+if [[ "$0" != "bash" && -e "$basedir/lib/bashism/bashism" ]]; then
+    BASHISM_OUTPUT="output/output"
+    . "$basedir/lib/bashism/bashism"
+else
+    e() { echo "[${BASH_SOURCE[0]}] $@"; }
+    error() { e "$@" >&2; }
+    debug() { [[ ! "$BASHISM_DEBUG" ]] || echo "$@"; }
+    #export PATH="$basedir/bin:$PATH"
+fi
+
+debug "basedir=\"$basedir\" basedir_raw=\"$basedir_raw\""
+unset basedir_raw
+
+debug "Activating virtualenv in \"$virtualenv\""
+. "$virtualenv/bin/activate"
+debug "Python is now `which python`"
+
+# If we're being sourced, don't worry about such things
+[[ ${#BASH_SOURCE[@]} -gt 1 ]] || return
+
+# Since we're not being sourced, we must be being ran to exec something, right?
+if [[ $# -gt 0 ]]; then
+    exec "$@"
+else
+    error "You are running me (not sourcing), but you didn't tell me anything to run."
+fi

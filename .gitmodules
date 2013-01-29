@@ -1,0 +1,3 @@
+[submodule "lib/bashism"]
+	path = lib/bashism
+	url = git://github.com/akatrevorjay/bashism.git
