@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
 #from ..core import logger
-from solarsan.core import logger, conf
+from solarsan.core import logger
+from solarsan import conf
 
 import zerorpc
 from solarsan.utils.stack import get_current_func_name
 #from solarsan.utils.cache import cached_property
+#from storage.drbd import DrbdResource
 import time
 
 
@@ -138,8 +140,8 @@ def storage_pool_health_loop():
 
     while True:
         for p_host, p in peers.iteritems():
-            #print
-            #logger.debug('Peer "%s"' % p_host)
+            print
+            logger.debug('Peer "%s"' % p_host)
 
             if not p.is_online:
                 try:
@@ -153,10 +155,16 @@ def storage_pool_health_loop():
                 try:
                     if not p('pool_is_healthy', pool):
                         logger.error('Pool "%s" is NOT healthy on "%s".', pool, p_host)
-                    #else:
-                    #    logger.debug('Pool "%s" is healthy on "%s".', pool, p_host)
+                    else:
+                        logger.debug('Pool "%s" is healthy on "%s".', pool, p_host)
                 except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
                     logger.error('Peer "%s" went down: "%s"', p_host, e.message)
-                    pass
 
-        time.sleep(15)
+                    # TODO rpyc and per peer filter
+                    for res in local('drbd_res_list'):
+                        local('drbd_primary', res)
+                    local('target_scst_start')
+                    # TODO HA IP lookup from Config, use signals to run this
+                    # shit on down or up
+
+        time.sleep(1)

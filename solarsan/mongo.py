@@ -1,5 +1,5 @@
 
-from solarsan.core import conf
+from solarsan import conf
 
 
 PROJECT_NAME = 'solarsanweb'

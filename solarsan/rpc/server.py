@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from solarsan.core import logger, conf
+from solarsan.core import logger
+from solarsan import conf
 #from solarsan.utils.exceptions import LoggedException
 #from solarsan.template import quick_template
 
@@ -208,6 +209,11 @@ class StorageRPC(object):
 
     def drbd_find_free_minor(self):
         return drbd_find_free_minor()
+
+    def drbd_primary(self, resource):
+        logger.info("Got resource to promote: %s", resource)
+        res = DrbdResource.objects.get(name=resource)
+        res.promote_to_primary()
 
     """
     Target

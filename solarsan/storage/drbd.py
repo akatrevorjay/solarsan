@@ -1,5 +1,6 @@
 
-from solarsan.core import logger, conf
+from solarsan.core import logger
+from solarsan import conf
 from solarsan.template import quick_template
 from .parsers.drbd import drbd_overview_parser
 from .volume import Volume
@@ -8,6 +9,7 @@ from cluster.models import Peer
 
 from random import getrandbits
 import mongoengine as m
+import sh
 
 #import zerorpc
 #from ..rpc.client import StorageClient
@@ -116,17 +118,36 @@ class DrbdResource(m.Document):
     Helpers to get which peer you really want
     """
 
-    @property
-    def local(self):
-        for peer in self.peers:
-            if peer.is_local:
-                return peer
+    local = m.EmbeddedDocumentField(DrbdPeer)
+    remote = m.EmbeddedDocumentField(DrbdPeer)
 
-    @property
-    def remote(self):
-        for peer in self.peers:
-            if not peer.is_local:
-                return peer
+    #@property
+    #def local(self):
+    #    for peer in self.peers:
+    #        if peer.is_local:
+    #            return peer
+
+    #@local.setter
+    #def local_setter(self, value):
+    #    for x, peer in enumerate(self.peers):
+    #        if peer.is_local:
+    #            del self.peers[x]
+    #    self.peers.append(value)
+
+    #@property
+    #def remote(self):
+    #    for peer in self.peers:
+    #        if not peer.is_local:
+    #            return peer
+
+    #@remote.setter
+    #def remote_setter(self, value):
+    #    for x, peer in enumerate(self.peers):
+    #        if not peer.is_local:
+    #            del self.peers[x]
+    #    self.peers.append(value)
+
+
 
     """
     The others
@@ -148,3 +169,7 @@ class DrbdResource(m.Document):
         context = {'res': self}
         return quick_template('drbd-resource.conf', context=context,
                               is_file=True, out_file=out_file)
+
+    def promote_to_primary(self):
+        # TODO Use rpyc
+        sh.drbdadm('primary', self.name)

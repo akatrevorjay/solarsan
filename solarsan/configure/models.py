@@ -5,7 +5,8 @@
 #import datetime
 #import logging
 
-#from solarsan.core import logger, conf
+#from solarsan.core import logger
+from solarsan import conf
 from solarsan.models import Config, CreatedModifiedDocMixIn
 from solarsan.template import quick_template
 import mongoengine as m

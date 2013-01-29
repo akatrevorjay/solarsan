@@ -1,5 +1,6 @@
 
-from solarsan.core import logger, conf
+from solarsan.core import logger
+from solarsan import conf
 from solarsan.rpc.client import StorageClient
 from solarsan.utils.cache import cached_property
 from solarsan.models import Config, CreatedModifiedDocMixIn

@@ -10,4 +10,4 @@ formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s.%(module)s %(m
 ch.formatter = formatter
 logger.addHandler(ch)
 
-from .. import mongo
+from solarsan import mongo
