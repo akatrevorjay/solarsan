@@ -20,12 +20,7 @@ debug "Activating virtualenv in \"$virtualenv\""
 . "$virtualenv/bin/activate"
 debug "Python is now `which python`"
 
-# If we're being sourced, don't worry about such things
-[[ ${#BASH_SOURCE[@]} -gt 1 ]] || return
-
-# Since we're not being sourced, we must be being ran to exec something, right?
+# If we have arguments, then they are to exec
 if [[ $# -gt 0 ]]; then
     exec "$@"
-else
-    error "You are running me (not sourcing), but you didn't tell me anything to run."
 fi
