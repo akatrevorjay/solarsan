@@ -8,7 +8,7 @@ if [[ ! -e "/root/.virtualenvs/solarsan" ]]; then
 fi
 
 workon solarsan
-for i in /opt/solarsan{,/solarsan,web{,/lib,/solarsanweb}}; do
+for i in /opt/solarsanweb /opt/solarsanweb/lib /opt/solarsan /opt/solarsan/solarsan; do
     add2virtualenv | egrep "^$i\$" >/dev/null 2>&1 || \
         add2virtualenv "$i"
 done
