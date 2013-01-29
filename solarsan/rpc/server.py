@@ -224,7 +224,11 @@ class StorageService(rpyc.Service):
     """
 
     def target_scst_status(self):
-        return sh.service('scst', 'status')
+        try:
+            sh.service('scst', 'status')
+            return True
+        except:
+            return False
 
     def target_scst_start(self):
         return sh.service('scst', 'start')

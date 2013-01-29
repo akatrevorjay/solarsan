@@ -41,6 +41,9 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
         self._lost_count = 0
         self._services = {}
 
+        """ THIS NEEDS TO BE DYNAMIC THIS IS A HUGE HACK AND WONT WORK """
+        self.is_primary = False
+
     # TODO Manager
     @classmethod
     def get_local(cls):
@@ -70,16 +73,30 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
 
     def get_service(self, name):
         """Looks for service on Peer. Returns an existing one if possible, otherwise instantiates one."""
-        name = str(name).upper()
-        if name not in self._services or self._services[name].closed:
-            #try:
-            service = rpyc.connect_by_service(name, host=self.cluster_addr)
-            #except Exception:
-            #    raise
-            for alias in service.root.get_service_aliases():
-                self._services[alias] = service
+        NAME = str(name).upper()
+        check_service = self._services.get(NAME)
+        if not check_service or check_service.closed:
+            service = None
+            try:
+                service = rpyc.connect_by_service(NAME, host=self.cluster_addr)
+
+                # Remove existing aliases to old service
+                if check_service:
+                    for alias in self._services.keys():
+                        if self._services[alias] == check_service:
+                            self._services.pop(alias)
+
+                # Add in the new service's
+                for alias in service.root.get_service_aliases():
+                    self._services[alias] = service
+            except Exception, e:
+                logger.error('Cannot get service "%s": "%s"', NAME, e.message)
+                if check_service:
+                    check_service.close()
+                if service:
+                    service.close()
         else:
-            service = self._services[name]
+            service = self._services[NAME]
         return service
 
     @property
@@ -97,18 +114,62 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
             ret = meth(*args, **kwargs)
 
             if not self.is_online:
-                self.is_online = True
+                self._is_online = True
                 self._lost_count = 0
             return ret
         except EOFError:
             if self.is_online:
-                self.is_online = False
+                self._is_online = False
             self._lost_count += 1
 
             if default_on_timeout == 'exception':
                 raise
             else:
                 return default_on_timeout
+
+    def failover_for_peer(self, peer):
+        if self.is_primary:
+            raise Exception("Already primary!")
+
+        """
+        Failover crap that needs moved to signals on Peer online/offline
+
+        TODO Check DRBD status before failing over
+            - If no connection has been seen for a while over multiple
+              interfaces, become primary
+            - If connetion is still up, but peer appears crashed, wait some
+              amount of time for watchdog to hopefully kick in and reboot that
+              shit to let you do your thang
+            - If other peer is currently marked as primary, we can't fucking do
+              this so don't try to.
+            - If we are not UpToDate, then definitely do NOT become primary
+        """
+
+        logger.error("Failing over for peer '%s'", peer.hostname)
+
+        # TODO rpyc of objects and per peer filter
+        logger.info('Getting list of resources')
+        for res in self('drbd_res_list'):
+            # TODO signal going primary on res
+            logger.info('Primary on "%s"', res)
+            self('drbd_primary', res)
+
+        # TODO rewrite SCST config
+        logger.info('TODO Rewriting SCST config')
+
+        # TODO signal about to reload SCST config
+        if not self('target_scst_status'):
+            logger.info('Starting SCST')
+            self('target_scst_start')
+        else:
+            logger.info('Reloading SCST config')
+            self('target_scst_reload_config')
+
+        # TODO HA IP lookup from Config, use signals to run this
+        # shit on down or up
+        logger.info('TODO Taking over HA IP')
+
+        self.is_primary = True
 
     """
     Maybe..
