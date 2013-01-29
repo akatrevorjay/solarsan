@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 from solarsan.core import logger
 from solarsan import conf
@@ -8,57 +9,64 @@ from storage.pool import Pool
 from storage.volume import Volume
 from storage.parsers.drbd import drbd_overview_parser
 from storage.drbd import DrbdResource, DrbdPeer, drbd_find_free_minor
+
 from solarsan.models import Config
 from configure.models import Nic, get_all_local_ipv4_addrs
 from cluster.models import Peer
+
+#from . import client
+#import solarsan.rpc.client as client
+
+#import zerorpc
 import sh
-import rpyc
 
 
-class StorageService(rpyc.Service):
-    def on_connect(self):
-        logger.debug('Client connected.')
+class StorageRPC(object):
+    def __init__(self):
+        pass
 
-    def on_disconnect(self):
-        logger.debug('Client disconnected.')
+    """
+    Devices
+    """
 
-    def exposed_ping(self):
-        return True
+    #def device_list(self):
+    #    """List Devices"""
+    #    pass
 
     """
     Pools
     """
 
-    #def exposed_pool_create(self, name, vdevs):
+    #def pool_create(self, name, vdevs):
     #    """Create Pool"""
     #    pass
 
-    def exposed_pool_list(self, props=None):
+    def pool_list(self, props=None):
         """List Pools"""
         return Pool.list(props=props, ret=dict, ret_obj=False)
 
-    def exposed_pool_exists(self, pool):
+    def pool_exists(self, pool):
         """Check if Pool exists"""
         pool = Pool(name=pool)
         return pool.exists()
 
-    def exposed_pool_is_healthy(self, pool):
+    def pool_is_healthy(self, pool):
         """Check if Pool is healthy"""
         pool = Pool(name=pool)
         return pool.is_healthy()
 
-    def exposed_pool_get_prop(self, pool, name, default=None):
+    def pool_get_prop(self, pool, name, default=None):
         """Get property from Pool"""
         pool = Pool(name=pool)
         return pool.properties.get(name, default)
 
-    def exposed_pool_set_prop(self, pool, name, value):
+    def pool_set_prop(self, pool, name, value):
         """Set property to Pool"""
         pool = Pool(name=pool)
         pool.properties[name] = value
         return True
 
-    #def exposed_pool_children_list(self, name):
+    #def pool_children_list(self, name):
     #    """List Pool children"""
     #    pool = Pool.objects.get(name=name)
     #    return pool.children
@@ -67,26 +75,26 @@ class StorageService(rpyc.Service):
     Volumes
     """
 
-    def exposed_volume_create(self, volume, size, sparse=None, block_size=None):
+    def volume_create(self, volume, size, sparse=None, block_size=None):
         """Create Volume"""
         vol = Volume(name=volume)
         return vol.create(size, sparse=sparse, block_size=block_size)
 
-    def exposed_volume_list(self, props=None):
+    def volume_list(self, props=None):
         """List Volumes"""
         return Volume.list(props=props, ret=dict, ret_obj=False)
 
-    def exposed_volume_exists(self, volume):
+    def volume_exists(self, volume):
         """Check if Volume exists"""
         vol = Volume(name=volume)
         return vol.exists()
 
-    def exposed_volume_get_prop(self, volume, name, default=None, source=None):
+    def volume_get_prop(self, volume, name, default=None, source=None):
         """Get property from Volume"""
         vol = Volume(name=volume)
         return vol.properties.get(name, default, source=source)
 
-    def exposed_volume_set_prop(self, volume, name, value):
+    def volume_set_prop(self, volume, name, value):
         """Set property to vol"""
         vol = Volume(name=volume)
         vol.properties[name] = value
@@ -96,11 +104,11 @@ class StorageService(rpyc.Service):
     Cluster Probe
     """
 
-    def exposed_peer_ping(self):
+    def peer_ping(self):
         """Pings Peer"""
         return True
 
-    def exposed_peer_get_cluster_iface(self):
+    def peer_get_cluster_iface(self):
         """Gets Cluster IP"""
         config = Config.objects.get(name='cluster')
         iface = config.network_iface
@@ -120,11 +128,11 @@ class StorageService(rpyc.Service):
         }
         return ret
 
-    def exposed_peer_list_addrs(self):
+    def peer_list_addrs(self):
         """Returns a list of IP addresses and network information"""
         return get_all_local_ipv4_addrs()
 
-    def exposed_peer_hostname(self):
+    def peer_hostname(self):
         """Returns hostname"""
         return conf.hostname
 
@@ -132,7 +140,7 @@ class StorageService(rpyc.Service):
     Replicated Volumes
     """
 
-    def exposed_volume_repl_list(self, hostname=None):
+    def volume_repl_list(self, hostname=None):
         """Lists Cluster Volumes"""
         ret = []
         for line in sh.zfs('get', '-s', 'local', '-H', '-t', 'volume', 'solarsan:vol_repl',
@@ -145,14 +153,14 @@ class StorageService(rpyc.Service):
             ret.append(name)
         return ret
 
-    def exposed_drbd_res_list(self):
+    def drbd_res_list(self):
         """Lists DRBD replicated resources"""
         ret = []
         for res in DrbdResource.objects.all():
             ret.append(res.name)
         return ret
 
-    def exposed_drbd_res_status(self, volume=None):
+    def drbd_res_status(self, volume=None):
         """Get status of all DRBD replicated resources"""
         if volume:
             vol = Volume(name=Volume)
@@ -160,7 +168,7 @@ class StorageService(rpyc.Service):
         else:
             return drbd_overview_parser()
 
-    def exposed_drbd_res_setup(self, name, size, pool, peer_pool, peer_hostname):
+    def drbd_res_setup(self, name, size, pool, peer_pool, peer_hostname):
         """Create new volume and setup Setup synchronous replication with a cluster peer."""
         local = Peer.get_local()
         remote = Peer.objects.get(hostname=peer_hostname)
@@ -190,19 +198,19 @@ class StorageService(rpyc.Service):
         local('drbd_res_write_config', res.name)
         remote('drbd_res_write_config', res.name)
 
-    def exposed_drbd_res_write_config(self, resource, confirm=None):
+    def drbd_res_write_config(self, resource, confirm=None):
         """Writes configuration for DrbdResource"""
         res = DrbdResource.objects.get(name=resource)
         return res.write_config(confirm=confirm)
 
-    def exposed_drbd_res_create_md(self, resource):
+    def drbd_res_create_md(self, resource):
         res = DrbdResource.objects.get(name=resource)
         return res.local.create_md()
 
-    def exposed_drbd_find_free_minor(self):
+    def drbd_find_free_minor(self):
         return drbd_find_free_minor()
 
-    def exposed_drbd_primary(self, resource):
+    def drbd_primary(self, resource):
         logger.info("Got resource to promote: %s", resource)
         res = DrbdResource.objects.get(name=resource)
         res.promote_to_primary()
@@ -211,17 +219,23 @@ class StorageService(rpyc.Service):
     Target
     """
 
-    #def exposed_target_scst_create_target(self, wwn, blah):
+    #def target_scst_create_target(self, wwn, blah):
     #    pass
 
-    def exposed_target_scst_status(self):
+    def target_scst_status(self):
         return sh.service('scst', 'status')
 
-    def exposed_target_scst_start(self):
+    def target_scst_start(self):
         return sh.service('scst', 'start')
 
-    def exposed_target_scst_stop(self):
+    def target_scst_stop(self):
         return sh.service('scst', 'stop')
 
-    #def exposed_target_rts_status(self):
+    #def target_rts_status(self):
     #    pass
+
+
+def get_sock_path(name):
+    #SOCK_DIR = '/opt/solarsan/rpc/sock'
+    #return 'ipc://%s/%s' % (SOCK_DIR, name)
+    return 'tcp://0.0.0.0:%d' % 1785

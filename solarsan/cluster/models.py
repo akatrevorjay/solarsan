@@ -1,15 +1,11 @@
 
 from solarsan.core import logger
 from solarsan import conf
-from solarsan.rpc.client import StorageClient
-from solarsan.utils.cache import cached_property
 from solarsan.models import Config, CreatedModifiedDocMixIn
 from solarsan.configure.models import Nic
-#from ..utils.cache import cached_property
-#from ..utils.stack import get_current_func_name
 
 import mongoengine as m
-import zerorpc
+import rpyc
 
 
 """
@@ -41,8 +37,9 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
 
     def __init__(self, **kwargs):
         super(Peer, self).__init__(**kwargs)
-        self.is_online = True
+        self._is_online = None
         self._lost_count = 0
+        self._services = {}
 
     # TODO Manager
     @classmethod
@@ -62,40 +59,64 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
     """
 
     @property
+    def is_online(self):
+        if self._is_online is None:
+            try:
+                self.storage.ping()
+                self._is_online = True
+            except:
+                self._is_online = False
+        return self._is_online
+
+    def get_service(self, name):
+        """Looks for service on Peer. Returns an existing one if possible, otherwise instantiates one."""
+        name = str(name).upper()
+        if name not in self._services or self._services[name].closed:
+            #try:
+            service = rpyc.connect_by_service(name, host=self.cluster_addr)
+            #except Exception:
+            #    raise
+            for alias in service.root.get_service_aliases():
+                self._services[alias] = service
+        else:
+            service = self._services[name]
+        return service
+
+    @property
     def storage(self):
-        if not hasattr(self, '_storage'):
-            self._storage = StorageClient(self.cluster_addr)
-        return self._storage
+        return self.get_service('storage')
 
     def __call__(self, method, *args, **kwargs):
         default_on_timeout = kwargs.pop('_default_on_timeout', 'exception')
 
+        # TODO handle multiple service names
+        service = self.get_service('storage')
+
         try:
-            ret = self.storage(method, *args, **kwargs)
+            meth = getattr(service.root, method)
+            ret = meth(*args, **kwargs)
 
             if not self.is_online:
                 self.is_online = True
                 self._lost_count = 0
             return ret
-        except (zerorpc.TimeoutExpired, zerorpc.LostRemote), e:
+        except EOFError:
             if self.is_online:
                 self.is_online = False
             self._lost_count += 1
 
             if default_on_timeout == 'exception':
-                raise e
+                raise
             else:
                 return default_on_timeout
 
     """
-    Cached props
+    Maybe..
     """
 
-    @cached_property(ttl=10)
     def pools(self):
         return self('pool_list', _default_on_timeout={})
 
-    @cached_property(ttl=10)
     def volumes(self):
         return self('volume_list', _default_on_timeout={})
 
@@ -104,11 +125,14 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
     """
 
     def promote(self):
-        # TODO Health checks to make sure uptodate
+        # TODO Health checks to make sure uptodate first
         logger.info('Promoting all replicated volumes to primary')
-        self('volume_repl_promote')
+        self.storage.root.drbd_res_primary()
+
+        # TODO Write out new SCST config file, ALWAYS have SCST running, even
+        # with an empty config. Just reload the config with scstadmin -config
         logger.info('Starting targets on "%s"', self.hostname)
-        self('target_start')
+        self.storage.root.target_scst_start()
 
     def demote(self):
         pass

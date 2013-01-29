@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 
 from solarsan.core import logger
 from solarsan import conf
@@ -9,37 +8,41 @@ from storage.pool import Pool
 from storage.volume import Volume
 from storage.parsers.drbd import drbd_overview_parser
 from storage.drbd import DrbdResource, DrbdPeer, drbd_find_free_minor
-
 from solarsan.models import Config
 from configure.models import Nic, get_all_local_ipv4_addrs
 from cluster.models import Peer
-
-#from . import client
-#import solarsan.rpc.client as client
-
-#import zerorpc
 import sh
+import rpyc
 
 
-class StorageRPC(object):
-    def __init__(self):
-        pass
+class StorageService(rpyc.Service):
+    def on_connect(self):
+        logger.debug('Client connected.')
 
-    """
-    Devices
-    """
+    def on_disconnect(self):
+        logger.debug('Client disconnected.')
 
-    #def device_list(self):
-    #    """List Devices"""
+    def ping(self):
+        return True
+
+    # Override the stupid prepending of expose_prefix to attrs, why is the
+    # config not honored??
+    def _rpyc_getattr(self, name):
+        return getattr(self, name)
+
+    #def _rpyc_delattr(self, name):
+    #    pass
+
+    #def _rpyc_setattr(self, name, value):
     #    pass
 
     """
     Pools
     """
 
-    #def pool_create(self, name, vdevs):
-    #    """Create Pool"""
-    #    pass
+    def pool_create(self, name, vdevs):
+        """Create Pool"""
+        raise NotImplemented
 
     def pool_list(self, props=None):
         """List Pools"""
@@ -66,6 +69,7 @@ class StorageRPC(object):
         pool.properties[name] = value
         return True
 
+    # Not sure if this is really needed..
     #def pool_children_list(self, name):
     #    """List Pool children"""
     #    pool = Pool.objects.get(name=name)
@@ -219,9 +223,6 @@ class StorageRPC(object):
     Target
     """
 
-    #def target_scst_create_target(self, wwn, blah):
-    #    pass
-
     def target_scst_status(self):
         return sh.service('scst', 'status')
 
@@ -231,11 +232,19 @@ class StorageRPC(object):
     def target_scst_stop(self):
         return sh.service('scst', 'stop')
 
+    def target_scst_restart(self):
+        return sh.service('scst', 'restart')
+
+    def target_scst_reload_config(self):
+        return sh.scstadmin('-config', '/etc/scst.conf')
+
+    def target_scst_write_config(self):
+        raise NotImplemented
+
+    def target_scst_create_target(self, wwn, blah):
+        raise NotImplemented
+
+
+
     #def target_rts_status(self):
     #    pass
-
-
-def get_sock_path(name):
-    #SOCK_DIR = '/opt/solarsan/rpc/sock'
-    #return 'ipc://%s/%s' % (SOCK_DIR, name)
-    return 'tcp://0.0.0.0:%d' % 1785

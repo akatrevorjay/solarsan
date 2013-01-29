@@ -2,17 +2,12 @@
 from solarsan.core import logger
 from solarsan import conf
 from solarsan.template import quick_template
-from .parsers.drbd import drbd_overview_parser
-from .volume import Volume
-#from ..cluster.models import Peer
 from cluster.models import Peer
-
+from .volume import Volume
+from .parsers.drbd import drbd_overview_parser
 from random import getrandbits
 import mongoengine as m
 import sh
-
-#import zerorpc
-#from ..rpc.client import StorageClient
 
 
 def drbd_find_free_minor():
@@ -84,10 +79,14 @@ class DrbdPeer(m.EmbeddedDocument):
 class DrbdResource(m.Document):
     # Volumes are made with this name; the Drbd resource is also named this.
     name = m.StringField(unique=True, required=True)
-    size = m.StringField(required=True)
-    peers = m.ListField(m.EmbeddedDocumentField(DrbdPeer))
+    #peers = m.ListField(m.EmbeddedDocumentField(DrbdPeer))
+    local = m.EmbeddedDocumentField(DrbdPeer, required=True)
+    remote = m.EmbeddedDocumentField(DrbdPeer, required=True)
     shared_secret = m.StringField(required=True)
     sync_rate = m.StringField()
+
+    # TODO Not needed, remove
+    size = m.StringField(required=True)
 
     """
     Avoid possums
@@ -95,6 +94,9 @@ class DrbdResource(m.Document):
 
     def __init__(self, **kwargs):
         super(DrbdResource, self).__init__(**kwargs)
+
+    def __repr__(self):
+        return "<%s '%s'>" % (self.__class__.__name__, self.name)
 
     def create_volumes(self, size):
         for peer in self.peers:
@@ -105,9 +107,6 @@ class DrbdResource(m.Document):
             peer.rpc('drbd_res_create_md', self.name)
 
     def save(self, *args, **kwargs):
-        # There can only be two peers
-        if len(self.peers) != 2:
-            raise Exception("Wrong number of elements in self.peers. There should always be 2.")
         # Automatically generate a random secret if one was not specified
         # already
         if not self.shared_secret:
@@ -117,37 +116,6 @@ class DrbdResource(m.Document):
     """
     Helpers to get which peer you really want
     """
-
-    local = m.EmbeddedDocumentField(DrbdPeer)
-    remote = m.EmbeddedDocumentField(DrbdPeer)
-
-    #@property
-    #def local(self):
-    #    for peer in self.peers:
-    #        if peer.is_local:
-    #            return peer
-
-    #@local.setter
-    #def local_setter(self, value):
-    #    for x, peer in enumerate(self.peers):
-    #        if peer.is_local:
-    #            del self.peers[x]
-    #    self.peers.append(value)
-
-    #@property
-    #def remote(self):
-    #    for peer in self.peers:
-    #        if not peer.is_local:
-    #            return peer
-
-    #@remote.setter
-    #def remote_setter(self, value):
-    #    for x, peer in enumerate(self.peers):
-    #        if not peer.is_local:
-    #            del self.peers[x]
-    #    self.peers.append(value)
-
-
 
     """
     The others
@@ -173,3 +141,137 @@ class DrbdResource(m.Document):
     def promote_to_primary(self):
         # TODO Use rpyc
         sh.drbdadm('primary', self.name)
+
+    """
+    FUCK These are non-working for a sec, copied over from old Volume class, so need reworking
+    """
+
+    @property
+    def replication_device_name(self):
+        return self.path(-1)[0]
+
+    @property
+    def replication_device_path(self):
+        return '/dev/drbd/by-res/%s' % self.replicated_device_name
+
+    @property
+    def replication_port(self):
+        return int(DRBD_START_PORT) + int(self.replication_minor)
+
+    # WIP TODO
+    def replication_setup(self, is_source=False, peer=None, peer_hostname=None):
+        if self.is_replicated:
+            raise Exception('Volume "%s" is already clustered with Peer "%s"',
+                            self, self.replication_peer.hostname)
+
+        repl_name = self.replication_device_name
+
+        # TODO Force a peer probe before moving forward just to make sure no
+        # values ahev changed in the interim.
+        # TODO Function that looks up peer by hostname and if it doesn't exist
+        # in DB, it probes it before returning.
+        if not peer and peer_hostname:
+            #local = cm.Peer.objects.get(hostname=settings.SERVER_NAME)
+            peer = Peer.objects.get(hostname=peer_hostname)
+
+        logger.info('Setting up replicated Volume "%s" with Peer "%s"', self, peer)
+
+        # Tell Peer to get ready
+        #peer.rpc('cluster_volume_setup_as_peer', hostname=settings.SERVER_NAME)
+
+        # Find free DRBD minor
+        # TODO Write all configs in one go, it will make such things easier.
+        minor = drbd_find_free_minor()
+
+        # Set Volume props
+        self.properties['solarsan:cluster_volume'] = 'pending'
+
+        # Set DB props
+        #self.is_replicated = True
+        self.replication_peer = peer
+        self.replication_minor = minor
+        self.save()
+
+        # Create Volume on Peer
+        peer.rpc('volume_create',
+                 size=self.properties['volsize'],
+                 block_size=self.properties['volblock'])
+
+        # Format volume for replication
+        # Not needed with official tools init script?
+        sh.drbdadm('create-md', repl_name)
+        #local.rpc('cluster_volume_create_md', self.name)
+        peer.rpc('cluster_volume_create_md', self.name)
+
+        # CAREFUL If we're told to, forcefully overwrite peer's data.
+        if is_source:
+            repl_dev_path = self.replication_device_path
+            sh.drbdsetup(repl_dev_path, 'primary', force='yes')
+
+        # Set props indicating we're operating
+        self.properties['solarsan:cluster_volume'] = 'true'
+        #self.properties['solarsan:cluster_volume_peer_hostname'] = peer_hostname
+
+        self.is_replicated = True
+        self.save()
+
+    def replication_promote_to_primary(self):
+        repl_name = self.replication_device_name
+        sh.drbdadm('primary', repl_name)
+
+    def replication_demote_to_secondary(self):
+        repl_name = self.replication_device_name
+        sh.drbdadm('secondary', repl_name)
+
+    def replication_write_config(self):
+        pass
+
+    """
+    Replication Status
+    """
+
+    @property
+    def replication_status(self):
+        repl_name = self.replication_device_name
+        return drbd_overview_parser(resource=repl_name)
+
+    @property
+    def replication_is_primary(self):
+        status = self.replication_status
+        role = status['role']
+        if role == 'Primary':
+            return True
+        elif role == 'Secondary':
+            return False
+
+    @property
+    def replication_is_connected(self):
+        status = self.replication_status
+        cstate = status['connection_state']
+
+        if cstate == 'Connected':
+            return True
+        # TODO Better testing here
+        else:
+            return False
+
+    @property
+    def replication_is_up_to_date(self):
+        status = self.replication_status
+        dstate = status['disk_state']
+
+        if dstate == 'UpToDate':
+            return True
+        else:
+            return False
+
+    @property
+    def replication_is_healthy(self):
+        status = self.replication_status
+        cstate = status['connection_state']
+        dstate = status['disk_state']
+
+        if dstate == 'UpToDate' and cstate == 'Connected':
+            return True
+        else:
+            return False
