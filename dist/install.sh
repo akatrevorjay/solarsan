@@ -14,7 +14,7 @@ fi
 
 set +e
 workon solarsan
-for i in /opt/solarsanweb /opt/solarsanweb/lib /opt/solarsan /opt/solarsan/solarsan; do
+for i in /opt/solarsanweb /opt/solarsanweb/lib /opt/solarsanweb/solarsanweb /opt/solarsan /opt/solarsan/solarsan; do
     add2virtualenv | egrep "^$i\$" >/dev/null 2>&1 || \
         add2virtualenv "$i"
 done
