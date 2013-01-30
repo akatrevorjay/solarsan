@@ -249,6 +249,11 @@ class DrbdResourceService(object):
         sh.drbdadm('adjust', self.res.name)
         return True
 
+    def outdate(self):
+        """Outdates resource"""
+        sh.drbdadm('outdate', self.res.name)
+        return True
+
     def resize(self, assume_clean=False):
         """Dynamically grow the Resource to be the full size of the underlying Volume.
         If assume_clean=True, then it assumes the new space is just new space, not existing data,
