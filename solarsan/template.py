@@ -5,14 +5,16 @@ env = Environment(loader=PackageLoader('solarsan', 'templates'))
 from .utils.files import burp
 
 
-def quick_template(template, context=None, is_file=False, out_file=None):
-    if is_file:
-        t = env.get_template(template)
-    else:
+def quick_template(template, context=None, is_string=False, write_file=None):
+    if is_string:
         t = Template(template)
+    else:
+        t = env.get_template(template)
+
     ret = t.render(context)
 
-    if out_file:
-        burp(out_file, ret)
-
-    return ret
+    if write_file:
+        burp(write_file, ret)
+        return True
+    else:
+        return ret
