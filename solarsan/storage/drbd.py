@@ -137,7 +137,7 @@ class DrbdResource(m.Document):
         return [self.local, self.remote]
 
     def propogate_res_to_remote(self):
-        logger.info('Propogating local Drbd Resource "%s" to Peer "%s".', self, self.remote)
+        logger.info('Propogating local Drbd Resource "%s" to Peer "%s".', self.name, self.remote.hostname)
         storage2 = self.remote.peer.get_service('storage2')
         remote_res_obj = storage2.root.drbd_res()
         remote_drbd_peer_obj = storage2.root.drbd_peer()
