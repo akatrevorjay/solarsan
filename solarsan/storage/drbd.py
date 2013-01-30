@@ -2,12 +2,14 @@
 from solarsan.core import logger
 from solarsan import conf
 from solarsan.template import quick_template
+from solarsan.utils.exceptions import LoggedException
 from cluster.models import Peer
 from .volume import Volume
 from .parsers.drbd import drbd_overview_parser
 from random import getrandbits
 import mongoengine as m
 import sh
+import time
 
 
 def drbd_find_free_minor():
@@ -30,6 +32,11 @@ class DrbdPeer(m.EmbeddedDocument):
 
     def __init__(self, **kwargs):
         super(DrbdPeer, self).__init__(**kwargs)
+        self._service = None
+
+    def __repr__(self):
+        return "<%s peer='%s', minor='%s', volume='%s'>" % (
+            self.__class__.__name__, self.peer.hostname, self.minor, self.volume_full_name)
 
     def save(self, *args, **kwargs):
         if not self.minor:
@@ -39,13 +46,6 @@ class DrbdPeer(m.EmbeddedDocument):
             #    pass
         ret = super(DrbdPeer, self).save(*args, **kwargs)
         return ret
-
-    #@property
-    #def rpc(self):
-    #    if not getattr(self, '_rpc', None):
-    #        # TODO migrate this stuff to Peer
-    #        self._rpc = StorageClient(self.peer.cluster_addr)
-    #    return self._rpc
 
     @property
     def is_local(self):
@@ -68,18 +68,45 @@ class DrbdPeer(m.EmbeddedDocument):
     def volume_full_name(self):
         return '%s/%s' % (self.pool, self.volume)
 
-    def get_volume(self):
-        return Volume(name=self.volume_full_name)
+    @property
+    def device(self):
+        # Kinda hackish to hard code this when it's in
+        # storage.volume.Volume.device
+        return '/dev/zvol/%s' % self.volume_full_name
+
+    """
+    Service
+    """
 
     @property
-    def disk(self):
-        return self.get_volume().device
+    def service(self):
+        storage2 = self.peer.get_service('storage2')
+        retry_count = 1
+        retry_delay = 1
+        for attempt in xrange(retry_count + 1):
+            try:
+                # TODO self.volume IS NOT THE RESOURCE NAME BUT IT JUST HAPPENS TO WORK
+                # HACK FIX THIS SHIT
+                return storage2.root.drbd_res_service(self.volume)
+            except Exception, e:
+                log_msg = 'Could not get Drbd Resource Service on Peer "%s"; '
+                if attempt < retry_count:
+                    logger.error(log_msg + 'retrying in %ds (%d/%d): "%s"',
+                                 self.peer, retry_delay, attempt + 1, retry_count + 1, e.message)
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(log_msg + 'Retry attempts exceeded.: "%s"',
+                                 self.peer, e.message)
+                    raise
+
+    def __call__(self, method, *args, **kwargs):
+        meth = getattr(self.service.root, method)
+        return meth(*args, **kwargs)
 
 
 class DrbdResource(m.Document):
     # Volumes are made with this name; the Drbd resource is also named this.
     name = m.StringField(unique=True, required=True)
-    #peers = m.ListField(m.EmbeddedDocumentField(DrbdPeer))
     local = m.EmbeddedDocumentField(DrbdPeer, required=True)
     remote = m.EmbeddedDocumentField(DrbdPeer, required=True)
     shared_secret = m.StringField(required=True)
@@ -98,14 +125,6 @@ class DrbdResource(m.Document):
     def __repr__(self):
         return "<%s '%s'>" % (self.__class__.__name__, self.name)
 
-    def create_volumes(self, size):
-        for peer in self.peers:
-            peer.rpc('volume_create', peer.volume_full_name, size)
-
-    def create_mds(self):
-        for peer in self.peers:
-            peer.rpc('drbd_res_create_md', self.name)
-
     def save(self, *args, **kwargs):
         # Automatically generate a random secret if one was not specified
         # already
@@ -113,165 +132,350 @@ class DrbdResource(m.Document):
             self.generate_random_secret()
         super(DrbdResource, self).save(*args, **kwargs)
 
-    """
-    Helpers to get which peer you really want
-    """
+    @property
+    def peers(self):
+        return [self.local, self.remote]
 
-    """
-    The others
-    """
+    @property
+    def propogate_res_to_remote(self):
+        storage2 = self.remote.peer.get_service('storage2')
+        remote_res_obj = storage2.root.drbd_res()
+        remote_drbd_peer_obj = storage2.root.drbd_peer()
+        remote_peer_obj = storage2.root.peer()
+
+        res, created = remote_res_obj.objects.get_or_create(name=self.name)
+
+        res.shared_secret = self.shared_secret
+        res.sync_rate = self.sync_rate
+        res.size = self.size
+
+        res.local = remote_drbd_peer_obj(peer=remote_peer_obj.get_local(),
+                                         minor=self.remote.minor,
+                                         pool=self.remote.pool,
+                                         volume=self.remote.volume,
+                                         )
+
+        res.remote = remote_drbd_peer_obj(peer=remote_peer_obj.objects.get(hostname=conf.hostname),
+                                          minor=self.local.minor,
+                                          pool=self.local.pool,
+                                          volume=self.local.volume,
+                                          )
+
+        res.remote = remote_peer_obj.objects.get(hostname=conf.hostname)
+        res.remote.minor = self.local.minor
+        res.remote.pool = self.local.pool
+        res.remote.volume = self.local.volume
+
+        res.save()
+
+        if created:
+            res.initialize()
+
+    @property
+    def device(self):
+        return '/dev/drbd/by-res/%s' % self.name
 
     def generate_random_secret(self):
         """Generates a random secret"""
         self.shared_secret = str(getrandbits(128))
         return True
 
-    def write_config(self, confirm=False):
-        """Generate a Drbd resource config file.
-        Always returns generated config as str, with confirm=True it also
-        writes it to disk."""
-        out_file = None
-        if confirm:
-            out_file = '/etc/drbd.d/%s.res' % self.name
-
-        context = {'res': self}
-        return quick_template('drbd-resource.conf', context=context,
-                              is_file=True, out_file=out_file)
-
-    def promote_to_primary(self):
-        # TODO Use rpyc
-        sh.drbdadm('primary', self.name)
-
     """
-    FUCK These are non-working for a sec, copied over from old Volume class, so need reworking
+    Setup
     """
 
-    @property
-    def replication_device_name(self):
-        return self.path(-1)[0]
+    is_initialized = m.BooleanField()
 
     @property
-    def replication_device_path(self):
-        return '/dev/drbd/by-res/%s' % self.replicated_device_name
+    def config_filename(self):
+        return '/etc/drbd.d/%s.res' % self.name
 
-    @property
-    def replication_port(self):
-        return int(DRBD_START_PORT) + int(self.replication_minor)
+    #def write_configs(self):
+    #    """Generate a Drbd resource config file on Peers"""
+    #    for peer in self.peers:
+    #        peer.service.write_config()
+    #    return True
 
-    # WIP TODO
-    def replication_setup(self, is_source=False, peer=None, peer_hostname=None):
-        if self.is_replicated:
-            raise Exception('Volume "%s" is already clustered with Peer "%s"',
-                            self, self.replication_peer.hostname)
+    def initialize(self):
+        for peer in self.peers:
+            logger.info('Initializing Drbd Resource "%s" on Peer "%s".', self, peer)
+            peer.service.initialize()
+        return True
 
-        repl_name = self.replication_device_name
 
-        # TODO Force a peer probe before moving forward just to make sure no
-        # values ahev changed in the interim.
-        # TODO Function that looks up peer by hostname and if it doesn't exist
-        # in DB, it probes it before returning.
-        if not peer and peer_hostname:
-            #local = cm.Peer.objects.get(hostname=settings.SERVER_NAME)
-            peer = Peer.objects.get(hostname=peer_hostname)
+"""
+TODO Drbd Handlers
 
-        logger.info('Setting up replicated Volume "%s" with Peer "%s"', self, peer)
+pri-on-incon-degr, pri-lost-after-sb, pri-lost, fence-peer (formerly oudate-peer), local-io-error, initial-split-brain, split-brain, before-resync-target, after-resync-target
 
-        # Tell Peer to get ready
-        #peer.rpc('cluster_volume_setup_as_peer', hostname=settings.SERVER_NAME)
+Env vars for ran scripts:
+    DRBD_RESOURCE is the name of the resource
+    DRBD_MINOR is the minor number of the DRBD device, in decimal.
+    DRBD_CONF is the path to the primary configuration file; if you split your configuration into multiple files (e.g. in /etc/drbd.conf.d/), this will not be helpful.
+    DRBD_PEER_AF , DRBD_PEER_ADDRESS , DRBD_PEERS are the address family (e.g. ipv6), the peer's address and hostnames.
+"""
 
-        # Find free DRBD minor
-        # TODO Write all configs in one go, it will make such things easier.
-        minor = drbd_find_free_minor()
 
-        # Set Volume props
-        self.properties['solarsan:cluster_volume'] = 'pending'
-
-        # Set DB props
-        #self.is_replicated = True
-        self.replication_peer = peer
-        self.replication_minor = minor
-        self.save()
-
-        # Create Volume on Peer
-        peer.rpc('volume_create',
-                 size=self.properties['volsize'],
-                 block_size=self.properties['volblock'])
-
-        # Format volume for replication
-        # Not needed with official tools init script?
-        sh.drbdadm('create-md', repl_name)
-        #local.rpc('cluster_volume_create_md', self.name)
-        peer.rpc('cluster_volume_create_md', self.name)
-
-        # CAREFUL If we're told to, forcefully overwrite peer's data.
-        if is_source:
-            repl_dev_path = self.replication_device_path
-            sh.drbdsetup(repl_dev_path, 'primary', force='yes')
-
-        # Set props indicating we're operating
-        self.properties['solarsan:cluster_volume'] = 'true'
-        #self.properties['solarsan:cluster_volume_peer_hostname'] = peer_hostname
-
-        self.is_replicated = True
-        self.save()
-
-    def replication_promote_to_primary(self):
-        repl_name = self.replication_device_name
-        sh.drbdadm('primary', repl_name)
-
-    def replication_demote_to_secondary(self):
-        repl_name = self.replication_device_name
-        sh.drbdadm('secondary', repl_name)
-
-    def replication_write_config(self):
-        pass
+class DrbdResourceService(object):
+    def __init__(self, resource_name):
+        self.res = DrbdResource.objects.get(name=resource_name)
 
     """
-    Replication Status
+    Commands
+    """
+
+    def connect(self, discard_my_data=False):
+        """Connect to peer.
+        If discard_my_data=True, it will overwrite any local changes to force it to match peer.
+        """
+        args = []
+        if discard_my_data:
+            args.extend(['--', '--discard-my-data'])
+        args.extend(['connect', self.res.name])
+        sh.drbdadm(*args)
+        return True
+
+    def disconnect(self):
+        """Disconnect from peer"""
+        sh.drbdadm('disconnect', self.res.name)
+        return True
+
+    def primary(self):
+        """Promote self to primary"""
+        sh.drbdadm('primary', self.res.name)
+        return True
+
+    def secondary(self):
+        """Demote self to secondary"""
+        sh.drbdadm('secondary', self.res.name)
+        return True
+
+    def adjust(self):
+        """Applies any config changes on resource"""
+        sh.drbdadm('adjust', self.res.name)
+        return True
+
+    def resize(self, assume_clean=False):
+        """Dynamically grow the Resource to be the full size of the underlying Volume.
+        If assume_clean=True, then it assumes the new space is just new space, not existing data,
+        that way it doesn't have to sync it between peers."""
+        args = []
+        if assume_clean:
+            args.extend(['--', '--assume_clean'])
+        args.extend(['resize', self.res.name])
+        sh.drbdadm(*args)
+        return True
+
+    """
+    Initialize
+    """
+
+    def initialize(self):
+        if self.res.is_initialized:
+            raise LoggedException('Resource "%s" is already initialized.', self.res)
+        logger.info('Initializing Resource "%s".', self.res)
+
+        volume_name = self.res.volume_full_name
+        logger.info('Creating Volume "%s" for Resource "%s".', volume_name, self.res)
+        vol = Volume(name=volume_name)
+        vol.create(self.res.size)
+
+        logger.info('Creating Metadata for Resource "%s".', self.res)
+        sh.drbdadm('create-md', self.res.name)
+
+        logger.info('Writing config for Resource "%s".', self.res)
+        self.write_config()
+
+        logger.info('Reloading Drbd for Resource "%s".', self.res)
+        self.adjust()
+
+        logger.info('Marking Resource "%s" as initialized.', self.res)
+        self.res.is_initialized = True
+        self.res.save()
+
+        logger.info('Resource "%s" has been initialized.', self.res)
+        return True
+
+    """
+    Config
+    """
+
+    def write_config(self):
+        """Writes configuration for DrbdResource"""
+        context = {'res': self.res}
+        fn = self.res.config_filename
+        logger.info('Writing config for Resource "%s" to "%s".', self.res, fn)
+        quick_template('drbd-resource.conf', context=context, write_file=fn)
+        return True
+
+    """
+    Status
+    """
+
+    def status(self):
+        return drbd_overview_parser(resource=self.res.name)
+
+    #@property
+    #def replication_is_healthy(self):
+    #    if self.disk_state == 'UpToDate' and self.connection_state == 'Connected':
+    #        return True
+    #    else:
+    #        return False
+
+    """
+    Connection State
+
+    A resource's connection state can be observed either by monitoring /proc/drbd, or by issuing the drbdadm cstate command:
+
+    # drbdadm cstate <resource>
+    Connected
+    A resource may have one of the following connection states:
+
+    StandAlone. No network configuration available. The resource has not yet been connected, or has been administratively disconnected (using drbdadm disconnect), or has dropped its connection due to failed authentication or split brain.
+
+    Disconnecting. Temporary state during disconnection. The next state is StandAlone.
+
+    Unconnected. Temporary state, prior to a connection attempt. Possible next states: WFConnection and WFReportParams.
+
+    Timeout. Temporary state following a timeout in the communication with the peer. Next state: Unconnected.
+
+    BrokenPipe. Temporary state after the connection to the peer was lost. Next state: Unconnected.
+
+    NetworkFailure. Temporary state after the connection to the partner was lost. Next state: Unconnected.
+
+    ProtocolError. Temporary state after the connection to the partner was lost. Next state: Unconnected.
+
+    TearDown. Temporary state. The peer is closing the connection. Next state: Unconnected.
+
+    WFConnection. This node is waiting until the peer node becomes visible on the network.
+
+    WFReportParams. TCP connection has been established, this node waits for the first network packet from the peer.
+
+    Connected. A DRBD connection has been established, data mirroring is now active. This is the normal state.
+
+    StartingSyncS. Full synchronization, initiated by the administrator, is just starting. The next possible states are: SyncSource or PausedSyncS.
+
+    StartingSyncT. Full synchronization, initiated by the administrator, is just starting. Next state: WFSyncUUID.
+
+    WFBitMapS. Partial synchronization is just starting. Next possible states: SyncSource or PausedSyncS.
+
+    WFBitMapT. Partial synchronization is just starting. Next possible state: WFSyncUUID.
+
+    WFSyncUUID. Synchronization is about to begin. Next possible states: SyncTarget or PausedSyncT.
+
+    SyncSource. Synchronization is currently running, with the local node being the source of synchronization.
+
+    SyncTarget. Synchronization is currently running, with the local node being the target of synchronization.
+
+    PausedSyncS. The local node is the source of an ongoing synchronization, but synchronization is currently paused. This may be due to a dependency on the completion of another synchronization process, or due to synchronization having been manually interrupted by drbdadm pause-sync.
+
+    PausedSyncT. The local node is the target of an ongoing synchronization, but synchronization is currently paused. This may be due to a dependency on the completion of another synchronization process, or due to synchronization having been manually interrupted by drbdadm pause-sync.
+
+    VerifyS. On-line device verification is currently running, with the local node being the source of verification.
+
+    VerifyT. On-line device verification is currently running, with the local node being the target of verification.
     """
 
     @property
-    def replication_status(self):
-        repl_name = self.replication_device_name
-        return drbd_overview_parser(resource=repl_name)
+    def connection_state(self):
+        return self.status()['connection_state']
+
+    #@property
+    #def is_connected(self):
+    #    return self.connection_state == 'Connected'
+
+    #@property
+    #def is_disconnected(self):
+    #    """This probably shouldn't exist"""
+    #    return not self.connection_state == 'Connected'
+
+    """
+    Role
+
+    A resource's role can be observed either by monitoring /proc/drbd, or by issuing the drbdadm role command:
+
+    # drbdadm role <resource>
+    Primary/Secondary
+    The local resource role is always displayed first, the remote resource role last.
+
+    You may see one of the following resource roles:
+
+    Primary. The resource is currently in the primary role, and may be read from and written to. This role only occurs on one of the two nodes, unless dual-primary mode is enabled.
+
+    Secondary. The resource is currently in the secondary role. It normally receives updates from its peer (unless running in disconnected mode), but may neither be read from nor written to. This role may occur on one or both nodes.
+
+    Unknown. The resource's role is currently unknown. The local resource role never has this status. It is only displayed for the peer's resource role, and only in disconnected mode.
+    """
 
     @property
-    def replication_is_primary(self):
-        status = self.replication_status
-        role = status['role']
-        if role == 'Primary':
-            return True
-        elif role == 'Secondary':
-            return False
+    def role(self):
+        return self.status()['role']
+
+    #@property
+    #def is_primary(self):
+    #    return self.role == 'Primary'
+
+    #@property
+    #def is_secondary(self):
+    #    return self.role == 'Secondary'
+
+    """
+    Disk State
+
+    A resource's disk state can be observed either by monitoring /proc/drbd, or by issuing the drbdadm dstate command:
+
+    # drbdadm dstate <resource>
+    UpToDate/UpToDate
+    The local disk state is always displayed first, the remote disk state last.
+
+    Both the local and the remote disk state may be one of the following:
+
+    Diskless. No local block device has been assigned to the DRBD driver. This may mean that the resource has never attached to its backing device, that it has been manually detached using drbdadm detach, or that it automatically detached after a lower-level I/O error.
+
+    Attaching. Transient state while reading meta data.
+
+    Failed. Transient state following an I/O failure report by the local block device. Next state: Diskless.
+
+    Negotiating. Transient state when an Attach is carried out on an already-Connected DRBD device.
+
+    Inconsistent. The data is inconsistent. This status occurs immediately upon creation of a new resource, on both nodes (before the initial full sync). Also, this status is found in one node (the synchronization target) during synchronization.
+
+    Outdated. Resource data is consistent, but outdated.
+
+    DUnknown. This state is used for the peer disk if no network connection is available.
+
+    Consistent. Consistent data of a node without connection. When the connection is established, it is decided whether the data is UpToDate or Outdated.
+
+    UpToDate. Consistent, up-to-date state of the data. This is the normal state.
+    """
 
     @property
-    def replication_is_connected(self):
-        status = self.replication_status
-        cstate = status['connection_state']
-
-        if cstate == 'Connected':
-            return True
-        # TODO Better testing here
-        else:
-            return False
+    def disk_state(self):
+        return self.status()['disk_state']
 
     @property
-    def replication_is_up_to_date(self):
-        status = self.replication_status
-        dstate = status['disk_state']
+    def is_up_to_date(self):
+        return self.disk_state == 'UpToDate'
 
-        if dstate == 'UpToDate':
-            return True
-        else:
-            return False
+    """
+    IO State Flags
+
+    The I/O state flag field in /proc/drbd contains information about the current state of I/O operations associated with the resource. There are six such flags in total, with the following possible values:
+
+    I/O suspension. Either r for running or s for suspended I/O. Normally r.
+    Serial resynchronization. When a resource is awaiting resynchronization, but has deferred this because of a resync-after dependency, this flag becomes a. Normally -.
+    Peer-initiated sync suspension. When resource is awaiting resynchronization, but the peer node has suspended it for any reason, this flag becomes p. Normally -.
+    Locally initiated sync suspension. When resource is awaiting resynchronization, but a user on the local node has suspended it, this flag becomes u. Normally -.
+    Locally blocked I/O. Normally -. May be one of the following flags:
+
+    d: I/O blocked for a reason internal to DRBD, such as a transient disk state.
+    b: Backing device I/O is blocking.
+    n: Congestion on the network socket.
+    a: Simultaneous combination of blocking device I/O and network congestion.
+    Activity Log update suspension. When updates to the Activity Log are suspended, this flag becomes s. Normally -.
+    """
 
     @property
-    def replication_is_healthy(self):
-        status = self.replication_status
-        cstate = status['connection_state']
-        dstate = status['disk_state']
-
-        if dstate == 'UpToDate' and cstate == 'Connected':
-            return True
-        else:
-            return False
+    def io_state(self):
+        #return self.status()['io_state']
+        raise NotImplemented
