@@ -1,0 +1,21 @@
+
+Now:
+
+- Finish Storage HA loop
+
+- SRP Targets in scst.conf template
+
+Then:
+
+- Take old configshell cli idea and rework it to use the new APIs.
+
+Later:
+
+- Health checks
+
+- Alerts
+
+Much Later:
+
+- Web interface
+
