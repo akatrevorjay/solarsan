@@ -15,6 +15,8 @@ rpyc_conn_config = {
     #'exposed_prefix': '',
 }
 
+auto_snap = {
+}
 
 #def get(name):
 #    created, ret = Config.objects.get(name=name)

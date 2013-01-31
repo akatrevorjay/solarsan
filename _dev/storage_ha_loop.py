@@ -5,30 +5,18 @@ from solarsan import conf
 
 #from solarsan.utils.stack import get_current_func_name
 #from solarsan.utils.cache import cached_property
-#from storage.drbd import DrbdResource
+from storage.drbd import DrbdResource
 import time
 
 
 def main():
-    hostname = conf.hostname
-    from cluster.models import Peer
-
-    peers = {}
-    local = None
-    for peer in Peer.objects.all():
-        p_hostname = peer.hostname
-        peers[p_hostname] = peer
-        if peers[p_hostname].is_local:
-            if local:
-                raise Exception('Found two Peers with my hostname!')
-            local = peers[hostname]
-
-    #for p_host, p in peers.iteritems():
-    #    logger.info('Peer "%s" pools found: "%s".', p_host, p.pools.keys())
-    #    # TODO get hostname of peer for each replicated volume
-    #    logger.info('Peer "%s" replicated volumes found: "%s".', p_host, p.cvols)
+    logger.info("Beginning Storage HA loop.")
 
     while True:
+        resources = DrbdResource.objects.all()
+        for res in resources:
+            svcl = res.local.service
+            svcl.status()
         for p_host, p in peers.iteritems():
             print
             logger.debug('Peer "%s"' % p_host)
