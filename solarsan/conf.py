@@ -18,6 +18,8 @@ rpyc_conn_config = {
 auto_snap = {
 }
 
+scst_config_file = '/etc/scst.conf'
+
 #def get(name):
 #    created, ret = Config.objects.get(name=name)
 #    return ret

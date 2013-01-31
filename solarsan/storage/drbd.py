@@ -115,6 +115,9 @@ class DrbdResource(m.Document):
     # TODO Not needed, remove
     size = m.StringField(required=True)
 
+    # For target
+    t10_dev_id = m.StringField()
+
     """
     Avoid possums
     """
@@ -410,9 +413,9 @@ class DrbdResourceService(object):
     def role(self):
         return self.status()['role']
 
-    #@property
-    #def is_primary(self):
-    #    return self.role == 'Primary'
+    @property
+    def is_primary(self):
+        return self.role == 'Primary'
 
     #@property
     #def is_secondary(self):
