@@ -44,6 +44,10 @@ class PromoteToPrimary(Event):
     """Promote Resource to Primary"""
 
 
+class DemoteToSecondary(Event):
+    """Demote Resource to Secondary"""
+
+
 """
 Mother Discovery
 
@@ -64,7 +68,7 @@ For each drbd resource:
 
 
 class MotherDiscovery(Component):
-    discover_every = 60.0
+    discover_every = 10.0
     heartbeat_every = 5.0
 
     def __init__(self):
@@ -80,7 +84,10 @@ class MotherDiscovery(Component):
         self.e_heartbeat = PeerHeartbeat()
         self.e_heartbeat.complete = True
 
-        self.monitor_setup()
+        # Sort resources by remote Peer
+        self.remotes = {}
+        self.peer_monitors = {}
+        self.resources_grouped_by_remote()
 
     def started(self, *args):
         self.fire(self.e_discover)
@@ -89,20 +96,22 @@ class MotherDiscovery(Component):
     Monitor
     """
 
-    def monitor_setup(self):
-        # Setup
-        self.remotes = {}
+    def resources_grouped_by_remote(self):
         for res in DrbdResource.objects.all():
             if not res.remote.hostname in self.remotes:
                 self.remotes[res.remote.hostname] = []
+            if res.name in [x.name for x in self.remotes[res.remote.hostname]]:
+                continue
             self.remotes[res.remote.hostname].append(res)
 
-        self.peer_monitors = {}
         for hostname, resources in self.remotes.iteritems():
+            if hostname in self.peer_monitors:
+                continue
             self.peer_monitors[hostname] = PeerMonitor(hostname, resources).register(self)
 
     def peer_heartbeat_complete(self, *results):
-        self.heartbeat_timer = Timer(self.heartbeat_every, self.e_heartbeat, *self.peer_monitors).register(self)
+        #self.heartbeat_timer = Timer(self.heartbeat_every, self.e_heartbeat, *self.peer_monitors).register(self)
+        self.heartbeat_timer = Timer(self.heartbeat_every, self.e_heartbeat).register(self)
 
     """
     Discovery
@@ -165,7 +174,7 @@ class MotherDiscovery(Component):
         peer.save()
 
         if send_peer_online:
-            self.fire(PeerOnline(peer))
+            self.fire(PeerOnline(peer, resources=self.remotes[peer.hostname]))
 
         return True
 
@@ -189,7 +198,16 @@ class PeerMonitor(Component):
             self.res_mons.append(ResourceMonitor(res).register(self))
 
     def started(self, *args):
-        self.peer_online()
+        self.peer_online(self.peer, self.resources)
+
+    def ping(self):
+        try:
+            self.peer.storage.ping()
+            logger.debug('PeerHeartbeat back from Peer "%s"', self.peer.hostname)
+            return True
+        except:
+            logger.error('Did not receive heartbeat for Peer "%s"', self.peer.hostname)
+            raise
 
     def peer_heartbeat(self):
         if self.peer.is_offline:
@@ -207,23 +225,35 @@ class PeerMonitor(Component):
             ret = None
         return ret
 
-    def ping(self):
-        try:
-            self.peer.storage.ping()
-            logger.debug('PeerHeartbeat back from Peer "%s"', self.peer.hostname)
-            return True
-        except:
-            logger.error('Did not receive heartbeat for Peer "%s"', self.peer.hostname)
-            raise
+    def reconnect_peer(self, peer=None, resources=None):
+        if peer and self.peer.hostname != peer.hostname:
+            return
 
-    def peer_reconnect_attempt(self):
-        ret = self.ping()
-        self.reconnection_timer = Timer(self.offline_reconnect_interval, ReconnectPeer()).register(self)
-        self.fire(PeerOnline(self.peer))
+        logger.error('Attempting to reconnect to Peer "%s"', self.peer.hostname)
+        try:
+            ret = self.ping()
+            self.peer_online(self.peer, rsources=self.resources)
+            self.fire(PeerOnline(self.peer))
+        except:
+            if not hasattr(self, 'reconnect_timer'):
+                self.reconnect_timer = Timer(self.offline_reconnect_interval, ReconnectPeer(peer, resources=resources)).register(self)
         return ret
 
-    def peer_offline(self):
-        if self.peer.is_offline:
+    def remove_timers(self, timeout_timer=False, reconnect_timer=False):
+        timers = []
+        if timeout_timer:
+            timers.append('timeout_timer')
+        if reconnect_timer:
+            timers.append('reconnect_timer')
+
+        for timer_name in timers:
+            timer = getattr(self, timer_name, None)
+            if timer:
+                timer.unregister()
+                delattr(self, timer_name)
+
+    def peer_offline(self, peer=None, resources=None):
+        if peer and self.peer.hostname != peer.hostname:
             return
 
         logger.error('Peer "%s" is OFFLINE!', self.peer.hostname)
@@ -231,46 +261,65 @@ class PeerMonitor(Component):
         self.peer.save()
 
         # Remove timeout timer
-        if hasattr(self, 'timeout_timer'):
-            self.timeout_timer.unregister()
-            delattr(self, 'timeout_timer')
+        self.remove_timers(timeout_timer=True, reconnect_timer=True)
 
-        # Add reconnect timer
-        self.reconnect_timer = Timer(self.offline_reconnect_interval, ReconnectPeer()).register(self)
-        #self.fire(ReconnectPeer())
+        # Take over the volumes, write out any targets, enable any HA ips, etc
+        self.fire(PromoteToPrimary(peer, resources=resources))
 
-    def peer_online(self):
-        if not self.peer.is_offline:
+        if not hasattr(self, 'reconnect_timer'):
+            # Add reconnect timer
+            self.reconnect_timer = Timer(self.offline_reconnect_interval,
+                                         ReconnectPeer(peer, resources=resources)
+                                         ).register(self)
+
+    def peer_online(self, peer=None, resources=None):
+        if peer and self.peer.hostname != peer.hostname:
             return
 
-        logger.error('Peer "%s" is back ONLINE!', self.peer.hostname)
+        logger.warning('Peer "%s" is back ONLINE!', self.peer.hostname)
         self.peer.is_offline = False
         self.peer.save()
 
         # Remove reconnect timer
-        if hasattr(self, 'reconnect_timer'):
-            self.reconnect_timer.unregister()
-            delattr(self, 'reconnect_timer')
+        self.remove_timers(timeout_timer=True, reconnect_timer=True)
 
-        # Add timeout timer
-        self.timeout_timer = Timer(self.heartbeat_timeout_window, PeerOffline()).register(self)
-
-    #def peer_offline(self):
-    #    logger.info('Promoting self to Primary for all Resources with dead Peer "%s".')
-    #    e = PromoteToPrimary()
-    #    e.complete = True
-    #    self.fire(e)
-
-    #def peer_heartbeat_complete(self, *results):
-    #    logger.debug('Peer "%s" is heartbeat_complete', self.peer.hostname)
+        if not hasattr(self, 'timeout_timer'):
+            # Add timeout timer
+            self.timeout_timer = Timer(self.heartbeat_timeout_window,
+                                       PeerOffline(peer, resources=self.resources)
+                                       ).register(self)
 
     def promote_to_primary(self):
-        logger.info('Taking over as Primary for all Resources with Peer "%s"', self.remote.hostname)
+        logger.info('Taking over as Primary: all Resources with Peer "%s"',
+                    self.remote.hostname)
+
         for res in self.resources:
             sl = res.local.service
             if not sl.is_primary:
                 sl.primary()
-        logger.info('Now Primary for all Resources with Peer "%s"', self.remote.hostname)
+
+        # TODO WRITE OUT ANY TARGETS, SCST CONFIG AS APPLIES
+
+        # TODO ENABLE ANY HA IPS
+
+        logger.info('Done taking over as Primary: all all Resources with Peer "%s"',
+                    self.remote.hostname)
+
+    def demote_to_secondary(self):
+        logger.info('Demoting myself to Secondary: all Resources with Peer "%s"',
+                    self.remote.hostname)
+
+        for res in self.resources:
+            sl = res.local.service
+            if not sl.is_secondary:
+                sl.secondary()
+
+        # TODO WRITE OUT ANY TARGETS, SCST CONFIG AS APPLIES
+
+        # TODO ENABLE ANY HA IPS
+
+        logger.info('Done demoting myself to Secondary: all Resources with Peer "%s"',
+                    self.remote.hostname)
 
 
 """
@@ -313,7 +362,7 @@ class ResourceMonitor(Component):
         # If we have two secondary nodes become primary
         if status['role'] == 'Secondary' and status['remote_role'] == 'Secondary':
             logger.info('Taking over as Primary for Resource "%s" because someone has to ' +
-                        '(dual secondaries).', % self.res.name)
+                        '(dual secondaries).' % self.res.name)
             self.primary()
 
         self._status = status.copy()
