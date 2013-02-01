@@ -9,7 +9,7 @@ from .parsers.drbd import drbd_overview_parser
 from random import getrandbits
 import mongoengine as m
 import sh
-import time
+#import time
 
 
 def drbd_find_free_minor():
@@ -78,26 +78,33 @@ class DrbdPeer(m.EmbeddedDocument):
     Service
     """
 
+    #@property
+    #def service(self):
+    #    storage = self.peer.get_service('storage')
+    #    retry_count = 0
+    #    retry_delay = 1
+    #    for attempt in xrange(retry_count + 1):
+    #        try:
+    #            # TODO self.volume IS NOT THE RESOURCE NAME BUT IT JUST HAPPENS TO WORK
+    #            # HACK FIX THIS SHIT
+    #            return storage.root.drbd_res_service(self.volume)
+    #        except Exception, e:
+    #            log_msg = 'Could not get Drbd Resource Service on Peer "%s"; '
+    #            if attempt < retry_count:
+    #                #logger.error(log_msg + 'retrying in %ds (%d/%d): "%s"',
+    #                #             self.peer, retry_delay, attempt + 1, retry_count + 1, e.message)
+    #                time.sleep(retry_delay)
+    #            else:
+    #                #logger.error(log_msg + 'Retry attempts exceeded.: "%s"',
+    #                #             self.peer, e.message)
+    #                raise
+
     @property
     def service(self):
-        storage2 = self.peer.get_service('storage2')
-        retry_count = 1
-        retry_delay = 1
-        for attempt in xrange(retry_count + 1):
-            try:
-                # TODO self.volume IS NOT THE RESOURCE NAME BUT IT JUST HAPPENS TO WORK
-                # HACK FIX THIS SHIT
-                return storage2.root.drbd_res_service(self.volume)
-            except Exception, e:
-                log_msg = 'Could not get Drbd Resource Service on Peer "%s"; '
-                if attempt < retry_count:
-                    logger.error(log_msg + 'retrying in %ds (%d/%d): "%s"',
-                                 self.peer, retry_delay, attempt + 1, retry_count + 1, e.message)
-                    time.sleep(retry_delay)
-                else:
-                    logger.error(log_msg + 'Retry attempts exceeded.: "%s"',
-                                 self.peer, e.message)
-                    raise
+        storage = self.peer.get_service('storage')
+        # HACK THIS IS NOT RIGHT, VOLUME NAME IS NOT THE SAME AS PARENT
+        # RESOURCE NAME
+        return storage.root.drbd_res_service(self.volume)
 
     def __call__(self, method, *args, **kwargs):
         meth = getattr(self.service.root, method)
@@ -141,10 +148,10 @@ class DrbdResource(m.Document):
 
     def propogate_res_to_remote(self):
         logger.info('Propogating local Drbd Resource "%s" to Peer "%s".', self.name, self.remote.hostname)
-        storage2 = self.remote.peer.get_service('storage2')
-        remote_res_obj = storage2.root.drbd_res()
-        remote_drbd_peer_obj = storage2.root.drbd_peer()
-        remote_peer_obj = storage2.root.peer()
+        storage = self.remote.peer.get_service('storage')
+        remote_res_obj = storage.root.drbd_res()
+        remote_drbd_peer_obj = storage.root.drbd_res_peer()
+        remote_peer_obj = storage.root.peer()
 
         res, created = remote_res_obj.objects.get_or_create(name=self.name)
 

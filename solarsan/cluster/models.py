@@ -3,7 +3,7 @@ from solarsan.core import logger
 from solarsan import conf
 from solarsan.models import Config, CreatedModifiedDocMixIn
 from solarsan.configure.models import Nic
-
+from solarsan.exceptions import ConnectionError
 import mongoengine as m
 import rpyc
 
@@ -30,6 +30,9 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
     # TODO Make this a list in desc priority or sort addrs by priority
     cluster_addr = m.StringField()
     cluster_iface = m.StringField()
+
+    last_seen = m.DateTimeField()
+    is_offline = m.BooleanField()
 
     """
     General
@@ -71,7 +74,7 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
                 self._is_online = False
         return self._is_online
 
-    def get_service(self, name):
+    def get_service(self, name, default='exception'):
         """Looks for service on Peer. Returns an existing one if possible, otherwise instantiates one."""
         NAME = str(name).upper()
         check_service = self._services.get(NAME)
@@ -79,6 +82,7 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
             service = None
             try:
                 service = rpyc.connect_by_service(NAME, host=self.cluster_addr)
+                                                  #config=conf.rpyc_conn_config)
 
                 # Remove existing aliases to old service
                 if check_service:
@@ -90,11 +94,14 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
                 for alias in service.root.get_service_aliases():
                     self._services[alias] = service
             except Exception, e:
-                logger.error('Cannot get service "%s": "%s"', NAME, e.message)
                 if check_service:
                     check_service.close()
                 if service:
                     service.close()
+                if default == 'exception':
+                    raise ConnectionError('Cannot get service "%s": "%s"', name, e.message)
+                else:
+                    return default
         else:
             service = self._services[NAME]
         return service
@@ -170,16 +177,6 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
         logger.info('TODO Taking over HA IP')
 
         self.is_primary = True
-
-    """
-    Maybe..
-    """
-
-    def pools(self):
-        return self('pool_list', _default_on_timeout={})
-
-    def volumes(self):
-        return self('volume_list', _default_on_timeout={})
 
     """
     HA Pri/Sec

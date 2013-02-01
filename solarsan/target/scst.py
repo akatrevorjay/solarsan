@@ -7,6 +7,11 @@ from .models import iSCSITarget
 import sh
 
 
+"""
+Config
+"""
+
+
 def write_config():
     pri_ress = []
     pri_res_names = []
@@ -62,3 +67,20 @@ def reload_config(force=False):
     args.extend(['-noprompt', '-config', conf.scst_config_file])
     sh.scstadmin(*args)
     return True
+
+
+"""
+Init
+"""
+
+
+def status(self):
+    try:
+        sh.service('scst', 'status')
+        return True
+    except:
+        return False
+
+
+def start(self):
+    return sh.service('scst', 'start')

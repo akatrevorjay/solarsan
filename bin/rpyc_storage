@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 from solarsan.core import logger
-#from solarsan import conf
+from solarsan import conf
 from solarsan.cluster.models import Peer
-from solarsan.rpc.server import StorageService
+from solarsan.rpc.server_storage import StorageService
 from rpyc.utils.server import ThreadedServer
 import rpyc
 
@@ -13,9 +13,9 @@ def main():
     cluster_iface_bcast = local.cluster_nic.broadcast
     # Allow all public attrs, because exposed_ is stupid and should be a
     # fucking decorator.
-    t = ThreadedServer(StorageService, port=18861,
+    t = ThreadedServer(StorageService, port=18862,
                        registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast, logger=logger),
-                       auto_register=True, logger=logger)
+                       auto_register=True, logger=logger, protocol_config=conf.rpyc_conn_config)
     t.start()
 
 

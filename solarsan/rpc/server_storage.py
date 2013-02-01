@@ -4,15 +4,15 @@ from solarsan import conf
 #from solarsan.utils.exceptions import LoggedException
 from storage.pool import Pool
 from storage.volume import Volume
-from storage.drbd import DrbdResource, DrbdPeer, DrbdResourceService
+from storage.drbd import DrbdResource, DrbdPeer, DrbdResourceService, drbd_find_free_minor
+from storage.parsers.drbd import drbd_overview_parser
 from solarsan.models import Config
 from configure.models import Nic, get_all_local_ipv4_addrs
 from cluster.models import Peer
-import sh
 import rpyc
 
 
-class Storage2Service(rpyc.Service):
+class StorageService(rpyc.Service):
     def on_connect(self):
         logger.debug('Client connected.')
 
@@ -34,12 +34,41 @@ class Storage2Service(rpyc.Service):
     #    pass
 
     """
-    Cluster Probe
+    Objects
     """
 
-    def peer_ping(self):
-        """Pings Peer"""
-        return True
+    def pool(self):
+        return Pool
+
+    def volume(self):
+        return Volume
+
+    def peer(self):
+        return Peer
+
+    """
+    Replicated Volumes
+    """
+
+    def drbd_res(self):
+        return DrbdResource
+
+    def drbd_res_peer(self):
+        return DrbdPeer
+
+    def drbd_res_service(self, name):
+        return DrbdResourceService(name)
+
+    def drbd_status(resource=None):
+        """Get status of specified or all DRBD replicated resources"""
+        return drbd_overview_parser(resource=resource)
+
+    def drbd_find_free_minor(self):
+        return drbd_find_free_minor()
+
+    """
+    Peer Probe
+    """
 
     def peer_get_cluster_iface(self):
         """Gets Cluster IP"""
@@ -68,61 +97,3 @@ class Storage2Service(rpyc.Service):
     def peer_hostname(self):
         """Returns hostname"""
         return conf.hostname
-
-    """
-    Objects
-    """
-
-    def pool(self, name):
-        return Pool.objects.get(name=name)
-
-    def volume(self, name):
-        return Volume.objects.get(name=name)
-
-    def peer(self):
-        return Peer
-
-    """
-    Replicated Volumes
-    """
-
-    def drbd_res(self):
-        return DrbdResource
-
-    def drbd_peer(self):
-        return DrbdPeer
-
-    def drbd_res_service(self, name):
-        return DrbdResourceService(name)
-
-    """
-    Target
-    """
-
-    def target_scst_status(self):
-        try:
-            sh.service('scst', 'status')
-            return True
-        except:
-            return False
-
-    def target_scst_start(self):
-        return sh.service('scst', 'start')
-
-    def target_scst_stop(self):
-        return sh.service('scst', 'stop')
-
-    def target_scst_restart(self):
-        return sh.service('scst', 'restart')
-
-    def target_scst_reload_config(self):
-        return sh.scstadmin('-config', '/etc/scst.conf')
-
-    def target_scst_write_config(self):
-        raise NotImplemented
-
-    def target_scst_create_target(self, wwn, blah):
-        raise NotImplemented
-
-    #def target_rts_status(self):
-    #    pass
