@@ -2,8 +2,10 @@
 
 from solarsan.core import logger
 #from solarsan import conf
+from solarsan.exceptions import FormattedException
 from storage.drbd import DrbdResource
 from circuits import Component, Event, Debugger, Timer
+from circuits.tools import inspect
 from datetime import datetime
 from cluster.models import Peer
 from target.models import iSCSITarget
@@ -18,6 +20,7 @@ Events
 
 class DiscoverPeers(Event):
     """Discover Event"""
+    complete = True
 
 
 class ProbePeer(Event):
@@ -38,6 +41,7 @@ class ReconnectPeer(Event):
 
 class PeerHeartbeat(Event):
     """Remote PeerHeartbeat"""
+    complete = True
 
 
 class PromoteToPrimary(Event):
@@ -76,21 +80,16 @@ class MotherDiscovery(Component):
 
         self.peers = []
 
-        # Save discover peers event
-        self.e_discover = DiscoverPeers()
-        self.e_discover.complete = True
-
-        # Save heartbeat event
-        self.e_heartbeat = PeerHeartbeat()
-        self.e_heartbeat.complete = True
-
         # Sort resources by remote Peer
         self.remotes = {}
         self.peer_monitors = {}
         self.resources_grouped_by_remote()
 
+        Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
+        Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
+
     def started(self, *args):
-        self.fire(self.e_discover)
+        pass
 
     """
     Monitor
@@ -110,8 +109,7 @@ class MotherDiscovery(Component):
             self.peer_monitors[hostname] = PeerMonitor(hostname, resources).register(self)
 
     def peer_heartbeat_complete(self, *results):
-        #self.heartbeat_timer = Timer(self.heartbeat_every, self.e_heartbeat, *self.peer_monitors).register(self)
-        self.heartbeat_timer = Timer(self.heartbeat_every, self.e_heartbeat).register(self)
+        pass
 
     """
     Discovery
@@ -126,10 +124,7 @@ class MotherDiscovery(Component):
             pass
 
     def discover_peers_complete(self, *args):
-        #logger.info("Discovery complete.")
-        # Do this again every so often
-        self.fire(self.e_heartbeat)
-        self.discover_timer = Timer(self.discover_every, self.e_discover).register(self)
+        self.resources_grouped_by_remote()
 
     def probe_peer(self, host):
         """Probes a discovered node for info"""
@@ -153,7 +148,9 @@ class MotherDiscovery(Component):
 
             logger.info("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
         except Exception, e:
+            #raise FormattedException("Peer discovery (host='%s') failed: %s", host, e)
             logger.error("Peer discovery (host='%s') failed: %s", host, e)
+            return
 
         # TODO Each node should prolly get a UUID, glusterfs already assigns one, but maybe we
         # should do it a layer above.
@@ -289,7 +286,7 @@ class PeerMonitor(Component):
                                        PeerOffline(peer, resources=self.resources)
                                        ).register(self)
 
-    def promote_to_primary(self):
+    def promote_to_primary(self, peer=None, resources=None):
         logger.info('Taking over as Primary: all Resources with Peer "%s"',
                     self.remote.hostname)
 
@@ -361,8 +358,8 @@ class ResourceMonitor(Component):
 
         # If we have two secondary nodes become primary
         if status['role'] == 'Secondary' and status['remote_role'] == 'Secondary':
-            logger.info('Taking over as Primary for Resource "%s" because someone has to ' +
-                        '(dual secondaries).' % self.res.name)
+            logger.info('Taking over as Primary for Resource "%s" because someone has to. ' +
+                        '(dual secondaries).', self.res.name)
             self.primary()
 
         self._status = status.copy()

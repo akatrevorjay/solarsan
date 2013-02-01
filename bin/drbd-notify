@@ -5,6 +5,8 @@ from solarsan.core import logger
 from storage.drbd import DrbdResource
 import os
 import sys
+from setproctitle import setproctitle
+setproctitle('solarsan-drbd-notify')
 
 logger.info("Got drbd-notify")
 

@@ -4,6 +4,9 @@ from solarsan.core import logger
 from cluster.models import Peer
 #from rpyc_registry import UDPRegistryServer
 from rpyc.utils.registry import UDPRegistryServer
+from setproctitle import setproctitle
+setproctitle('solarsan-rpc-registry')
+
 
 if __name__ == '__main__':
     peer = Peer.get_local()
