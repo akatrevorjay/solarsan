@@ -7,7 +7,7 @@ from solarsan.rpc.server_storage import StorageService
 from rpyc.utils.server import ThreadedServer
 import rpyc
 from setproctitle import setproctitle
-setproctitle('solarsan-storage')
+setproctitle('[SolarSan Storage]')
 
 
 

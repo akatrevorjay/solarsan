@@ -5,7 +5,7 @@ from cluster.models import Peer
 #from rpyc_registry import UDPRegistryServer
 from rpyc.utils.registry import UDPRegistryServer
 from setproctitle import setproctitle
-setproctitle('solarsan-rpc-registry')
+setproctitle('[SolarSan RPC Registry]')
 
 
 if __name__ == '__main__':

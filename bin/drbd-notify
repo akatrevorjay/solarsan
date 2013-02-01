@@ -6,7 +6,7 @@ from storage.drbd import DrbdResource
 import os
 import sys
 from setproctitle import setproctitle
-setproctitle('solarsan-drbd-notify')
+setproctitle('[SolarSan Drbd Notify]')
 
 logger.info("Got drbd-notify")
 

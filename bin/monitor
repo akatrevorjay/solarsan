@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+from setproctitle import setproctitle
+setproctitle('[SolarSan Monitor]')
+
 from solarsan.core import logger
 #from solarsan import conf
 from solarsan.exceptions import FormattedException
@@ -128,7 +131,7 @@ class MotherDiscovery(Component):
     """
 
     def discover_peers(self):
-        logger.info("Discovering nearby peers..")
+        logger.debug("Discovering nearby peers..")
         try:
             for host, port in rpyc.discover('storage'):
                 self.fire(ProbePeer(host))
@@ -333,7 +336,7 @@ class PeerMonitor(Component):
     def pool_health_check(self):
         s_pool = self.peer.storage.root.pool()
         pools = s_pool.list()
-        logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
+        #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
         ret = True
         for pool in pools:
             if not pool.is_healthy():
@@ -353,14 +356,6 @@ class ResourcePrimary(Event):
 
 class ResourceSecondary(Event):
     """Takeover as Primary"""
-
-
-class TargetWriteConfig(Event):
-    """Write Target Config"""
-
-
-class TargetReloadConfig(Event):
-    """Write Target Config"""
 
 
 class ResourceMonitor(Component):
@@ -416,6 +411,20 @@ class ResourceMonitor(Component):
         self.service.secondary()
 
 
+"""
+Target Monitor
+"""
+
+
+class TargetWriteConfig(Event):
+    """Write Target Config"""
+
+
+class TargetReloadConfig(Event):
+    """Write Target Config"""
+
+
+# TODO
 class TargetMonitor(Component):
     def __init__(self):
         super(TargetMonitor, self).__init__()
@@ -438,7 +447,7 @@ class TargetMonitor(Component):
 
 def run_ha():
     try:
-        #(MotherDiscovery() + Monitor()).run()
+        #(MotherDiscovery()).run()
         (MotherDiscovery() + Debugger()).run()
     except (SystemExit, KeyboardInterrupt):
         raise
