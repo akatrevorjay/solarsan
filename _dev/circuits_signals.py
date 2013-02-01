@@ -52,6 +52,14 @@ class DemoteToSecondary(Event):
     """Demote Resource to Secondary"""
 
 
+class PoolHealthCheck(Event):
+    """Checks Pool Health"""
+
+
+class ResourceHealthCheck(Event):
+    """Check Resource Health"""
+
+
 """
 Mother Discovery
 
@@ -74,12 +82,13 @@ For each drbd resource:
 class MotherDiscovery(Component):
     discover_every = 10.0
     heartbeat_every = 5.0
+    pool_health_check_every = 5.0
+    resource_health_check_every = 5.0
 
     def __init__(self):
         super(MotherDiscovery, self).__init__()
 
         self.peers = []
-
         # Sort resources by remote Peer
         self.remotes = {}
         self.peer_monitors = {}
@@ -87,6 +96,8 @@ class MotherDiscovery(Component):
 
         Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
         Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
+        Timer(self.pool_health_check_every, PoolHealthCheck(), persist=True).register(self)
+        Timer(self.resource_health_check_every, ResourceHealthCheck(), persist=True).register(self)
 
     def started(self, *args):
         pass
@@ -106,7 +117,8 @@ class MotherDiscovery(Component):
         for hostname, resources in self.remotes.iteritems():
             if hostname in self.peer_monitors:
                 continue
-            self.peer_monitors[hostname] = PeerMonitor(hostname, resources).register(self)
+            peer = Peer.objects.get(hostname=hostname)
+            self.peer_monitors[hostname] = PeerMonitor(peer, resources).register(self)
 
     def peer_heartbeat_complete(self, *results):
         pass
@@ -185,9 +197,9 @@ class PeerMonitor(Component):
     heartbeat_timeout_window = 15.0
     offline_reconnect_interval = 30.0
 
-    def __init__(self, peer_hostname, resources):
+    def __init__(self, peer, resources):
         super(PeerMonitor, self).__init__()
-        self.peer = Peer.objects.get(hostname=peer_hostname)
+        self.peer = peer
 
         self.resources = resources
         self.res_mons = []
@@ -318,6 +330,17 @@ class PeerMonitor(Component):
         logger.info('Done demoting myself to Secondary: all Resources with Peer "%s"',
                     self.remote.hostname)
 
+    def pool_health_check(self):
+        s_pool = self.peer.storage.root.pool()
+        pools = s_pool.list()
+        logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
+        ret = True
+        for pool in pools:
+            if not pool.is_healthy():
+                logger.error('Pool "%s" on Peer "%s" is NOT healthy!', pool.name, self.peer.hostname)
+                ret = False
+        return ret
+
 
 """
 Resource Monitor
@@ -332,12 +355,12 @@ class ResourceSecondary(Event):
     """Takeover as Primary"""
 
 
-class ResourceActive(Event):
-    """Mark this box as active. This is done after Primary."""
+class TargetWriteConfig(Event):
+    """Write Target Config"""
 
 
-class ResourcePassive(Event):
-    """Mark this box as passive. This is done before Secondary."""
+class TargetReloadConfig(Event):
+    """Write Target Config"""
 
 
 class ResourceMonitor(Component):
@@ -353,7 +376,7 @@ class ResourceMonitor(Component):
     def service(self):
         return self.res.local.service
 
-    def peer_heartbeat(self):
+    def resource_health_check(self):
         status = self.service.status()
 
         # If we have two secondary nodes become primary
@@ -361,6 +384,16 @@ class ResourceMonitor(Component):
             logger.info('Taking over as Primary for Resource "%s" because someone has to. ' +
                         '(dual secondaries).', self.res.name)
             self.primary()
+
+        # TODO check Connection state
+        if status['connection_state'] != 'Connected':
+            logger.error('Resource "%s" has a connection state of "%s", not "Connected"!',
+                         self.res.name, status['connection_state'])
+
+        # TODO check UpToDate
+        if status['disk_state'] != 'UpToDate':
+            logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
+                         self.res.name, status['disk_state'])
 
         self._status = status.copy()
 
@@ -381,6 +414,21 @@ class ResourceMonitor(Component):
 
     def secondary(self):
         self.service.secondary()
+
+
+class TargetMonitor(Component):
+    def __init__(self):
+        super(TargetMonitor, self).__init__()
+
+    def peer_heartbeat(self):
+        pass
+
+    def target_write_config(self):
+        self.service.scst_write_config()
+        self.fire(TargetReloadConfig())
+
+    def target_reload_config(self):
+        self.service.scst_reload_config()
 
     def target_scst_write_config_and_reload(self):
         self.service.scst_write_config()
