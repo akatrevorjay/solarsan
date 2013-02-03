@@ -437,6 +437,10 @@ class ResourceMonitor(Component):
     def resource_health_check(self):
         status = self.service.status()
 
+        if not status:
+            logger.error('Could not get Drbd status!')
+            return False
+
         # Check disk state
         if status['disk_state'] != 'UpToDate':
             logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
@@ -444,7 +448,7 @@ class ResourceMonitor(Component):
 
         if status['remote_disk_state'] != 'UpToDate':
             logger.error('Resource "%s" on Remote "%s" has a disk state of "%s", not "UpToDate"!',
-                         self.res.name, status['remote_disk_state'])
+                         self.res.name, self.res.remote.hostname, status['remote_disk_state'])
             # TODO If remote disk state is not Unknown, take over as Primary
 
         # Check Connection state

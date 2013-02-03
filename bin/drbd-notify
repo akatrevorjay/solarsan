@@ -6,52 +6,62 @@ from storage.drbd import DrbdResource
 import os
 import sys
 from setproctitle import setproctitle
-setproctitle('[SolarSan Drbd Notify]')
 
-logger.info("Got drbd-notify")
 
-args = sys.argv[1:]
-if len(args) != 1:
-    raise Exception("Missing event_name argument")
-event_name = args[0]
+def main():
+    setproctitle('[SolarSan Drbd Notify]')
 
-# We don't use Drbd volumes, so no need for checking for it.
-resource_name = os.environ['DRBD_RESOURCE']
-local_name = os.environ.get('DRBD_LOCAL_HOST')
-remote_name = os.environ.get('DRBD_PEER')
+    #logger.info("Got drbd-notify")
 
-res = DrbdResource.objects.get(name=resource_name)
+    args = sys.argv[1:]
+    if len(args) != 1:
+        raise Exception("Missing event_name argument")
+    event_name = args[0]
 
-if event_name == 'initial-split-brain':
-    logger.error('Drbd detected initial split-brain on Resource "%s"!', res.name)
+    # We don't use Drbd volumes, so no need for checking for it.
+    resource_name = os.environ['DRBD_RESOURCE']
+    local_name = os.environ.get('DRBD_LOCAL_HOST')
+    remote_name = os.environ.get('DRBD_PEER')
 
-elif event_name == 'split-brain':
-    logger.error('Drbd detected split-brain on Resource "%s"!', res.name)
+    res = DrbdResource.objects.get(name=resource_name)
 
-elif event_name == 'before-resync-target':
-    logger.error('Drbd detected before-resync-target on Resource "%s"!', res.name)
+    if event_name == 'initial-split-brain':
+        logger.error('Drbd detected initial split-brain on Resource "%s"!', res.name)
 
-elif event_name == 'after-resync-target':
-    logger.error('Drbd detected after-resync-target on Resource "%s"!', res.name)
+    elif event_name == 'split-brain':
+        logger.error('Drbd detected split-brain on Resource "%s"!', res.name)
 
-elif event_name == 'out-of-sync':
-    logger.error('Drbd detected out-of-sync blocks on Resource "%s"!', res.name)
+    elif event_name == 'before-resync-target':
+        logger.error('Drbd detected before-resync-target on Resource "%s"!', res.name)
 
-elif event_name == 'local-io-error':
-    logger.error('Drbd detected a local I/O error on Resource "%s"!', res.name)
+    elif event_name == 'after-resync-target':
+        logger.error('Drbd detected after-resync-target on Resource "%s"!', res.name)
 
-elif event_name == 'pri-lost':
-    logger.error('Drbd Resource "%s" is currently primary, but is about to ' +
-                 'become SyncTarget on "%s"!', res, local_name)
+    elif event_name == 'out-of-sync':
+        logger.error('Drbd detected out-of-sync blocks on Resource "%s"!', res.name)
 
-elif event_name == 'pri-lost-after-sb':
-    logger.error('Drbd Resource "%s" is currently primary, but lost split ' +
-                 'brain auto recovery on "%s"!', res, local_name)
+    elif event_name == 'local-io-error':
+        logger.error('Drbd detected a local I/O error on Resource "%s"!', res.name)
 
-elif event_name == 'pri-on-incon-degr':
-    logger.error('Drbd Resource "%s" no longer has access to valid data ' +
-                 'on "%s"!', res, local_name)
+    elif event_name == 'pri-lost':
+        logger.error('Drbd Resource "%s" is currently primary, but is about to ' +
+                     'become SyncTarget on "%s"!', res, local_name)
 
-# TODO find out what this is again
-elif event_name == 'fence-peer':
-    logger.error('Drbd detected fence-peer on Resource "%s"!', res.name)
+    elif event_name == 'pri-lost-after-sb':
+        logger.error('Drbd Resource "%s" is currently primary, but lost split ' +
+                     'brain auto recovery on "%s"!', res, local_name)
+
+    elif event_name == 'pri-on-incon-degr':
+        logger.error('Drbd Resource "%s" no longer has access to valid data ' +
+                     'on "%s"!', res, local_name)
+
+    # TODO find out what this is again
+    elif event_name == 'fence-peer':
+        logger.error('Drbd detected fence-peer on Resource "%s"!', res.name)
+
+    else:
+        logger.error('Drbd detected UNKNOWN_EVENT="%s" on Resource "%s"!', event_name, res.name)
+
+
+if __name__ == '__main__':
+    main()
