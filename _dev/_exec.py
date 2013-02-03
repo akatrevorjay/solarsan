@@ -12,6 +12,7 @@ from configure.models import Nic, NicConfig
 from solarsan.models import Config
 from solarsan import conf
 from solarsan.core import logger
+from solarsan.target.models import Target, iSCSITarget, SRPTarget
 
 
 #import rpc.client

@@ -22,16 +22,26 @@ class CreatedModifiedDocMixIn(object):
         return super(CreatedModifiedDocMixIn, self).save(*args, **kwargs)
 
 
+class ReprMixIn(object):
+    def __repr__(self):
+        append = ''
+
+        repr_vars = getattr(self, '_repr_vars', ['name'])
+        for k in repr_vars:
+            v = getattr(self, k, None)
+            if v:
+                try:
+                    append += " %s='%s'" % (k, v)
+                except:
+                    pass
+
+        return '<%s%s>' % (self.__class__.__name__, append)
+
+
 """
 Config
 """
 
 
-class Config(CreatedModifiedDocMixIn, m.DynamicDocument):
+class Config(CreatedModifiedDocMixIn, ReprMixIn, m.DynamicDocument):
     name = m.StringField(unique=True)
-
-    def __repr__(self):
-        append = ''
-        if self.name:
-            append += " name='%s'" % self.name
-        return '<%s%s>' % (self.__class__.__name__, append)

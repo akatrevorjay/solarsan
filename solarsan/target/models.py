@@ -1,8 +1,10 @@
 
 import mongoengine as m
+from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
+from .utils import generate_wwn, is_valid_wwn
 
 
-class Target(m.Document):
+class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     #meta = {'abstract': True}
     meta = {'allow_inheritance': True}
 
@@ -21,7 +23,15 @@ class Target(m.Document):
 
 class iSCSITarget(Target):
     #meta = {'allow_inheritance': True}
-    pass
+
+    def save(self, *args, **kwargs):
+        """Overrides save to ensure name is a valid iqn; generates one if None"""
+        if self.name:
+            if not is_valid_wwn('iqn', self.name):
+                raise ValueError("The name '%s' is not a valid iqn" % self.name)
+        else:
+            self.name = generate_wwn('iqn')
+        super(iSCSITarget, self).save(*args, **kwargs)
 
 
 class SRPTarget(Target):

@@ -7,7 +7,7 @@
 
 #from solarsan.core import logger
 from solarsan import conf
-from solarsan.models import Config, CreatedModifiedDocMixIn
+from solarsan.models import Config, CreatedModifiedDocMixIn, ReprMixIn
 from solarsan.template import quick_template
 import mongoengine as m
 
@@ -115,7 +115,7 @@ class NicConfig(m.Document, CreatedModifiedDocMixIn):
             return 'local'
 
 
-class Nic(object):
+class Nic(ReprMixIn):
     name = None
 
     def __init__(self, name=None):
@@ -200,9 +200,6 @@ class Nic(object):
             return '%s (%s/%s)' % (self.name, self.ipaddr, self.cidr)
         else:
             return self.name
-
-    def __repr__(self):
-        return '<%s: %s>' % (type(self).__name__, self.name)
 
     @classmethod
     def list(cls):

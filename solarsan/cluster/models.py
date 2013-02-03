@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
 from solarsan import conf
-from solarsan.models import Config, CreatedModifiedDocMixIn
+from solarsan.models import Config, CreatedModifiedDocMixIn, ReprMixIn
 from solarsan.configure.models import Nic
 from solarsan.exceptions import ConnectionError
 import mongoengine as m
@@ -18,7 +18,7 @@ def get_cluster_config():
     return ret
 
 
-class Peer(m.Document, CreatedModifiedDocMixIn):
+class Peer(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     #uuid = m.StringField(required=True, unique=True)
     hostname = m.StringField(required=True, unique=True)
     #is_local = m.BooleanField()
@@ -34,6 +34,9 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
     last_seen = m.DateTimeField()
     is_offline = m.BooleanField()
 
+    # For ReprMixIn
+    _repr_vars = ['hostname']
+
     """
     General
     """
@@ -46,12 +49,6 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
 
         """ THIS NEEDS TO BE DYNAMIC THIS IS A HUGE HACK AND WONT WORK """
         self.is_primary = False
-
-    def __repr__(self):
-        append = ''
-        if self.hostname:
-            append += " hostname='%s'" % self.hostname
-        return '<%s%s>' % (self.__class__.__name__, append)
 
     # TODO Manager
     @classmethod

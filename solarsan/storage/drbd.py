@@ -3,6 +3,7 @@ from solarsan.core import logger
 from solarsan import conf
 from solarsan.template import quick_template
 from solarsan.utils.exceptions import LoggedException
+from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from cluster.models import Peer
 from .volume import Volume
 from .parsers.drbd import drbd_overview_parser
@@ -111,7 +112,7 @@ class DrbdPeer(m.EmbeddedDocument):
         return meth(*args, **kwargs)
 
 
-class DrbdResource(m.Document):
+class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     # Volumes are made with this name; the Drbd resource is also named this.
     name = m.StringField(unique=True, required=True)
     local = m.EmbeddedDocumentField(DrbdPeer, required=True)
@@ -125,15 +126,17 @@ class DrbdResource(m.Document):
     # For target
     t10_dev_id = m.StringField()
 
+    # status
+    #connection_state = m.StringField()
+    #disk_state = m.StringField()
+    #role = m.StringField()
+
     """
     Avoid possums
     """
 
     def __init__(self, **kwargs):
         super(DrbdResource, self).__init__(**kwargs)
-
-    def __repr__(self):
-        return "<%s '%s'>" % (self.__class__.__name__, self.name)
 
     def save(self, *args, **kwargs):
         # Automatically generate a random secret if one was not specified
