@@ -1,24 +1,101 @@
 #!/usr/bin/env python
 
-from setproctitle import setproctitle
-# TODO Dynamic status
-setproctitle('[SolarSan Monitor: OK]')
-
 from solarsan.core import logger
 #from solarsan import conf
-from solarsan.exceptions import FormattedException
-from storage.drbd import DrbdResource
-from circuits import Component, Event, Debugger, Timer
-from circuits.tools import inspect
+#from solarsan.exceptions import FormattedException
+from setproctitle import setproctitle
 from datetime import datetime
+from circuits import Component, Event, Debugger, Timer, handler
+#from circuits.tools import inspect
+from storage.drbd import DrbdResource
 from cluster.models import Peer
-from target.models import iSCSITarget
-import target.scst
+#from target.models import iSCSITarget
+#import target.scst
 import rpyc
 
 
 """
 Events
+"""
+
+
+"""
+Monitor
+"""
+
+
+class MonitorStatusUpdate(Event):
+    """Monitor Status Update"""
+
+
+class Monitor(Component):
+    def __init__(self):
+        super(Monitor, self).__init__()
+        logger.info('Monitor starting..')
+
+        Discovery().register(self)
+        PeerManager().register(self)
+
+    def started(self, *args):
+        self.fire(MonitorStatusUpdate('Started'))
+        logger.info('Monitor started.')
+
+    @handler('monitor_status_update', channel='*')
+    def status_update(self, append=None):
+        set_proctitle(append)
+
+    #def peer_heartbeat(self, *args, **kwargs):
+    #    logger.info('Peer Online @ Monitor')
+
+
+"""
+Peer Manager
+"""
+
+
+class PeerHeartbeat(Event):
+    """Remote PeerHeartbeat"""
+    #complete = True
+
+
+class PeerHeartbeatTimeout(Event):
+    """Remote PeerHeartbeat Timeout"""
+    #complete = True
+
+
+class PoolHealthCheck(Event):
+    """Checks Pool Health"""
+
+
+class ResourceHealthCheck(Event):
+    """Check Resource Health"""
+
+
+class PeerManager(Component):
+    heartbeat_every = 5.0
+
+    def __init__(self):
+        super(PeerManager, self).__init__()
+        self.peers = {}
+        Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
+
+    def started(self, *args):
+        for peer in Peer.objects.all():
+            self.add_peer(peer)
+
+    def peer_discovered(self, peer, created=None):
+        self.add_peer(peer)
+
+    def add_peer(self, peer):
+        if peer.hostname in self.peers:
+            return
+        logger.info("Monitoring Peer '%s'.", peer.hostname)
+        PeerMonitor(peer).register(self)
+        self.peers[peer.hostname] = peer
+
+
+"""
+Discovery
 """
 
 
@@ -31,101 +108,19 @@ class ProbePeer(Event):
     """Peer Probe Event"""
 
 
-class PeerOnline(Event):
-    """Peer Online Event"""
+class PeerDiscovered(Event):
+    """Peer Discovered Event"""
 
 
-class PeerOffline(Event):
-    """Peer Offline Event"""
-
-
-class ReconnectPeer(Event):
-    """Peer reconnection attempt Event"""
-
-
-class PeerHeartbeat(Event):
-    """Remote PeerHeartbeat"""
-    complete = True
-
-
-class PromoteToPrimary(Event):
-    """Promote Resource to Primary"""
-
-
-class DemoteToSecondary(Event):
-    """Demote Resource to Secondary"""
-
-
-class PoolHealthCheck(Event):
-    """Checks Pool Health"""
-
-
-class ResourceHealthCheck(Event):
-    """Check Resource Health"""
-
-
-"""
-Mother Discovery
-
-
-For each drbd resource:
-    Every so often, check remote status.
-    If status == False:
-        If local.is_primary:
-            1. Log event
-        else:
-            1. Get a list of all resources shared with remote
-            2. Become primary on all of them
-            3. Write new target config
-            4. Reload target config
-            5. Enable HA IPs
-
-"""
-
-
-class MotherDiscovery(Component):
-    discover_every = 10.0
-    heartbeat_every = 5.0
-    pool_health_check_every = 5.0
-    resource_health_check_every = 5.0
+class Discovery(Component):
+    discover_every = 60.0
 
     def __init__(self):
-        super(MotherDiscovery, self).__init__()
-
-        self.peers = []
-        # Sort resources by remote Peer
-        self.remotes = {}
-        self.peer_monitors = {}
-        self.resources_grouped_by_remote()
-
-        Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
-        Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
-        Timer(self.pool_health_check_every, PoolHealthCheck(), persist=True).register(self)
-        Timer(self.resource_health_check_every, ResourceHealthCheck(), persist=True).register(self)
+        super(Discovery, self).__init__()
 
     def started(self, *args):
-        pass
-
-    """
-    Monitor
-    """
-
-    def resources_grouped_by_remote(self):
-        for res in DrbdResource.objects.all():
-            if not res.remote.hostname in self.remotes:
-                self.remotes[res.remote.hostname] = []
-            if res.name in [x.name for x in self.remotes[res.remote.hostname]]:
-                continue
-            self.remotes[res.remote.hostname].append(res)
-
-        for hostname, resources in self.remotes.iteritems():
-            if hostname in self.peer_monitors:
-                continue
-            peer = Peer.objects.get(hostname=hostname)
-            self.peer_monitors[hostname] = PeerMonitor(peer, resources).register(self)
-
-    def peer_heartbeat_complete(self, *results):
-        pass
+        self.fire(DiscoverPeers())
+        Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
 
     """
     Discovery
@@ -138,9 +133,6 @@ class MotherDiscovery(Component):
                 self.fire(ProbePeer(host))
         except Exception:
             pass
-
-    def discover_peers_complete(self, *args):
-        self.resources_grouped_by_remote()
 
     def probe_peer(self, host):
         """Probes a discovered node for info"""
@@ -162,7 +154,7 @@ class MotherDiscovery(Component):
             if None in [hostname, ifaces, addrs, cluster_iface]:
                 raise Exception("Peer discovery probe has invalid data.")
 
-            logger.info("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
+            #logger.info("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
         except Exception, e:
             #raise FormattedException("Peer discovery (host='%s') failed: %s", host, e)
             logger.error("Peer discovery (host='%s') failed: %s", host, e)
@@ -181,14 +173,10 @@ class MotherDiscovery(Component):
         peer.cluster_iface = cluster_iface['name']
 
         peer.last_seen = datetime.utcnow()
-        send_peer_online = bool(created or peer.is_offline)
-        peer.is_offline = None
 
         peer.save()
 
-        if send_peer_online:
-            self.fire(PeerOnline(peer, resources=self.remotes[peer.hostname]))
-
+        self.fire(PeerDiscovered(peer, created=created))
         return True
 
 
@@ -197,112 +185,113 @@ Peer Monitor
 """
 
 
-class PeerMonitor(Component):
-    heartbeat_timeout_window = 15.0
-    offline_reconnect_interval = 30.0
+class PeerOnline(Event):
+    """Peer Online Event"""
 
-    def __init__(self, peer, resources):
+
+class PeerOffline(Event):
+    """Peer Offline Event"""
+
+
+class ReconnectPeer(Event):
+    """Peer reconnection attempt Event"""
+
+
+class PromoteToPrimary(Event):
+    """Promote Resource to Primary"""
+
+
+class DemoteToSecondary(Event):
+    """Demote Resource to Secondary"""
+
+
+class ResourcePrimary(Event):
+    """Takeover as Primary"""
+
+
+class ResourceSecondary(Event):
+    """Takeover as Primary"""
+
+
+class PeerMonitor(Component):
+    heartbeat_timeout_after = 2
+
+    def __init__(self, peer):
         super(PeerMonitor, self).__init__()
         self.peer = peer
+        self._heartbeat_timeout_count = None
 
-        self.resources = resources
-        self.res_mons = []
-        for res in resources:
-            self.res_mons.append(ResourceMonitor(res).register(self))
+    @handler('peer_heartbeat', channel='*')
+    def _on_peer_heartbeat(self):
+        # This is done so the first try is always attempted, even if the Peer
+        # is offline.
+        if not self._heartbeat_timeout_count:
+            self._heartbeat_timeout_count = 0
+        elif self.peer.is_offline:
+            logger.debug('PeerHeartbeat is not even being attempted as Peer "%s" is marked offline.', self.peer.hostname)
+            return
 
-    def started(self, *args):
-        self.peer_online(self.peer, self.resources)
+        ret = self.ping()
+        if ret:
+            self._heartbeat_timeout_count = 0
+        else:
+            self._heartbeat_timeout_count += 1
+            if self._heartbeat_timeout_count >= self.heartbeat_timeout_after:
+                self.fire(PeerOffline(self.peer))
+        return ret
 
     def ping(self):
         try:
-            self.peer.storage.ping()
+            storage = self.peer.get_service('storage', default=None)
+            storage.ping()
             logger.debug('PeerHeartbeat back from Peer "%s"', self.peer.hostname)
             return True
         except:
             logger.error('Did not receive heartbeat for Peer "%s"', self.peer.hostname)
-            raise
+            return False
 
-    def peer_heartbeat(self):
+    @handler('peer_online', channel='*')
+    def _on_peer_online(self, peer):
+        if peer.hostname != self.peer.hostname:
+            return
         if self.peer.is_offline:
-            logger.debug('PeerHeartbeat is not even being attempted as Peer "%s" is marked offline.', self.peer.hostname)
+            self.mark_online()
+
+    @handler('peer_offline', channel='*')
+    def _on_peer_offline(self, peer):
+        if peer.hostname != self.peer.hostname:
             return
+        if not self.peer.is_offline:
+            self.mark_offline()
 
-        try:
-            ret = self.ping()
+    def mark_online(self):
+        logger.warning('Peer "%s" is ONLINE!', self.peer.hostname)
+        self.peer.is_offline = False
+        self.peer.save()
+        self._heartbeat_timeout_count = 0
 
-            if hasattr(self, 'timeout_timer'):
-                # Timer is used to know when our timeout window has been up.
-                # Since this went through fine, reset the timer to 0.
-                self.timeout_timer.reset()
-        except:
-            ret = None
-        return ret
-
-    def reconnect_peer(self, peer=None, resources=None):
-        if peer and self.peer.hostname != peer.hostname:
-            return
-
-        logger.error('Attempting to reconnect to Peer "%s"', self.peer.hostname)
-        try:
-            ret = self.ping()
-            self.peer_online(self.peer, rsources=self.resources)
-            self.fire(PeerOnline(self.peer))
-        except:
-            if not hasattr(self, 'reconnect_timer'):
-                self.reconnect_timer = Timer(self.offline_reconnect_interval, ReconnectPeer(peer, resources=resources)).register(self)
-        return ret
-
-    def remove_timers(self, timeout_timer=False, reconnect_timer=False):
-        timers = []
-        if timeout_timer:
-            timers.append('timeout_timer')
-        if reconnect_timer:
-            timers.append('reconnect_timer')
-
-        for timer_name in timers:
-            timer = getattr(self, timer_name, None)
-            if timer:
-                timer.unregister()
-                delattr(self, timer_name)
-
-    def peer_offline(self, peer=None, resources=None):
-        if peer and self.peer.hostname != peer.hostname:
-            return
-
+    def mark_offline(self):
         logger.error('Peer "%s" is OFFLINE!', self.peer.hostname)
         self.peer.is_offline = True
         self.peer.save()
 
-        # Remove timeout timer
-        self.remove_timers(timeout_timer=True, reconnect_timer=True)
-
         # Take over the volumes, write out any targets, enable any HA ips, etc
-        self.fire(PromoteToPrimary(peer, resources=resources))
+        #self.fire(PromoteToPrimary(self.peer))
 
-        if not hasattr(self, 'reconnect_timer'):
-            # Add reconnect timer
-            self.reconnect_timer = Timer(self.offline_reconnect_interval,
-                                         ReconnectPeer(peer, resources=resources)
-                                         ).register(self)
-
-    def peer_online(self, peer=None, resources=None):
-        if peer and self.peer.hostname != peer.hostname:
+    @handler('peer_discovered', channel='*')
+    def _on_peer_discovered(self, peer, created=False):
+        if peer.hostname != self.peer.hostname:
             return
+        if self.peer.is_offline:
+            self.fire(PeerOnline(self.peer))
 
-        logger.warning('Peer "%s" is back ONLINE!', self.peer.hostname)
-        self.peer.is_offline = False
-        self.peer.save()
+    @handler('promote_to_primary', channel='*')
+    def _on_promote_to_primary(self, peer):
+        if peer.hostname != self.peer.hostname:
+            return
+        self.primary()
 
-        # Remove reconnect timer
-        self.remove_timers(timeout_timer=True, reconnect_timer=True)
-
-        if not hasattr(self, 'timeout_timer'):
-            # Add timeout timer
-            self.timeout_timer = Timer(self.heartbeat_timeout_window,
-                                       PeerOffline(peer, resources=self.resources)
-                                       ).register(self)
-
-    def promote_to_primary(self, peer=None, resources=None):
+    def primary(self):
         logger.info('Taking over as Primary: all Resources with Peer "%s"',
                     self.remote.hostname)
 
@@ -318,7 +307,13 @@ class PeerMonitor(Component):
         logger.info('Done taking over as Primary: all all Resources with Peer "%s"',
                     self.remote.hostname)
 
-    def demote_to_secondary(self):
+    @handler('demote_to_secondary', channel='*')
+    def _on_demote_to_secondary(self, peer):
+        if peer.hostname != self.peer.hostname:
+            return
+        self.secondary()
+
+    def secondary(self):
         logger.info('Demoting myself to Secondary: all Resources with Peer "%s"',
                     self.remote.hostname)
 
@@ -334,7 +329,8 @@ class PeerMonitor(Component):
         logger.info('Done demoting myself to Secondary: all Resources with Peer "%s"',
                     self.remote.hostname)
 
-    def pool_health_check(self):
+    @handler('pool_health_check', channel='*')
+    def _on_pool_health_check(self):
         s_pool = self.peer.storage.root.pool()
         pools = s_pool.list()
         #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
@@ -349,14 +345,6 @@ class PeerMonitor(Component):
 """
 Resource Monitor
 """
-
-
-class ResourcePrimary(Event):
-    """Takeover as Primary"""
-
-
-class ResourceSecondary(Event):
-    """Takeover as Primary"""
 
 
 class ResourceMonitor(Component):
@@ -430,8 +418,8 @@ class TargetMonitor(Component):
     def __init__(self):
         super(TargetMonitor, self).__init__()
 
-    def peer_heartbeat(self):
-        pass
+    #def peer_heartbeat(self):
+    #    pass
 
     def target_write_config(self):
         self.service.scst_write_config()
@@ -446,21 +434,26 @@ class TargetMonitor(Component):
         self.service.scst_reload_config()
 
 
-def run_ha():
-    try:
-        #(MotherDiscovery()).run()
-        (MotherDiscovery() + Debugger()).run()
-    except (SystemExit, KeyboardInterrupt):
-        raise
-
-
 """
 Main
 """
 
 
+def set_proctitle(append=None):
+    title = 'SolarSan Monitor'
+    if append:
+        title += ': %s' % append
+    setproctitle('[%s]' % title)
+
+
 def main():
-    run_ha()
+    set_proctitle('Starting')
+    try:
+        #(Discovery()).run()
+        #(Discovery() + Debugger()).run()
+        (Monitor() + Debugger()).run()
+    except (SystemExit, KeyboardInterrupt):
+        raise
 
 
 if __name__ == '__main__':

@@ -29,3 +29,9 @@ Config
 
 class Config(CreatedModifiedDocMixIn, m.DynamicDocument):
     name = m.StringField(unique=True)
+
+    def __repr__(self):
+        append = ''
+        if self.name:
+            append += " name='%s'" % self.name
+        return '<%s%s>' % (self.__class__.__name__, append)

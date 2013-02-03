@@ -47,6 +47,12 @@ class Peer(m.Document, CreatedModifiedDocMixIn):
         """ THIS NEEDS TO BE DYNAMIC THIS IS A HUGE HACK AND WONT WORK """
         self.is_primary = False
 
+    def __repr__(self):
+        append = ''
+        if self.hostname:
+            append += " hostname='%s'" % self.hostname
+        return '<%s%s>' % (self.__class__.__name__, append)
+
     # TODO Manager
     @classmethod
     def get_local(cls):
