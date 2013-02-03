@@ -35,6 +35,7 @@ class Monitor(Component):
 
         Discovery().register(self)
         PeerManager().register(self)
+        ResourceManager().register(self)
 
     def started(self, *args):
         self.fire(MonitorStatusUpdate('Started'))
@@ -67,31 +68,66 @@ class PoolHealthCheck(Event):
     """Checks Pool Health"""
 
 
-class ResourceHealthCheck(Event):
-    """Check Resource Health"""
-
-
 class PeerManager(Component):
     heartbeat_every = 5.0
+    pool_health_every = 10.0
 
     def __init__(self):
         super(PeerManager, self).__init__()
         self.peers = {}
+        self.monitors = {}
         Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
+        Timer(self.pool_health_every, PoolHealthCheck(), persist=True).register(self)
 
-    def started(self, *args):
+    @handler('started', channel='*')
+    def _on_started(self, *args):
         for peer in Peer.objects.all():
             self.add_peer(peer)
 
-    def peer_discovered(self, peer, created=None):
+    @handler('peer_discovered', channel='*')
+    def _on_peer_discovered(self, peer, created=None):
         self.add_peer(peer)
 
     def add_peer(self, peer):
         if peer.hostname in self.peers:
             return
         logger.info("Monitoring Peer '%s'.", peer.hostname)
-        PeerMonitor(peer).register(self)
         self.peers[peer.hostname] = peer
+        self.monitors[peer.hostname] = PeerMonitor(peer).register(self)
+
+
+"""
+Resource Manager
+"""
+
+
+class ResourceHealthCheck(Event):
+    """Check Resource Health"""
+
+
+class ResourceManager(Component):
+    res_health_check_every = 10.0
+
+    def __init__(self):
+        super(ResourceManager, self).__init__()
+        self.resources = {}
+        self.monitors = {}
+        Timer(self.res_health_check_every, ResourceHealthCheck(), persist=True).register(self)
+
+    @handler('started', channel='*')
+    def _on_started(self, *args):
+        self.do_all_resources()
+
+    def do_all_resources(self):
+        for res in DrbdResource.objects.all():
+            self.add_res(res)
+
+    def add_res(self, res):
+        if res.name in self.resources:
+            return
+        logger.info("Monitoring Resource '%s'.", res.name)
+        self.resources[res.name] = res
+        self.monitors[res.name] = ResourceMonitor(res).register(self)
 
 
 """
@@ -127,7 +163,7 @@ class Discovery(Component):
     """
 
     def discover_peers(self):
-        logger.debug("Discovering nearby peers..")
+        #logger.debug("Discovering nearby peers..")
         try:
             for host, port in rpyc.discover('storage'):
                 self.fire(ProbePeer(host))
@@ -193,24 +229,8 @@ class PeerOffline(Event):
     """Peer Offline Event"""
 
 
-class ReconnectPeer(Event):
-    """Peer reconnection attempt Event"""
-
-
-class PromoteToPrimary(Event):
-    """Promote Resource to Primary"""
-
-
-class DemoteToSecondary(Event):
-    """Demote Resource to Secondary"""
-
-
-class ResourcePrimary(Event):
-    """Takeover as Primary"""
-
-
-class ResourceSecondary(Event):
-    """Takeover as Primary"""
+class PoolNotHealthy(Event):
+    """Pool is Not Healthy"""
 
 
 class PeerMonitor(Component):
@@ -228,7 +248,7 @@ class PeerMonitor(Component):
         if not self._heartbeat_timeout_count:
             self._heartbeat_timeout_count = 0
         elif self.peer.is_offline:
-            logger.debug('PeerHeartbeat is not even being attempted as Peer "%s" is marked offline.', self.peer.hostname)
+            #logger.debug('PeerHeartbeat is not even being attempted as Peer "%s" is marked offline.', self.peer.hostname)
             return
 
         ret = self.ping()
@@ -244,7 +264,7 @@ class PeerMonitor(Component):
         try:
             storage = self.peer.get_service('storage', default=None)
             storage.ping()
-            logger.debug('PeerHeartbeat back from Peer "%s"', self.peer.hostname)
+            #logger.debug('PeerHeartbeat back from Peer "%s"', self.peer.hostname)
             return True
         except:
             logger.error('Did not receive heartbeat for Peer "%s"', self.peer.hostname)
@@ -285,61 +305,26 @@ class PeerMonitor(Component):
         if self.peer.is_offline:
             self.fire(PeerOnline(self.peer))
 
-    @handler('promote_to_primary', channel='*')
-    def _on_promote_to_primary(self, peer):
-        if peer.hostname != self.peer.hostname:
-            return
-        self.primary()
-
-    def primary(self):
-        logger.info('Taking over as Primary: all Resources with Peer "%s"',
-                    self.remote.hostname)
-
-        for res in self.resources:
-            sl = res.local.service
-            if not sl.is_primary:
-                sl.primary()
-
-        # TODO WRITE OUT ANY TARGETS, SCST CONFIG AS APPLIES
-
-        # TODO ENABLE ANY HA IPS
-
-        logger.info('Done taking over as Primary: all all Resources with Peer "%s"',
-                    self.remote.hostname)
-
-    @handler('demote_to_secondary', channel='*')
-    def _on_demote_to_secondary(self, peer):
-        if peer.hostname != self.peer.hostname:
-            return
-        self.secondary()
-
-    def secondary(self):
-        logger.info('Demoting myself to Secondary: all Resources with Peer "%s"',
-                    self.remote.hostname)
-
-        for res in self.resources:
-            sl = res.local.service
-            if not sl.is_secondary:
-                sl.secondary()
-
-        # TODO WRITE OUT ANY TARGETS, SCST CONFIG AS APPLIES
-
-        # TODO ENABLE ANY HA IPS
-
-        logger.info('Done demoting myself to Secondary: all Resources with Peer "%s"',
-                    self.remote.hostname)
-
     @handler('pool_health_check', channel='*')
     def _on_pool_health_check(self):
-        s_pool = self.peer.storage.root.pool()
-        pools = s_pool.list()
+        if self.peer.is_offline:
+            return
+        storage = self.peer.get_service('storage', default=None)
+        Pool = storage.root.pool()
+        pools = Pool.list()
         #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
         ret = True
         for pool in pools:
             if not pool.is_healthy():
-                logger.error('Pool "%s" on Peer "%s" is NOT healthy!', pool.name, self.peer.hostname)
+                self.fire(PoolNotHealthy(self.peer, pool.name))
                 ret = False
         return ret
+
+    @handler('pool_not_healthy', channel='*')
+    def _on_pool_not_healthy(self, peer, pool):
+        if peer.hostname != self.peer.hostname:
+            return
+        logger.error('Pool "%s" on Peer "%s" is NOT healthy!', pool, self.peer.hostname)
 
 
 """
@@ -347,14 +332,27 @@ Resource Monitor
 """
 
 
+class PromoteToPrimary(Event):
+    """Promote Resource to Primary"""
+
+
+class DemoteToSecondary(Event):
+    """Demote Resource to Secondary"""
+
+
+class ResourcePrimary(Event):
+    """Takeover as Primary"""
+
+
+class ResourceSecondary(Event):
+    """Takeover as Primary"""
+
+
 class ResourceMonitor(Component):
     def __init__(self, res):
         super(ResourceMonitor, self).__init__()
         self.res = res
         self._status = None
-
-    def started(self, *args):
-        pass
 
     @property
     def service(self):
