@@ -137,52 +137,33 @@ On Startup:
     Add each target manually
 
 """
-import sh
-
-
-class TargetWriteConfig(Event):
-    """Write Target Config"""
-
-
-class TargetClearConfig(Event):
-    """Clear Target Config"""
-
-
-class TargetReloadConfig(Event):
-    """Write Target Config"""
 
 
 class TargetManager(Component):
 
     def __init__(self):
         super(TargetManager, self).__init__()
-        self.res_skip = {}
-
-    @handler('target_write_config', channel='*')
-    def _on_target_write_config(self):
-        target.scst.write_config(skip=self.res_skip.keys())
-        self.fire(TargetReloadConfig())
-
-    @handler('target_reload_config', channel='*')
-    def _on_target_reload_config(self):
-        target.scst.reload_config(force=True)
-
-    @handler('target_clear_config', channel='*')
-    def _on_target_clear_config(self):
-        target.scst.clear_config(force=True)
 
     #def resource_role_change(self, res, role):
     #    if role in ['Primary', 'Secondary']:
     #        self.fire(TargetWriteConfig())
 
     def resource_primary_post(self, res):
-        self.fire(TargetWriteConfig())
+        #self.fire(TargetWriteConfig())
+        pass
 
     def resource_secondary_pre(self, res):
-        self.res_skip[res.name] = True
+        #self.res_skip[res.name] = True
 
         # TODO Find a way to exclude res
-        self.fire(TargetWriteConfig(skip=res.name))
+        #self.fire(TargetWriteConfig(skip=res.name))
+        pass
+
+    #def started(self, *args):
+    #    """Setup all targets"""
+    #    for tgt in iSCSITarget.objects.all():
+
+
 
 
 """

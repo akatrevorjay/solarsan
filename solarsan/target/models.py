@@ -1,7 +1,10 @@
 
+from solarsan.core import logger
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from .utils import generate_wwn, is_valid_wwn
+from . import scstadmin
+from storage.drbd import DrbdResource
 
 
 class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
@@ -23,6 +26,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 
 class iSCSITarget(Target):
     #meta = {'allow_inheritance': True}
+    driver = 'iscsi'
 
     def generate_wwn(self, serial=None):
         self.name = generate_wwn('iqn')
@@ -36,6 +40,48 @@ class iSCSITarget(Target):
         else:
             self.generate_wwn()
         super(iSCSITarget, self).save(*args, **kwargs)
+
+    def add_target(self):
+        scstadmin.add_target(self.name, self.driver)
+
+    def rem_target(self):
+        scstadmin.rem_target(self.name, self.driver)
+
+    def disable_target(self):
+        scstadmin.disable_target(self.name, self.driver)
+
+    def enable_target(self):
+        scstadmin.enable_target(self.name, self.driver)
+
+    def open_devs(self):
+        ress = {}
+        for res in DrbdResource.objects.filter(role='Primary'):
+            ress[res.name] = res
+
+        for lun in self.luns:
+            if lun not in ress:
+                logger.info('Target "%s" luns are not all available.', self.name)
+                return False
+
+        logger.info('Target "%s" luns are available.', self.name)
+
+        for lun in self.luns:
+            scstadmin.open_dev(lun, 'vdisk_blockio', filename=ress[lun].device)
+
+    def close_devs(self):
+        ress = {}
+        for res in DrbdResource.objects.filter(role='Primary'):
+            ress[res.name] = res
+
+        for lun in self.luns:
+            if lun not in ress:
+                logger.info('Target "%s" luns are not all available.', self.name)
+                return False
+
+        logger.info('Target "%s" luns are available.', self.name)
+
+        for lun in self.luns:
+            scstadmin.close_dev(lun, 'vdisk_blockio')
 
 
 class SRPTarget(Target):
