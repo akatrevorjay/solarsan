@@ -38,10 +38,10 @@ class Device(object):
             raise Exception
 
 
-def write_config():
+def write_config(skip=None):
     ress = {}
     for res in DrbdResource.objects.all():
-        if res.role == 'Primary':
+        if res.role == 'Primary' and skip != res.name:
             ress[res.name] = res
 
     iscsi_tgts = []
@@ -54,9 +54,9 @@ def write_config():
                 nope = True
                 break
         if nope:
-            for lun in tgt.luns:
-                if lun in ress:
-                    ress[lun].local.service.secondary()
+        #    for lun in tgt.luns:
+        #        if lun in ress:
+        #            ress[lun].local.service.secondary()
             continue
         logger.info('Target "%s" luns are available.', tgt.name)
         iscsi_tgts.append(tgt)

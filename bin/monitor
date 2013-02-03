@@ -5,14 +5,14 @@ from solarsan.core import logger
 #from solarsan import conf
 #from solarsan.exceptions import FormattedException
 from setproctitle import setproctitle
-from datetime import datetime
 from circuits import Component, Event, Debugger, Timer, handler
 #from circuits.tools import inspect
 from storage.drbd import DrbdResource, drbd_overview_parser
 from cluster.models import Peer
 #from target.models import iSCSITarget
-#import target.scst
-import rpyc
+import target.scst
+from solarsan.monitor.udev import UDev
+from solarsan.monitor.discovery import Discovery
 
 
 """
@@ -33,6 +33,7 @@ class Monitor(Component):
         PeerManager().register(self)
         ResourceManager().register(self)
         TargetManager().register(self)
+        DeviceManager().register(self)
 
     def started(self, *args):
         self.fire(MonitorStatusUpdate('Started'))
@@ -61,7 +62,7 @@ class PeerHeartbeatTimeout(Event):
     #complete = True
 
 
-class PoolHealthCheck(Event):
+class PeerPoolHealthCheck(Event):
     """Checks Pool Health"""
 
 
@@ -74,7 +75,7 @@ class PeerManager(Component):
         self.peers = {}
         self.monitors = {}
         Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
-        Timer(self.pool_health_every, PoolHealthCheck(), persist=True).register(self)
+        Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
 
     @handler('started', channel='*')
     def _on_started(self, *args):
@@ -131,9 +132,20 @@ class ResourceManager(Component):
 Target Manager
 """
 
+"""
+On Startup:
+    Add each target manually
+
+"""
+import sh
+
 
 class TargetWriteConfig(Event):
     """Write Target Config"""
+
+
+class TargetClearConfig(Event):
+    """Clear Target Config"""
 
 
 class TargetReloadConfig(Event):
@@ -144,106 +156,51 @@ class TargetManager(Component):
 
     def __init__(self):
         super(TargetManager, self).__init__()
+        self.res_skip = {}
 
     @handler('target_write_config', channel='*')
     def _on_target_write_config(self):
-        self.service.scst_write_config()
+        target.scst.write_config(skip=self.res_skip.keys())
         self.fire(TargetReloadConfig())
 
     @handler('target_reload_config', channel='*')
     def _on_target_reload_config(self):
-        self.service.scst_reload_config()
+        target.scst.reload_config(force=True)
 
-    def write_config_and_reload(self):
-        self.service.scst_write_config()
-        self.service.scst_clear_config()
-        self.service.scst_reload_config()
+    @handler('target_clear_config', channel='*')
+    def _on_target_clear_config(self):
+        target.scst.clear_config(force=True)
+
+    #def resource_role_change(self, res, role):
+    #    if role in ['Primary', 'Secondary']:
+    #        self.fire(TargetWriteConfig())
+
+    def resource_primary_post(self, res):
+        self.fire(TargetWriteConfig())
+
+    def resource_secondary_pre(self, res):
+        self.res_skip[res.name] = True
+
+        # TODO Find a way to exclude res
+        self.fire(TargetWriteConfig(skip=res.name))
 
 
 """
-Discovery
+Device Manager
 """
 
 
-class DiscoverPeers(Event):
-    """Discover Event"""
-    #complete = True
-
-
-class ProbePeer(Event):
-    """Peer Probe Event"""
-
-
-class PeerDiscovered(Event):
-    """Peer Discovered Event"""
-
-
-class Discovery(Component):
-    discover_every = 60.0
-
+class DeviceManager(Component):
     def __init__(self):
-        super(Discovery, self).__init__()
+        super(DeviceManager, self).__init__()
 
-    def started(self, *args):
-        self.fire(DiscoverPeers())
-        Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
+        UDev().register(self)
 
-    """
-    Discovery
-    """
+    def device_add(self, device):
+        pass
 
-    def discover_peers(self):
-        #logger.debug("Discovering nearby peers..")
-        try:
-            for host, port in rpyc.discover('storage'):
-                self.fire(ProbePeer(host))
-        except Exception:
-            pass
-
-    def probe_peer(self, host):
-        """Probes a discovered node for info"""
-
-        hostname = None
-        ifaces = None
-        addrs = None
-        cluster_iface = None
-
-        try:
-            c = rpyc.connect_by_service('storage', host=host)
-
-            hostname = c.root.peer_hostname()
-            cluster_iface = c.root.peer_get_cluster_iface()
-
-            ifaces = c.root.peer_list_addrs()
-            addrs = dict([(y['addr'], y['netmask']) for x in ifaces.values() for y in x])
-
-            if None in [hostname, ifaces, addrs, cluster_iface]:
-                raise Exception("Peer discovery probe has invalid data.")
-
-            #logger.info("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
-        except Exception, e:
-            #raise FormattedException("Peer discovery (host='%s') failed: %s", host, e)
-            logger.error("Peer discovery (host='%s') failed: %s", host, e)
-            return
-
-        # TODO Each node should prolly get a UUID, glusterfs already assigns one, but maybe we
-        # should do it a layer above.
-
-        peer, created = Peer.objects.get_or_create(hostname=hostname)
-
-        peer.addrs = list(addrs.keys())
-        peer.netmasks = list(addrs.values())
-        peer.ifaces = list(ifaces.keys())
-
-        peer.cluster_addr = cluster_iface['ipaddr']
-        peer.cluster_iface = cluster_iface['name']
-
-        peer.last_seen = datetime.utcnow()
-
-        peer.save()
-
-        self.fire(PeerDiscovered(peer, created=created))
-        return True
+    def device_remove(self, device):
+        pass
 
 
 """
@@ -259,7 +216,7 @@ class PeerOffline(Event):
     """Peer Offline Event"""
 
 
-class PoolNotHealthy(Event):
+class PeerPoolNotHealthy(Event):
     """Pool is Not Healthy"""
 
 
@@ -338,8 +295,8 @@ class PeerMonitor(Component):
         if self.peer.is_offline:
             self.fire(PeerOnline(self.peer))
 
-    @handler('pool_health_check', channel='*')
-    def _on_pool_health_check(self):
+    @handler('peer_pool_health_check', channel='*')
+    def _on_peer_pool_health_check(self):
         if self.peer.is_offline:
             return
         try:
@@ -354,12 +311,12 @@ class PeerMonitor(Component):
         ret = True
         for pool in pools:
             if not pool.is_healthy():
-                self.fire(PoolNotHealthy(self.peer, pool.name))
+                self.fire(PeerPoolNotHealthy(self.peer, pool.name))
                 ret = False
         return ret
 
-    @handler('pool_not_healthy', channel='*')
-    def _on_pool_not_healthy(self, peer, pool):
+    @handler('peer_pool_not_healthy', channel='*')
+    def _on_peer_pool_not_healthy(self, peer, pool):
         if peer.hostname != self.peer.hostname:
             return
         logger.error('Pool "%s" on Peer "%s" is NOT healthy!', pool, self.peer.hostname)
@@ -373,19 +330,27 @@ Resource Monitor
 """
 
 
-class PromoteToPrimary(Event):
-    """Promote Resource to Primary"""
-
-
-class DemoteToSecondary(Event):
-    """Demote Resource to Secondary"""
+class ResourcePrimaryPre(Event):
+    """Promote to Primary"""
 
 
 class ResourcePrimary(Event):
     """Promote to Primary"""
 
 
+class ResourcePrimaryPost(Event):
+    """Promote to Primary"""
+
+
+class ResourceSecondaryPre(Event):
+    """Demote to Secondary"""
+
+
 class ResourceSecondary(Event):
+    """Demote to Secondary"""
+
+
+class ResourceSecondaryPost(Event):
     """Demote to Secondary"""
 
 
@@ -399,6 +364,8 @@ class ResourceDiskStateChange(Event):
 
 class ResourceRoleChange(Event):
     """Resource Connection State Change"""
+    #success = True
+    #complete = True
 
 
 class ResourceRemoteDiskStateChange(Event):
@@ -422,15 +389,18 @@ class ResourceMonitor(Component):
         logger.error('Remote "%s" for Resource "%s" went offline.',
                      self.res.remote.hostname, self.res.name)
 
-        # TODO Take over the volumes, write out any targets, enable any HA ips, etc
-        self.fire(ResourcePrimary(self.res))
+        ## TODO Take over the volumes, write out any targets, enable any HA ips, etc
+        #if self.res.role != 'Primary':
+        #    self.fire(ResourcePrimary(self.res))
 
-    @handler('pool_not_healthy', channel='*')
-    def _on_pool_not_healthy(self, peer, pool):
+    @handler('peer_pool_not_healthy', channel='*')
+    def _on_peer_pool_not_healthy(self, peer, pool):
         if peer.hostname == self.res.local.hostname and pool == self.res.local.pool:
-            logger.error('Pool "%s" for Resource "%s" is not healthy.',
-                         pool, self.res.name)
-            # TODO Remove any HA IPs for this resource (handled by the target,
+            #logger.error('Pool "%s" for Resource "%s" is not healthy.',
+            #             pool, self.res.name)
+            pass
+
+            ## TODO Remove any HA IPs for this resource (handled by the target,
             # nothing here)
             #   - But what if the HA IPs are used for others? HA IPs must be
             #   attached to targets, and only whole targets can go up or down.
@@ -438,11 +408,13 @@ class ResourceMonitor(Component):
             #   - But what if the targets are used for other resources? Again,
             #   must do a whole target at a time, up or down.
             # TODO Secondary ourselves
-            self.fire(ResourceSecondary(self.res))
+            #self.fire(ResourceSecondary(self.res))
 
         elif peer.hostname == self.res.remote.hostname and pool == self.res.remote.pool:
-            logger.error('Pool "%s" on Remote "%s" for Resource "%s" is not healthy.',
-                         pool, self.res.remote.hostname, self.res.name)
+            #logger.error('Pool "%s" on Remote "%s" for Resource "%s" is not healthy.',
+            #             pool, self.res.remote.hostname, self.res.name)
+            pass
+
             # TODO Primary ourselves
             # TODO Add any targets for this resource
             #   - But what if the targets are used for other resources? Again,
@@ -451,7 +423,7 @@ class ResourceMonitor(Component):
             # nothing here)
             #   - But what if the HA IPs are used for others? HA IPs must be
             #   attached to targets, and only whole targets can go up or down.
-            self.fire(ResourcePrimary(self.res))
+            #self.fire(ResourcePrimary(self.res))
 
     @property
     def service(self):
@@ -488,28 +460,28 @@ class ResourceMonitor(Component):
         if cstate == 'Connected':
             """Connected. A DRBD connection has been established, data mirroring is now active. This is the
             normal state"""
-            pass
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
 
         elif cstate == 'WFConnection':
             """WFConnection. This node is waiting until the peer node becomes visible on the network."""
             logger.error("Resource '%s' is %s!", self.res.name, cstate)
-            if self.res.role != 'Primary':
-                self.fire(ResourcePrimary(self.res))
+            #if self.res.role != 'Primary':
+            #    self.fire(ResourcePrimary(self.res))
 
         elif cstate == 'StandAlone':
             """StandAlone. No network configuration available. The resource has not yet been connected, or
             has been administratively disconnected (using drbdadm disconnect), or has dropped its connection
             due to failed authentication or split brain."""
             logger.error("Resource '%s' is %s!", self.res.name, cstate)
-            if self.res.role != 'Primary':
-                self.fire(ResourcePrimary(self.res))
+            #if self.res.role != 'Primary':
+            #    self.fire(ResourcePrimary(self.res))
 
         elif cstate == 'SyncSource':
             """SyncSource. Synchronization is currently running, with the local node being the source of
             synchronization"""
             logger.error("Resource '%s' is %s!", self.res.name, cstate)
-            if self.res.role != 'Primary':
-                self.fire(ResourcePrimary(self.res))
+            #if self.res.role != 'Primary':
+            #    self.fire(ResourcePrimary(self.res))
 
         elif cstate == 'PausedSyncS':
             """PausedSyncS. The local node is the source of an ongoing synchronization, but synchronization
@@ -550,7 +522,7 @@ class ResourceMonitor(Component):
 
         if dstate == 'UpToDate':
             """UpToDate. Consistent, up-to-date state of the data. This is the normal state."""
-            pass
+            logger.error("Resource '%s' is %s!", self.res.name, dstate)
 
         elif dstate == 'Diskless':
             """Diskless. No local block device has been assigned to the DRBD driver. This may mean that the
@@ -590,13 +562,13 @@ class ResourceMonitor(Component):
         if role == 'Primary':
             """Primary. The resource is currently in the primary role, and may be read from and written to.
             This role only occurs on one of the two nodes, unless dual-primary mode is enabled."""
-            pass
+            logger.error("Resource '%s' is %s!", self.res.name, role)
 
         elif role == 'Secondary':
             """Secondary. The resource is currently in the secondary role. It normally receives updates from
             its peer (unless running in disconnected mode), but may neither be read from nor written to.
             This role may occur on one or both nodes."""
-            pass
+            logger.error("Resource '%s' is %s!", self.res.name, role)
 
         elif role == 'Unknown':
             """Unknown. The resource's role is currently unknown. The local resource role never has this
@@ -604,7 +576,7 @@ class ResourceMonitor(Component):
             logger.error("Resource '%s' is %s!", self.res.name, role)
 
         else:
-            raise Exception('Resource "%s" has an unknwon role of "%s"!', role)
+            raise Exception('Resource "%s" has an unknown role of "%s"!', role)
 
         self.res.role = role
         self.res.save()
@@ -628,26 +600,26 @@ class ResourceMonitor(Component):
     def resource_health_check(self):
         self.status()
 
-        # Check disk state
-        if self.res.disk_state != 'UpToDate':
-            logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
-                         self.res.name, self.res.disk_state)
+        ## Check disk state
+        #if self.res.disk_state != 'UpToDate':
+        #    logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
+        #                 self.res.name, self.res.disk_state)
 
-        if self.res.remote_disk_state != 'UpToDate':
-            logger.error('Resource "%s" on Remote "%s" has a disk state of "%s", not "UpToDate"!',
-                         self.res.name, self.res.remote.hostname, self.res.remote_disk_state)
-            # TODO If remote disk state is not Unknown, take over as Primary
-            if self.res.remote_disk_state != 'DUnknown':
-                self.fire(ResourcePrimary(self.res))
+        #if self.res.remote_disk_state != 'UpToDate':
+        #    logger.error('Resource "%s" on Remote "%s" has a disk state of "%s", not "UpToDate"!',
+        #                 self.res.name, self.res.remote.hostname, self.res.remote_disk_state)
+        #    # TODO If remote disk state is not Unknown, take over as Primary
+        #    #if self.res.remote_disk_state != 'DUnknown':
+        #    #    self.fire(ResourcePrimary(self.res))
 
-        # Check Connection state
-        if self.res.connection_state != 'Connected':
-            logger.error('Resource "%s" has a connection state of "%s", not "Connected"!',
-                         self.res.name, self.res.connection_state)
-            # TODO If WFConnection, take over as Primary, but doesn't the above
-            # peer_offline handle that?
-            if self.res.connection_state == 'WFConnection':
-                self.fire(ResourcePrimary(self.res))
+        ## Check Connection state
+        #if self.res.connection_state != 'Connected':
+        #    logger.error('Resource "%s" has a connection state of "%s", not "Connected"!',
+        #                 self.res.name, self.res.connection_state)
+        #    # TODO If WFConnection, take over as Primary, but doesn't the above
+        #    # peer_offline handle that?
+        #    #if self.res.connection_state == 'WFConnection':
+        #    #    self.fire(ResourcePrimary(self.res))
 
         # If we have two secondary nodes become primary
         if self.res.role == 'Secondary' and self.res.remote_role == 'Secondary':
@@ -676,8 +648,8 @@ class ResourceMonitor(Component):
 
         self.primary()
 
-    @handler('resource_secondary', channel='*')
-    def _on_res_secondary(self, res):
+    @handler('resource_secondary_success', channel='*')
+    def _on_res_secondary(self, res, *values):
         if res.name != self.res.name:
             return
         self.status()
@@ -687,10 +659,16 @@ class ResourceMonitor(Component):
         self.secondary()
 
     def primary(self):
+        self.fire(ResourcePrimaryPre(self.res))
         self.service.primary()
+        self.status()
+        self.fire(ResourcePrimaryPost(self.res))
 
     def secondary(self):
+        self.fire(ResourceSecondaryPre(self.res))
         self.service.secondary()
+        self.status()
+        self.fire(ResourceSecondaryPost(self.res))
 
     """
     TODO
