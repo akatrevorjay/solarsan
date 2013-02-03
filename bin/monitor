@@ -460,6 +460,10 @@ class ResourceMonitor(Component):
     #def get_service(self):
     #    return self.res.local.service
 
+    """
+    Status Tracking
+    """
+
     def status(self):
         ret = drbd_overview_parser(self.res.name)
         if ret:
@@ -617,6 +621,10 @@ class ResourceMonitor(Component):
         self.res.remote_role = remote_role
         self.res.save()
 
+    """
+    Health Check
+    """
+
     def resource_health_check(self):
         self.status()
 
@@ -647,6 +655,10 @@ class ResourceMonitor(Component):
                         '(dual secondaries).', self.res.name)
             self.fire(ResourcePrimary(self.res))
 
+    """
+    Role Switching
+    """
+
     @handler('resource_primary', channel='*')
     def _on_res_primary(self, res):
         if res.name != self.res.name:
@@ -674,6 +686,16 @@ class ResourceMonitor(Component):
         logger.warning('Demoting self to Secondary for Resource "%s".', self.res.name)
         self.secondary()
 
+    def primary(self):
+        self.service.primary()
+
+    def secondary(self):
+        self.service.secondary()
+
+    """
+    TODO
+    """
+
     #def get_primary(self):
     #    if self._status['role'] == 'Primary':
     #        return self.res.local
@@ -685,12 +707,6 @@ class ResourceMonitor(Component):
         if adjust:
             self.service.adjust()
         return True
-
-    def primary(self):
-        self.service.primary()
-
-    def secondary(self):
-        self.service.secondary()
 
 
 """
