@@ -127,9 +127,11 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     t10_dev_id = m.StringField()
 
     # status
-    #connection_state = m.StringField()
-    #disk_state = m.StringField()
-    #role = m.StringField()
+    connection_state = m.StringField()
+    disk_state = m.StringField()
+    role = m.StringField()
+    remote_disk_state = m.StringField()
+    remote_role = m.StringField()
 
     """
     Avoid possums

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from solarsan.core import logger
-from solarsan.utils.cache import cached_property
+#from solarsan.utils.cache import cached_property
 #from solarsan import conf
 #from solarsan.exceptions import FormattedException
 from setproctitle import setproctitle
@@ -389,11 +389,31 @@ class ResourceSecondary(Event):
     """Demote to Secondary"""
 
 
+class ResourceConnectionStateChange(Event):
+    """Resource Connection State Change"""
+
+
+class ResourceDiskStateChange(Event):
+    """Resource Disk State Change"""
+
+
+class ResourceRoleChange(Event):
+    """Resource Connection State Change"""
+
+
+class ResourceRemoteDiskStateChange(Event):
+    """Resource Remote Disk State Change"""
+
+
+class ResourceRemoteRoleChange(Event):
+    """Resource Remote Role State Change"""
+
+
 class ResourceMonitor(Component):
     def __init__(self, res):
         super(ResourceMonitor, self).__init__()
         self.res = res
-        self._status = None
+        self.status()
 
     @handler('peer_offline', channel='*')
     def _on_peer_offline(self, peer):
@@ -443,158 +463,201 @@ class ResourceMonitor(Component):
     def status(self):
         ret = drbd_overview_parser(self.res.name)
         if ret:
-            for k in ['connection_state', 'disk_state', 'role']:
-                setattr(self, k, ret.get(k, None))
+            if ret['connection_state'] != self.res.connection_state:
+                self.fire(ResourceConnectionStateChange(self.res, ret['connection_state']))
+
+            if ret['disk_state'] != self.res.disk_state:
+                self.fire(ResourceDiskStateChange(self.res, ret['disk_state']))
+            if ret['role'] != self.res.role:
+                self.fire(ResourceRoleChange(self.res, ret['role']))
+
+            if ret['remote_disk_state'] != self.res.remote_disk_state:
+                self.fire(ResourceRemoteDiskStateChange(self.res, ret['remote_disk_state']))
+            if ret['remote_role'] != self.res.remote_role:
+                self.fire(ResourceRemoteRoleChange(self.res, ret['remote_role']))
         return ret
 
-    def resource_health_check(self):
-        status = self.status()
+    def resource_connection_state_change(self, res, cstate):
+        if self.res.name != res.name:
+            return
 
-        if not status:
-            logger.error('Could not get Drbd status!')
-            return False
-
-        if self.disk_state == 'UpToDate':
-            """UpToDate. Consistent, up-to-date state of the data. This is the normal state."""
-            pass
-
-        elif self.disk_state == 'Diskless':
-            """Diskless. No local block device has been assigned to the DRBD driver. This may mean that the
-            resource has never attached to its backing device, that it has been manually detached using
-            drbdadm detach, or that it automatically detached after a lower-level I/O error."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.disk_state)
-
-        elif self.disk_state == 'Inconsistent':
-            """Inconsistent. The data is inconsistent. This status occurs immediately upon creation of a new
-            resource, on both nodes (before the initial full sync). Also, this status is found in one node
-            (the synchronization target) during synchronization."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.disk_state)
-
-        elif self.disk_state == 'Outdated':
-            """Outdated. Resource data is consistent, but outdated."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.disk_state)
-
-        elif self.disk_state == 'DUnknown':
-            """DUnknown. This state is used for the peer disk if no network connection is available."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.disk_state)
-
-        elif self.disk_state == 'Consistent':
-            """Consistent. Consistent data of a node without connection. When the connection is established,
-            it is decided whether the data is UpToDate or Outdated."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.disk_state)
-
-        else:
-            raise Exception('Resource "%s" has an unknown disk state of "%s"!', self.disk_state)
-
-        if self.connection_state == 'Connected':
+        if cstate == 'Connected':
             """Connected. A DRBD connection has been established, data mirroring is now active. This is the
             normal state"""
             pass
 
-        elif self.connection_state == 'WFConnection':
+        elif cstate == 'WFConnection':
             """WFConnection. This node is waiting until the peer node becomes visible on the network."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            if self.res.role != 'Primary':
+                self.fire(ResourcePrimary(self.res))
 
-        elif self.connection_state == 'StandAlone':
+        elif cstate == 'StandAlone':
             """StandAlone. No network configuration available. The resource has not yet been connected, or
             has been administratively disconnected (using drbdadm disconnect), or has dropped its connection
             due to failed authentication or split brain."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            if self.res.role != 'Primary':
+                self.fire(ResourcePrimary(self.res))
 
-        elif self.connection_state == 'SyncSource':
+        elif cstate == 'SyncSource':
             """SyncSource. Synchronization is currently running, with the local node being the source of
             synchronization"""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            if self.res.role != 'Primary':
+                self.fire(ResourcePrimary(self.res))
 
-        elif self.connection_state == 'PausedSyncS':
+        elif cstate == 'PausedSyncS':
             """PausedSyncS. The local node is the source of an ongoing synchronization, but synchronization
             is currently paused. This may be due to a dependency on the completion of another synchronization
             process, or due to synchronization having been manually interrupted by drbdadm pause-sync."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
 
-        elif self.connection_state == 'SyncTarget':
+        elif cstate == 'SyncTarget':
             """SyncTarget. Synchronization is currently running, with the local node being the target of
             synchronization."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
 
-        elif self.connection_state == 'PausedSyncT':
+        elif cstate == 'PausedSyncT':
             """PausedSyncT. The local node is the target of an ongoing synchronization, but synchronization
             is currently paused. This may be due to a dependency on the completion of another synchronization
             process, or due to synchronization having been manually interrupted by drbdadm pause-sync."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
 
-        elif self.connection_state == 'VerifyS':
+        elif cstate == 'VerifyS':
             """VerifyS. On-line device verification is currently running, with the local node being the source
             of verification."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
 
-        elif self.connection_state == 'VerifyT':
+        elif cstate == 'VerifyT':
             """VerifyT. On-line device verification is currently running, with the local node being the target
             of verification."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.connection_state)
+            logger.error("Resource '%s' is %s!", self.res.name, cstate)
 
         else:
-            raise Exception('Resource "%s" has an unknown connection state of "%s"!', self.connection_state)
+            raise Exception('Resource "%s" has an unknown connection state of "%s"!', cstate)
 
-        if self.role == 'Primary':
+        self.res.connection_state = cstate
+        self.res.save()
+
+    def resource_disk_state_change(self, res, dstate):
+        if self.res.name != res.name:
+            return
+
+        if dstate == 'UpToDate':
+            """UpToDate. Consistent, up-to-date state of the data. This is the normal state."""
+            pass
+
+        elif dstate == 'Diskless':
+            """Diskless. No local block device has been assigned to the DRBD driver. This may mean that the
+            resource has never attached to its backing device, that it has been manually detached using
+            drbdadm detach, or that it automatically detached after a lower-level I/O error."""
+            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+
+        elif dstate == 'Inconsistent':
+            """Inconsistent. The data is inconsistent. This status occurs immediately upon creation of a new
+            resource, on both nodes (before the initial full sync). Also, this status is found in one node
+            (the synchronization target) during synchronization."""
+            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+
+        elif dstate == 'Outdated':
+            """Outdated. Resource data is consistent, but outdated."""
+            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+
+        elif dstate == 'DUnknown':
+            """DUnknown. This state is used for the peer disk if no network connection is available."""
+            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+
+        elif dstate == 'Consistent':
+            """Consistent. Consistent data of a node without connection. When the connection is established,
+            it is decided whether the data is UpToDate or Outdated."""
+            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+
+        else:
+            raise Exception('Resource "%s" has an unknown disk state of "%s"!', dstate)
+
+        self.res.disk_state = dstate
+        self.res.save()
+
+    def resource_role_change(self, res, role):
+        if self.res.name != res.name:
+            return
+
+        if role == 'Primary':
             """Primary. The resource is currently in the primary role, and may be read from and written to.
             This role only occurs on one of the two nodes, unless dual-primary mode is enabled."""
             pass
 
-        elif self.role == 'Secondary':
+        elif role == 'Secondary':
             """Secondary. The resource is currently in the secondary role. It normally receives updates from
             its peer (unless running in disconnected mode), but may neither be read from nor written to.
             This role may occur on one or both nodes."""
             pass
 
-        elif self.role == 'Unknown':
+        elif role == 'Unknown':
             """Unknown. The resource's role is currently unknown. The local resource role never has this
             status. It is only displayed for the peer's resource role, and only in disconnected mode."""
-            logger.error("Resource '%s' is %s!", self.res.name, self.role)
+            logger.error("Resource '%s' is %s!", self.res.name, role)
 
         else:
-            raise Exception('Resource "%s" has an unknwon role of "%s"!', self.role)
+            raise Exception('Resource "%s" has an unknwon role of "%s"!', role)
+
+        self.res.role = role
+        self.res.save()
+
+    def resource_remote_disk_state_change(self, res, dstate):
+        if self.res.name != res.name:
+            return
+        self.res.remote_disk_state = dstate
+        self.res.save()
+
+    def resource_remote_role_change(self, res, remote_role):
+        if self.res.name != res.name:
+            return
+        self.res.remote_role = remote_role
+        self.res.save()
+
+    def resource_health_check(self):
+        self.status()
 
         # Check disk state
-        if self.disk_state != 'UpToDate':
+        if self.res.disk_state != 'UpToDate':
             logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
-                         self.res.name, self.disk_state)
+                         self.res.name, self.res.disk_state)
 
-        if status['remote_disk_state'] != 'UpToDate':
+        if self.res.remote_disk_state != 'UpToDate':
             logger.error('Resource "%s" on Remote "%s" has a disk state of "%s", not "UpToDate"!',
-                         self.res.name, self.res.remote.hostname, status['remote_disk_state'])
+                         self.res.name, self.res.remote.hostname, self.res.remote_disk_state)
             # TODO If remote disk state is not Unknown, take over as Primary
-            if status['remote_disk_state'] != 'DUnknown':
+            if self.res.remote_disk_state != 'DUnknown':
                 self.fire(ResourcePrimary(self.res))
 
         # Check Connection state
-        if status['connection_state'] != 'Connected':
+        if self.res.connection_state != 'Connected':
             logger.error('Resource "%s" has a connection state of "%s", not "Connected"!',
-                         self.res.name, status['connection_state'])
+                         self.res.name, self.res.connection_state)
             # TODO If WFConnection, take over as Primary, but doesn't the above
             # peer_offline handle that?
-            if status['connection_state'] == 'WFConnection':
+            if self.res.connection_state == 'WFConnection':
                 self.fire(ResourcePrimary(self.res))
 
         # If we have two secondary nodes become primary
-        if status['role'] == 'Secondary' and status['remote_role'] == 'Secondary':
+        if self.res.role == 'Secondary' and self.res.remote_role == 'Secondary':
             logger.info('Taking over as Primary for Resource "%s" because someone has to. ' +
                         '(dual secondaries).', self.res.name)
             self.fire(ResourcePrimary(self.res))
-
-        self._status = status.copy()
 
     @handler('resource_primary', channel='*')
     def _on_res_primary(self, res):
         if res.name != self.res.name:
             return
         self.status()
-        if self.role == 'Primary':
+        if self.res.role == 'Primary':
             return
 
         logger.warning('Promoting self to Primary for Resource "%s".', self.res.name)
 
-        if self.disk_state != 'UpToDate':
+        if self.res.disk_state != 'UpToDate':
             logger.error('Cannot promote self to Primary for Resource "%s", ' +
                          'as disk state is not UpToDate.', self.res.name)
             return
@@ -606,7 +669,7 @@ class ResourceMonitor(Component):
         if res.name != self.res.name:
             return
         self.status()
-        if self.role == 'Secondary':
+        if self.res.role == 'Secondary':
             return
         logger.warning('Demoting self to Secondary for Resource "%s".', self.res.name)
         self.secondary()
