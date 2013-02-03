@@ -15,11 +15,6 @@ import rpyc
 
 
 """
-Events
-"""
-
-
-"""
 Monitor
 """
 
@@ -36,6 +31,7 @@ class Monitor(Component):
         Discovery().register(self)
         PeerManager().register(self)
         ResourceManager().register(self)
+        TargetManager().register(self)
 
     def started(self, *args):
         self.fire(MonitorStatusUpdate('Started'))
@@ -131,13 +127,46 @@ class ResourceManager(Component):
 
 
 """
+Target Manager
+"""
+
+
+class TargetWriteConfig(Event):
+    """Write Target Config"""
+
+
+class TargetReloadConfig(Event):
+    """Write Target Config"""
+
+
+class TargetManager(Component):
+
+    def __init__(self):
+        super(TargetManager, self).__init__()
+
+    @handler('target_write_config', channel='*')
+    def _on_target_write_config(self):
+        self.service.scst_write_config()
+        self.fire(TargetReloadConfig())
+
+    @handler('target_reload_config', channel='*')
+    def _on_target_reload_config(self):
+        self.service.scst_reload_config()
+
+    def write_config_and_reload(self):
+        self.service.scst_write_config()
+        self.service.scst_clear_config()
+        self.service.scst_reload_config()
+
+
+"""
 Discovery
 """
 
 
 class DiscoverPeers(Event):
     """Discover Event"""
-    complete = True
+    #complete = True
 
 
 class ProbePeer(Event):
@@ -241,6 +270,11 @@ class PeerMonitor(Component):
         self.peer = peer
         self._heartbeat_timeout_count = None
 
+        if self.peer.is_offline:
+            logger.warning('Peer "%s" is already marked as offline. Marking online to ensure this is ' +
+                           'still true.', self.peer.hostname)
+            self.mark_online(startup=True)
+
     @handler('peer_heartbeat', channel='*')
     def _on_peer_heartbeat(self):
         # This is done so the first try is always attempted, even if the Peer
@@ -284,8 +318,9 @@ class PeerMonitor(Component):
         if not self.peer.is_offline:
             self.mark_offline()
 
-    def mark_online(self):
-        logger.warning('Peer "%s" is ONLINE!', self.peer.hostname)
+    def mark_online(self, startup=False):
+        if not startup:
+            logger.warning('Peer "%s" is ONLINE!', self.peer.hostname)
         self.peer.is_offline = False
         self.peer.save()
         self._heartbeat_timeout_count = 0
@@ -294,9 +329,6 @@ class PeerMonitor(Component):
         logger.error('Peer "%s" is OFFLINE!', self.peer.hostname)
         self.peer.is_offline = True
         self.peer.save()
-
-        # Take over the volumes, write out any targets, enable any HA ips, etc
-        #self.fire(PromoteToPrimary(self.peer))
 
     @handler('peer_discovered', channel='*')
     def _on_peer_discovered(self, peer, created=False):
@@ -309,8 +341,13 @@ class PeerMonitor(Component):
     def _on_pool_health_check(self):
         if self.peer.is_offline:
             return
-        storage = self.peer.get_service('storage', default=None)
-        Pool = storage.root.pool()
+        try:
+            storage = self.peer.get_service('storage', default=None)
+            Pool = storage.root.pool()
+        except AttributeError:
+            logger.error('Could not connect to Peer "%s". Is it offline and we don\'t know it yet?',
+                         self.peer.hostname)
+            return
         pools = Pool.list()
         #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
         ret = True
@@ -326,6 +363,8 @@ class PeerMonitor(Component):
             return
         logger.error('Pool "%s" on Peer "%s" is NOT healthy!', pool, self.peer.hostname)
 
+        # TODO If Pool has remote disks, and those are the only ones that are
+        # missing, try a 'zpool clear'
 
 """
 Resource Monitor
@@ -354,6 +393,43 @@ class ResourceMonitor(Component):
         self.res = res
         self._status = None
 
+    @handler('peer_offline', channel='*')
+    def _on_peer_offline(self, peer):
+        if peer.hostname != self.res.remote.hostname:
+            return
+        logger.error('Remote "%s" for Resource "%s" went offline.',
+                     self.res.remote.hostname, self.res.name)
+        # TODO Take over the volumes, write out any targets, enable any HA ips, etc
+        #self.fire(PromoteToPrimary(self.peer))
+
+    @handler('pool_not_healthy', channel='*')
+    def _on_pool_not_healthy(self, peer, pool):
+        if peer.hostname == self.res.local.hostname and pool == self.res.local.pool:
+            logger.error('Pool "%s" for Resource "%s" is not healthy.',
+                         pool, self.res.name)
+            # TODO Remove any HA IPs for this resource (handled by the target,
+            # nothing here)
+            #   - But what if the HA IPs are used for others? HA IPs must be
+            #   attached to targets, and only whole targets can go up or down.
+            # TODO Remove any targets for this resource
+            #   - But what if the targets are used for other resources? Again,
+            #   must do a whole target at a time, up or down.
+            # TODO Secondary ourselves
+
+        elif peer.hostname == self.res.remote.hostname and pool == self.res.remote.pool:
+            logger.error('Pool "%s" on Remote "%s" for Resource "%s" is not healthy.',
+                         pool, self.res.remote.hostname, self.res.name)
+            # TODO Primary ourselves
+            # TODO Add any targets for this resource
+            #   - But what if the targets are used for other resources? Again,
+            #   must do a whole target at a time, up or down.
+            # TODO Add any HA IPs for that target (handled by the target,
+            # nothing here)
+            #   - But what if the HA IPs are used for others? HA IPs must be
+            #   attached to targets, and only whole targets can go up or down.
+
+            #self.fire(PromoteToPrimary(self.peer))
+
     @property
     def service(self):
         return self.res.local.service
@@ -361,21 +437,28 @@ class ResourceMonitor(Component):
     def resource_health_check(self):
         status = self.service.status()
 
+        # Check disk state
+        if status['disk_state'] != 'UpToDate':
+            logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
+                         self.res.name, status['disk_state'])
+
+        if status['remote_disk_state'] != 'UpToDate':
+            logger.error('Resource "%s" on Remote "%s" has a disk state of "%s", not "UpToDate"!',
+                         self.res.name, status['remote_disk_state'])
+            # TODO If remote disk state is not Unknown, take over as Primary
+
+        # Check Connection state
+        if status['connection_state'] != 'Connected':
+            logger.error('Resource "%s" has a connection state of "%s", not "Connected"!',
+                         self.res.name, status['connection_state'])
+            # TODO If WFConnection, take over as Primary, but doesn't the above
+            # peer_offline handle that?
+
         # If we have two secondary nodes become primary
         if status['role'] == 'Secondary' and status['remote_role'] == 'Secondary':
             logger.info('Taking over as Primary for Resource "%s" because someone has to. ' +
                         '(dual secondaries).', self.res.name)
             self.primary()
-
-        # TODO check Connection state
-        if status['connection_state'] != 'Connected':
-            logger.error('Resource "%s" has a connection state of "%s", not "Connected"!',
-                         self.res.name, status['connection_state'])
-
-        # TODO check UpToDate
-        if status['disk_state'] != 'UpToDate':
-            logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
-                         self.res.name, status['disk_state'])
 
         self._status = status.copy()
 
@@ -396,40 +479,6 @@ class ResourceMonitor(Component):
 
     def secondary(self):
         self.service.secondary()
-
-
-"""
-Target Monitor
-"""
-
-
-class TargetWriteConfig(Event):
-    """Write Target Config"""
-
-
-class TargetReloadConfig(Event):
-    """Write Target Config"""
-
-
-# TODO
-class TargetMonitor(Component):
-    def __init__(self):
-        super(TargetMonitor, self).__init__()
-
-    #def peer_heartbeat(self):
-    #    pass
-
-    def target_write_config(self):
-        self.service.scst_write_config()
-        self.fire(TargetReloadConfig())
-
-    def target_reload_config(self):
-        self.service.scst_reload_config()
-
-    def target_scst_write_config_and_reload(self):
-        self.service.scst_write_config()
-        self.service.scst_clear_config()
-        self.service.scst_reload_config()
 
 
 """
