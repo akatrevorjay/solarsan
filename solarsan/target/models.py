@@ -5,12 +5,12 @@ from .utils import generate_wwn, is_valid_wwn
 
 
 class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
-    #meta = {'abstract': True}
-    meta = {'allow_inheritance': True}
+    meta = {'abstract': True}
+    #meta = {'allow_inheritance': True}
 
     name = m.StringField()
     luns = m.ListField()
-    initiators = m.ListField()
+    #initiators = m.ListField()
     is_enabled = m.BooleanField()
 
     def enumerate_luns(self):
@@ -24,13 +24,17 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 class iSCSITarget(Target):
     #meta = {'allow_inheritance': True}
 
+    def generate_wwn(self, serial=None):
+        self.name = generate_wwn('iqn')
+        return True
+
     def save(self, *args, **kwargs):
         """Overrides save to ensure name is a valid iqn; generates one if None"""
         if self.name:
             if not is_valid_wwn('iqn', self.name):
                 raise ValueError("The name '%s' is not a valid iqn" % self.name)
         else:
-            self.name = generate_wwn('iqn')
+            self.generate_wwn()
         super(iSCSITarget, self).save(*args, **kwargs)
 
 

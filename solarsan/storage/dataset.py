@@ -166,7 +166,7 @@ class Dataset(Base):
 
     @property
     def basename(self):
-        return self.path(None, 1)[0]
+        return self.path(-1)[0]
 
     @property
     def pool_name(self):
