@@ -1,0 +1,60 @@
+## ________
+## SolarSan
+##
+## ---------------------------------------------------------------------------------------------------------------
+## This file is dynamically generated. If you make changes don't cry when they are overwritten.
+##
+
+# This file describes the network ifaces available on your system
+# and how to activate them. For more information, see ifaces(5).
+
+# The loopback network iface
+auto lo
+iface lo inet loopback
+
+{%- for iface in ifaces %}
+
+{% if not iface.proto == 'none' %}
+##
+## {{ iface.name }} / {{ iface.type }}
+##
+auto {{ iface.name }}
+iface {{ iface.name }} inet {{ iface.proto }}
+    {%- if not iface.proto == 'dhcp' %}
+
+    address {{ iface.ipaddr }}
+    netmask {{ iface.netmask }}
+    {%- if iface.gateway %}
+    gateway {{ iface.gateway }}
+    {%- endif %}
+
+    {%- endif %}
+
+    {%- if iface.type == 'ethernet' %}
+    {%- if iface.mtu %}
+    mtu {{ iface.mtu }}
+    {%- endif %}
+    {%- elif iface.type == 'infiniband' %}
+    ## Infiniband in connected mode vs datagram supports MTUs of 64k, but disables multicast packets.
+    pre-up echo connected > /sys/class/net/{{ iface.name }}/mode || true
+    mtu 65520
+    {%- endif %}
+{%- else %}
+##
+## {{ iface.name }} / {{ iface.type }} / disabled(proto=none)
+##
+{%- endif %}
+
+{%- endfor %}
+
+{% for iface in floating_ips %}
+##
+## Floating IP: {{ iface.iface }}:{{ iface.name }}
+## Peer: {{ iface.peer.hostname }}
+##
+iface {{ iface.iface }}:{{ iface.name }} inet static
+    address {{ iface.ip }}
+    netmask {{ iface.netmask }}
+
+{% endfor %}
+

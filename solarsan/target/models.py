@@ -4,7 +4,8 @@ import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from .utils import generate_wwn, is_valid_wwn
 from . import scstadmin
-from storage.drbd import DrbdResource
+#from storage.drbd import DrbdResource
+from ha.models import ActivePassiveIP
 
 
 class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
@@ -28,20 +29,20 @@ class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
 
 class VolumeDevice(Device):
     pool = m.StringField()
-    volume = m.StringField()
+    volume_name = m.StringField()
 
     @property
     def device(self):
         return '/dev/zvol/%s/%s' % (self.pool, self.volume)
 
 
-class ResourceDevice(Device):
-    resource = m.ReferenceField(DrbdResource, dbref=False)
-    #resource = m.GenericReferenceField()
-
-    @property
-    def device(self):
-        return self.resource.device
+#class ResourceDevice(Device):
+#    resource = m.ReferenceField(DrbdResource, dbref=False)
+#    #resource = m.GenericReferenceField()
+#
+#    @property
+#    def device(self):
+#        return self.resource.device
 
 
 class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
@@ -50,7 +51,8 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     name = m.StringField()
     devices = m.ListField(m.GenericReferenceField())
     #initiators = m.ListField()
-    is_enabled = m.BooleanField()
+
+    floating_ip = m.ReferenceField(ActivePassiveIP, dbref=False)
 
     @property
     def is_target_added(self):

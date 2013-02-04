@@ -116,6 +116,12 @@ class DrbdPeer(m.EmbeddedDocument):
         return meth(*args, **kwargs)
 
 
+#class DrbdResourceTargetMapping(m.EmbeddedDocument):
+#    resource = m.ReferenceField(DrbdResource, dbref=False)
+#    target = m.GenericReferenceField()
+#    lun = m.IntField()
+
+
 class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     # Volumes are made with this name; the Drbd resource is also named this.
     name = m.StringField(unique=True, required=True)
@@ -123,14 +129,15 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     remote = m.EmbeddedDocumentField(DrbdPeer)
     shared_secret = m.StringField(required=True)
     sync_rate = m.StringField()
-
-    # TODO Not needed, remove
     size = m.StringField()
 
     # For target
+    target_luns = m.ListField(m.DictField())
+    #target_luns = m.ListField(m.EmbeddedDocumentField(DrbdResourceTargetMapping))
     t10_dev_id = m.StringField()
 
     # status
+    #status = m.DictField()
     connection_state = m.StringField()
     disk_state = m.StringField()
     role = m.StringField()

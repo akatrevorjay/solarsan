@@ -17,11 +17,13 @@ from storage.volume import Volume
 
 from storage.drbd import DrbdPeer, DrbdResource
 
-from target.models import Target, iSCSITarget, SRPTarget, Device, VolumeDevice, ResourceDevice
+from target.models import Target, iSCSITarget, SRPTarget
+#Device, VolumeDevice, ResourceDevice
 import target.scst
 from target import scstadmin, scst
-
 import target.utils
+
+from ha.models import ActivePassiveIP
 
 import rpyc
 

@@ -13,6 +13,7 @@ from target.models import iSCSITarget
 #import target.scst
 from solarsan.monitor.udev import UDev
 from solarsan.monitor.discovery import Discovery
+from ha.models import ActivePassiveIP
 
 
 """
@@ -34,6 +35,7 @@ class Monitor(Component):
         ResourceManager().register(self)
         TargetManager().register(self)
         DeviceManager().register(self)
+        FailoverIPManager().register(self)
 
     def started(self, *args):
         self.fire(MonitorStatusUpdate('Started'))
@@ -133,12 +135,6 @@ class ResourceManager(Component):
 Target Manager
 """
 
-"""
-On Startup:
-    Add each target manually
-
-"""
-
 
 class TargetStart(Event):
     """Start Target"""
@@ -164,31 +160,67 @@ class TargetManager(Component):
     def target_stop(self, target):
             target.stop()
 
-    """
-    Meh
-    """
 
-    #def resource_role_change(self, res, role):
-    #    if role in ['Primary', 'Secondary']:
-    #        self.fire(TargetWriteConfig())
+"""
+Failover IP Manager
+"""
 
-    def resource_primary_post(self, res):
-        for name, tgt in self.targets.iteritems():
-            for dev in tgt.devices:
-                if res.name == dev.name:
-                    logger.error("FOUND RES %s in %s", res, tgt)
-                    dev.open()
 
-    def resource_secondary_pre(self, res):
-        #self.res_skip[res.name] = True
+class FailoverIPManager(Component):
+    def __init__(self):
+        super(FailoverIPManager, self).__init__()
+        self.ips = {}
+        self.monitors = {}
 
-        # TODO Find a way to exclude res
-        #self.fire(TargetWriteConfig(skip=res.name))
-        pass
+    def started(self, *args):
+        for ip in ActivePassiveIP.objects.all():
+            self.ips[ip.name] = ip
+            self.monitors[ip.name] = FailoverIPMonitor(ip).register(self)
 
-    #def started(self, *args):
-    #    """Setup all targets"""
-    #    for tgt in iSCSITarget.objects.all():
+
+"""
+Failover IP Monitor
+"""
+
+
+class ActiveIP(Event):
+    """Start FailoverIP"""
+
+
+class PassiveIP(Event):
+    """Stop FailoverIP"""
+
+
+class FailoverIPMonitor(Component):
+    def __init__(self, ip):
+        super(FailoverIPMonitor, self).__init__()
+        self.ip = ip
+
+    #@handler('peer_failover', channel='*')
+    #def _on_peer_failover(self, peer):
+    #    if peer.uuid != self.ip.peer.uuid:
+    #        return
+    #    logger.error('Failing over floating IP for Peer "%s".', self.ip.peer.hostname)
+    #    self.fire(ActiveIP(self.ip))
+
+    @handler('peer_offline', channel='*')
+    def _on_peer_offline(self, peer):
+        if peer.uuid != self.ip.peer.uuid:
+            return
+        logger.error('Failing over floating IP for offline Peer "%s".', self.ip.peer.hostname)
+        self.fire(ActiveIP(self.ip))
+
+    @handler('active_i_p', channel='*')
+    def active_ip(self, ip):
+        if ip.name != self.ip.name:
+            return
+        #ip.start()
+
+    @handler('passive_i_p', channel='*')
+    def passive_ip(self, ip):
+        if ip.name != self.ip.name:
+            return
+        #ip.stop()
 
 
 """
@@ -202,11 +234,11 @@ class DeviceManager(Component):
 
         UDev().register(self)
 
-    def device_add(self, device):
-        pass
+    #def device_add(self, device):
+    #    pass
 
-    def device_remove(self, device):
-        pass
+    #def device_remove(self, device):
+    #    pass
 
 
 """
@@ -220,6 +252,10 @@ class PeerOnline(Event):
 
 class PeerOffline(Event):
     """Peer Offline Event"""
+
+
+class PeerFailover(Event):
+    """Peer Failover Event"""
 
 
 class PeerPoolNotHealthy(Event):
@@ -293,6 +329,7 @@ class PeerMonitor(Component):
         logger.error('Peer "%s" is OFFLINE!', self.peer.hostname)
         self.peer.is_offline = True
         self.peer.save()
+        self.fire(PeerFailover(self.peer))
 
     @handler('peer_discovered', channel='*')
     def _on_peer_discovered(self, peer, created=False):

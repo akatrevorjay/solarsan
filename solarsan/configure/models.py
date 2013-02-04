@@ -8,7 +8,7 @@
 #from solarsan.core import logger
 from solarsan import conf
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
-from solarsan.template import quick_template
+#from solarsan.template import quick_template
 import mongoengine as m
 
 #import re
@@ -86,7 +86,7 @@ def get_interface(name):
     return pynetlinux.ifconfig.Interface(name)
 
 
-class NicConfig(m.Document, CreatedModifiedDocMixIn):
+class NicConfig(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
     mac = m.StringField()
     name = m.StringField()
     PROTO_CHOICES = (
@@ -225,12 +225,3 @@ def get_all_local_ipv4_addrs(nics=None, lo=False):
         addrs = netifaces.ifaddresses(name)[netifaces.AF_INET]
         ret[name] = addrs
     return ret
-
-
-def write_network_interfaces_config():
-    """Write out network configuration"""
-    context = dict(
-        ifaces=NicConfig.objects.filter(is_enabled=True),
-        netconf=get_network_config(),
-    )
-    return quick_template('configure/network/interfaces.template', context=context, is_file=True)
