@@ -78,10 +78,20 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         if not self.is_target_enabled:
             scstadmin.enable_target(self.name, self.driver)
 
+    _dev_handler = 'vdisk_blockio'
+
+    def _open_device(self, name, device):
+        if not scstadmin.does_device_exist(name):
+            scstadmin.open_dev(name, self._dev_handler, filename=device)
+
+    def _close_device(self, name):
+        if scstadmin.does_device_exist(name):
+            scstadmin.close_dev(name, self._dev_handler, force=True)
+
     def _add_devices(self):
         for x, device in enumerate(self.devices):
             x += 1
-            device.open()
+            self._open_device(device.name, device.device)
             if not scstadmin.does_target_lun_exist(self.name, self.driver, x):
                 scstadmin.add_lun(x, self.driver, self.name, device.name)
 
@@ -90,7 +100,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
             x += 1
             if scstadmin.does_target_lun_exist(self.name, self.driver, x):
                 scstadmin.rem_lun(x, self.driver, self.name)
-            device.close()
+            self._close_device(device.name)
 
     def start(self):
         self._add_target()

@@ -25,9 +25,10 @@ def does_target_exist(target, driver):
 
 def is_target_enabled(target, driver):
     fn = '%s/targets/%s/%s/enabled' % (SCST_SYS_PATH, driver, target)
-    if os.path.isfile(fn):
+    if os.path.exists(fn):
         ret = fread(fn)
-        return bool(ret)
+        ret.rstrip("\n")
+        return bool(int(ret))
     return False
 
 

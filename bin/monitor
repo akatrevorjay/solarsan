@@ -169,25 +169,45 @@ class TargetMonitor(Component):
         super(TargetMonitor, self).__init__()
         self.target = target
 
-    # When a Peer that we split this target with failsover,
-    # become primary for the target.
-    def peer_failover(self, peer):
-        pass
+    ## When a Peer that we split this target with failsover,
+    ## become primary for the target.
+    #def peer_failover(self, peer):
+    #    pass
 
     def resource_primary_post(self, res):
         for dev in self.target.devices:
             if dev.pk == res.pk:
-                logger.info('Target "%s" member Resource "%s" has become primary! Perhaps I can ' +
-                            'start this target now?', self.target.name, res.name)
+                #logger.info('Target "%s" member Resource "%s" has become primary.', self.target.name, res.name)
+                self.primary()
 
-    #def peer_offline(self, peer):
-    #    pass
+    def resource_secondary_pre(self, res):
+        for dev in self.target.devices:
+            if dev.pk == res.pk:
+                #logger.info('Target "%s" member Resource "%s" wants to become secondary. Trying to ' +
+                #            'deconfigure quickly enough so it can.', self.target.name, res.name)
+                logger.warning('Target "%s" member Resource "%s" is trying to become secondary while ' +
+                               'being part of an active target.',
+                               self.target.name, res.name)
 
     def primary(self):
-        pass
+        missing_devices = []
+        for dev in self.target.devices:
+            if not dev.role == 'Primary':
+                missing_devices.append(dev.name)
+
+        if missing_devices:
+            logger.error('Target "%s" cannot start because some luns are not available: "%s".', self.target.name,
+                         missing_devices)
+            return False
+
+        logger.info('Target "%s" can now start!', self.target.name)
+        self.target.start()
+
+        return True
 
     def secondary(self):
-        pass
+        logger.info('Target "%s" can now stop!', self.target.name)
+        self.target.stop()
 
 
 """
