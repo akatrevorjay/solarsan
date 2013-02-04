@@ -8,6 +8,8 @@ from storage.drbd import DrbdResource, DrbdPeer, DrbdResourceService, drbd_find_
 from storage.parsers.drbd import drbd_overview_parser
 from configure.models import Nic, get_all_local_ipv4_addrs
 from cluster.models import Peer
+#from ha.models import ActivePassiveIP
+from netifaces import interfaces
 import rpyc
 
 
@@ -101,3 +103,12 @@ class StorageService(rpyc.Service):
     def peer_uuid(self):
         """Returns UUID"""
         return conf.config['uuid']
+
+    """
+    Floating IP
+    """
+
+    def floating_ip_is_active(self, name):
+        return name in interfaces()
+        #ip = ActivePassiveIP.objects.get(name=name)
+        #return ip.is_active

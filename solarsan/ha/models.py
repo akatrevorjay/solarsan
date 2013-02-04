@@ -5,6 +5,7 @@ from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from cluster.models import Peer
 import sh
 from netifaces import interfaces
+from solarsan.utils.pings import ping_once
 
 
 class ActivePassiveIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
@@ -25,6 +26,18 @@ class ActivePassiveIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     @property
     def is_active(self):
         return self.iface_name in interfaces()
+
+    def _ping_ip(self):
+        return ping_once(self.ip)
+
+    def is_peer_active(self):
+        storage = self.peer.get_service('storage', default=None)
+        if not storage:
+            if self._ping_ip():
+                return True
+            else:
+                return False
+        return storage.root.floating_ip_is_active(self.name)
 
     def ifup(self):
         sh.ifup(self.iface_name)
