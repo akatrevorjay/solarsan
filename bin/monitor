@@ -137,14 +137,6 @@ Target Manager
 """
 
 
-#class TargetStart(Event):
-#    """Start Target"""
-
-
-#class TargetStop(Event):
-#    """Stop Target"""
-
-
 class TargetManager(Component):
 
     def __init__(self):
@@ -157,11 +149,21 @@ class TargetManager(Component):
             #self.targets[tgt.name] = tgt
             self.monitors[tgt.name] = TargetMonitor(tgt).register(self)
 
-    #def target_start(self, target):
-    #    target.start()
 
-    #def target_stop(self, target):
-    #    target.stop()
+class TargetStart(Event):
+    """Start Target"""
+
+
+class TargetStop(Event):
+    """Stop Target"""
+
+
+class TargetStarted(Event):
+    """Start Target"""
+
+
+class TargetStopped(Event):
+    """Stop Target"""
 
 
 class TargetMonitor(Component):
@@ -169,27 +171,36 @@ class TargetMonitor(Component):
         super(TargetMonitor, self).__init__()
         self.target = target
 
-    ## When a Peer that we split this target with failsover,
-    ## become primary for the target.
-    #def peer_failover(self, peer):
-    #    pass
+    # When a Peer that we split this target with failsover,
+    # become primary for the target.
+    # ^ This should already be handled
+    #   by resourcemonitor, the exception is when monitor is started while peer
+    #   is already dead. In that case, peer_failover will work.
+    def peer_failover(self, peer):
+        for dev in self.target.devices:
+            if dev.remote.uuid != peer.uuid:
+                continue
+
+            self.fire(TargetStart(self.target))
+            return True
 
     def resource_primary_post(self, res):
         for dev in self.target.devices:
             if dev.pk == res.pk:
                 #logger.info('Target "%s" member Resource "%s" has become primary.', self.target.name, res.name)
-                self.primary()
+                self.fire(TargetStart(self.target))
 
     def resource_secondary_pre(self, res):
         for dev in self.target.devices:
             if dev.pk == res.pk:
-                #logger.info('Target "%s" member Resource "%s" wants to become secondary. Trying to ' +
-                #            'deconfigure quickly enough so it can.', self.target.name, res.name)
-                logger.warning('Target "%s" member Resource "%s" is trying to become secondary while ' +
-                               'being part of an active target.',
-                               self.target.name, res.name)
+                logger.info('Target "%s" member Resource "%s" wants to become secondary. Trying to ' +
+                            'deconfigure quickly enough so it can.', self.target.name, res.name)
+                self.fire(TargetStop(self.target))
+                #logger.warning('Target "%s" member Resource "%s" is trying to become secondary while ' +
+                #               'being part of an active target.',
+                #               self.target.name, res.name)
 
-    def primary(self):
+    def check_if_missing_devices(self):
         missing_devices = []
         for dev in self.target.devices:
             if not dev.role == 'Primary':
@@ -198,16 +209,24 @@ class TargetMonitor(Component):
         if missing_devices:
             logger.error('Target "%s" cannot start because some luns are not available: "%s".', self.target.name,
                          missing_devices)
-            return False
+            return True
+        return False
 
+    def target_start(self, target):
+        if target.name != self.target.name:
+            return
+        if self.check_if_missing_devices():
+            return
         logger.info('Target "%s" can now start!', self.target.name)
         self.target.start()
+        self.fire(TargetStarted(self.target))
 
-        return True
-
-    def secondary(self):
+    def target_stop(self, target):
+        if target.name != self.target.name:
+            return
         logger.info('Target "%s" can now stop!', self.target.name)
         self.target.stop()
+        self.fire(TargetStopped(self.target))
 
 
 """
@@ -245,31 +264,48 @@ class FailoverIPMonitor(Component):
         super(FailoverIPMonitor, self).__init__()
         self.ip = ip
         if ip.is_active:
-            logger.info('Floating IP "%s" is currently active.', self.ip.iface_name)
+            logger.info('Floating IP "%s" is currently active upon startup. Deactivating..', self.ip.iface_name)
+            self.ip.ifdown()
 
-    # peer_offline hits faster, but we want the IP comeup to be the very last
-    # thing to be done throughout a failover.
-    @handler('peer_failover', channel='*')
-    def _on_peer_failover(self, peer):
-        if peer.uuid != self.ip.peer.uuid:
+    ## peer_offline hits faster, but we want the IP comeup to be the very last
+    ## thing to be done throughout a failover.
+    #@handler('peer_failover', channel='*')
+    #def _on_peer_failover(self, peer):
+    #    if peer.uuid != self.ip.peer.uuid:
+    #        return
+    #    logger.error('Failing over floating IP "%s" for offline Peer "%s".',
+    #                 self.ip.iface_name, self.ip.peer.hostname)
+    #    self.fire(ActiveIP(self.ip))
+
+    @handler('target_started', channel='*')
+    def _on_target_started(self, target):
+        if target.floating_ip.pk != self.ip.pk:
             return
-        logger.error('Failing over floating IP "%s" for offline Peer "%s".',
-                     self.ip.iface_name, self.ip.peer.hostname)
         self.fire(ActiveIP(self.ip))
 
     @handler('active_ip', channel='*')
-    def ifup(self, ip):
-        if ip.name != self.ip.name:
+    def _on_active_ip(self, ip):
+        if ip.pk != self.ip.pk:
             return
-        if not self.ip.is_active:
-            self.ip.ifup()
+        self.ifup()
 
     @handler('passive_ip', channel='*')
-    def ifdown(self, ip):
-        if ip.name != self.ip.name:
+    def _on_passive_ip(self, ip):
+        if ip.pk != self.ip.pk:
             return
+        self.ifdown()
+
+    def ifup(self):
         if self.ip.is_active:
-            self.ip.ifdown()
+            return
+        logger.info('Floating IP "%s" is being brought up.', self.ip.iface_name)
+        self.ip.ifup()
+
+    def ifdown(self):
+        if not self.ip.is_active:
+            return
+        logger.info('Floating IP "%s" is being brought down.', self.ip.iface_name)
+        self.ip.ifdown()
 
 
 """
