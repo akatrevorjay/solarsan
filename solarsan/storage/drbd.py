@@ -119,13 +119,13 @@ class DrbdPeer(m.EmbeddedDocument):
 class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     # Volumes are made with this name; the Drbd resource is also named this.
     name = m.StringField(unique=True, required=True)
-    local = m.EmbeddedDocumentField(DrbdPeer, required=True)
-    remote = m.EmbeddedDocumentField(DrbdPeer, required=True)
+    local = m.EmbeddedDocumentField(DrbdPeer)
+    remote = m.EmbeddedDocumentField(DrbdPeer)
     shared_secret = m.StringField(required=True)
     sync_rate = m.StringField()
 
     # TODO Not needed, remove
-    size = m.StringField(required=True)
+    size = m.StringField()
 
     # For target
     t10_dev_id = m.StringField()

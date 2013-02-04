@@ -9,8 +9,8 @@ from circuits import Component, Event, Debugger, Timer, handler
 #from circuits.tools import inspect
 from storage.drbd import DrbdResource, drbd_overview_parser
 from cluster.models import Peer
-#from target.models import iSCSITarget
-import target.scst
+from target.models import iSCSITarget
+#import target.scst
 from solarsan.monitor.udev import UDev
 from solarsan.monitor.discovery import Discovery
 
@@ -101,6 +101,7 @@ Resource Manager
 
 class ResourceHealthCheck(Event):
     """Check Resource Health"""
+    #complete = True
 
 
 class ResourceManager(Component):
@@ -139,18 +140,44 @@ On Startup:
 """
 
 
+class TargetStart(Event):
+    """Start Target"""
+
+
+class TargetStop(Event):
+    """Stop Target"""
+
+
 class TargetManager(Component):
 
     def __init__(self):
         super(TargetManager, self).__init__()
+        self.targets = {}
+
+    def started(self, *args):
+        for tgt in iSCSITarget.objects.all():
+            self.targets[tgt.name] = tgt
+
+    def target_start(self, target):
+            target.start()
+
+    def target_stop(self, target):
+            target.stop()
+
+    """
+    Meh
+    """
 
     #def resource_role_change(self, res, role):
     #    if role in ['Primary', 'Secondary']:
     #        self.fire(TargetWriteConfig())
 
     def resource_primary_post(self, res):
-        #self.fire(TargetWriteConfig())
-        pass
+        for name, tgt in self.targets.iteritems():
+            for dev in tgt.devices:
+                if res.name == dev.name:
+                    logger.error("FOUND RES %s in %s", res, tgt)
+                    dev.open()
 
     def resource_secondary_pre(self, res):
         #self.res_skip[res.name] = True
@@ -162,8 +189,6 @@ class TargetManager(Component):
     #def started(self, *args):
     #    """Setup all targets"""
     #    for tgt in iSCSITarget.objects.all():
-
-
 
 
 """
@@ -419,19 +444,32 @@ class ResourceMonitor(Component):
 
     def status(self):
         ret = drbd_overview_parser(self.res.name)
-        if ret:
-            if ret['connection_state'] != self.res.connection_state:
-                self.fire(ResourceConnectionStateChange(self.res, ret['connection_state']))
+        if not ret:
+            return ret
 
-            if ret['disk_state'] != self.res.disk_state:
-                self.fire(ResourceDiskStateChange(self.res, ret['disk_state']))
-            if ret['role'] != self.res.role:
-                self.fire(ResourceRoleChange(self.res, ret['role']))
+        events = []
+        if ret['connection_state'] != self.res.connection_state:
+            events.append(ResourceConnectionStateChange(self.res, ret['connection_state']))
+        if ret['disk_state'] != self.res.disk_state:
+            events.append(ResourceDiskStateChange(self.res, ret['disk_state']))
+        if ret['role'] != self.res.role:
+            events.append(ResourceRoleChange(self.res, ret['role']))
+        if ret['remote_disk_state'] != self.res.remote_disk_state:
+            events.append(ResourceRemoteDiskStateChange(self.res, ret['remote_disk_state']))
+        if ret['remote_role'] != self.res.remote_role:
+            events.append(ResourceRemoteRoleChange(self.res, ret['remote_role']))
 
-            if ret['remote_disk_state'] != self.res.remote_disk_state:
-                self.fire(ResourceRemoteDiskStateChange(self.res, ret['remote_disk_state']))
-            if ret['remote_role'] != self.res.remote_role:
-                self.fire(ResourceRemoteRoleChange(self.res, ret['remote_role']))
+        keys = ['connection_state', 'disk_state', 'role']
+        keys += ['remote_' + x for x in keys[1:]]
+
+        for k, v in ret.iteritems():
+            if k in keys:
+                setattr(self.res, k, v)
+        self.res.save()
+
+        for event in events:
+            self.fire(event)
+
         return ret
 
     def resource_connection_state_change(self, res, cstate):
@@ -494,9 +532,6 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown connection state of "%s"!', cstate)
 
-        self.res.connection_state = cstate
-        self.res.save()
-
     def resource_disk_state_change(self, res, dstate):
         if self.res.name != res.name:
             return
@@ -533,9 +568,6 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown disk state of "%s"!', dstate)
 
-        self.res.disk_state = dstate
-        self.res.save()
-
     def resource_role_change(self, res, role):
         if self.res.name != res.name:
             return
@@ -559,20 +591,13 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown role of "%s"!', role)
 
-        self.res.role = role
-        self.res.save()
-
     def resource_remote_disk_state_change(self, res, dstate):
         if self.res.name != res.name:
             return
-        self.res.remote_disk_state = dstate
-        self.res.save()
 
     def resource_remote_role_change(self, res, remote_role):
         if self.res.name != res.name:
             return
-        self.res.remote_role = remote_role
-        self.res.save()
 
     """
     Health Check
@@ -580,27 +605,6 @@ class ResourceMonitor(Component):
 
     def resource_health_check(self):
         self.status()
-
-        ## Check disk state
-        #if self.res.disk_state != 'UpToDate':
-        #    logger.error('Resource "%s" has a disk state of "%s", not "UpToDate"!',
-        #                 self.res.name, self.res.disk_state)
-
-        #if self.res.remote_disk_state != 'UpToDate':
-        #    logger.error('Resource "%s" on Remote "%s" has a disk state of "%s", not "UpToDate"!',
-        #                 self.res.name, self.res.remote.hostname, self.res.remote_disk_state)
-        #    # TODO If remote disk state is not Unknown, take over as Primary
-        #    #if self.res.remote_disk_state != 'DUnknown':
-        #    #    self.fire(ResourcePrimary(self.res))
-
-        ## Check Connection state
-        #if self.res.connection_state != 'Connected':
-        #    logger.error('Resource "%s" has a connection state of "%s", not "Connected"!',
-        #                 self.res.name, self.res.connection_state)
-        #    # TODO If WFConnection, take over as Primary, but doesn't the above
-        #    # peer_offline handle that?
-        #    #if self.res.connection_state == 'WFConnection':
-        #    #    self.fire(ResourcePrimary(self.res))
 
         # If we have two secondary nodes become primary
         if self.res.role == 'Secondary' and self.res.remote_role == 'Secondary':
