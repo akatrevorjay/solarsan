@@ -7,7 +7,7 @@
 
 #from solarsan.core import logger
 from solarsan import conf
-from solarsan.models import Config, CreatedModifiedDocMixIn, ReprMixIn
+from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from solarsan.template import quick_template
 import mongoengine as m
 
@@ -26,7 +26,9 @@ Network
 
 
 def get_network_config():
-    return Config.objects.get(name='network')
+    if not 'network' in conf.config:
+        conf.config['network'] = {}
+    return conf.config['network']
 
 
 CIDR_CHOICES = (

@@ -87,11 +87,11 @@ class PeerManager(Component):
         self.add_peer(peer)
 
     def add_peer(self, peer):
-        if peer.hostname in self.peers:
+        if peer.uuid in self.peers:
             return
         logger.info("Monitoring Peer '%s'.", peer.hostname)
-        self.peers[peer.hostname] = peer
-        self.monitors[peer.hostname] = PeerMonitor(peer).register(self)
+        self.peers[peer.uuid] = peer
+        self.monitors[peer.uuid] = PeerMonitor(peer).register(self)
 
 
 """
@@ -245,14 +245,14 @@ class PeerMonitor(Component):
 
     @handler('peer_online', channel='*')
     def _on_peer_online(self, peer):
-        if peer.hostname != self.peer.hostname:
+        if peer.uuid != self.peer.uuid:
             return
         if self.peer.is_offline:
             self.mark_online()
 
     @handler('peer_offline', channel='*')
     def _on_peer_offline(self, peer):
-        if peer.hostname != self.peer.hostname:
+        if peer.uuid != self.peer.uuid:
             return
         if not self.peer.is_offline:
             self.mark_offline()
@@ -271,7 +271,7 @@ class PeerMonitor(Component):
 
     @handler('peer_discovered', channel='*')
     def _on_peer_discovered(self, peer, created=False):
-        if peer.hostname != self.peer.hostname:
+        if peer.uuid != self.peer.uuid:
             return
         if self.peer.is_offline:
             self.fire(PeerOnline(self.peer))
@@ -298,7 +298,7 @@ class PeerMonitor(Component):
 
     @handler('peer_pool_not_healthy', channel='*')
     def _on_peer_pool_not_healthy(self, peer, pool):
-        if peer.hostname != self.peer.hostname:
+        if peer.uuid != self.peer.uuid:
             return
         logger.error('Pool "%s" on Peer "%s" is NOT healthy!', pool, self.peer.hostname)
 
@@ -365,7 +365,7 @@ class ResourceMonitor(Component):
 
     @handler('peer_offline', channel='*')
     def _on_peer_offline(self, peer):
-        if peer.hostname != self.res.remote.hostname:
+        if peer.uuid != self.res.remote.peer.uuid:
             return
         logger.error('Remote "%s" for Resource "%s" went offline.',
                      self.res.remote.hostname, self.res.name)
@@ -376,7 +376,7 @@ class ResourceMonitor(Component):
 
     @handler('peer_pool_not_healthy', channel='*')
     def _on_peer_pool_not_healthy(self, peer, pool):
-        if peer.hostname == self.res.local.hostname and pool == self.res.local.pool:
+        if peer.uuid == self.res.local.peer.uuid and pool == self.res.local.pool:
             #logger.error('Pool "%s" for Resource "%s" is not healthy.',
             #             pool, self.res.name)
             pass
@@ -391,7 +391,7 @@ class ResourceMonitor(Component):
             # TODO Secondary ourselves
             #self.fire(ResourceSecondary(self.res))
 
-        elif peer.hostname == self.res.remote.hostname and pool == self.res.remote.pool:
+        elif peer.uuid == self.res.remote.uuid and pool == self.res.remote.pool:
             #logger.error('Pool "%s" on Remote "%s" for Resource "%s" is not healthy.',
             #             pool, self.res.remote.hostname, self.res.name)
             pass

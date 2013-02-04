@@ -2,7 +2,7 @@
 from solarsan import conf
 
 
-PROJECT_NAME = 'solarsanweb'
+PROJECT_NAME = 'solarsan'
 SERVER_ID = conf.hostname
 
 
@@ -15,11 +15,11 @@ MONGODB_DATABASES = {
         'name': "syslog",
     },
 }
-def _register_mongo_databases():
+
+
+def register_mongo_databases():
     for k, v in MONGODB_DATABASES.items():
         v = v.copy()
         name = v.pop('name', k)
         mongoengine.register_connection(k, name, **v)
-_register_mongo_databases()
-
-
+register_mongo_databases()

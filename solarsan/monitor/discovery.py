@@ -58,12 +58,13 @@ class Discovery(Component):
             c = rpyc.connect_by_service('storage', host=host)
 
             hostname = c.root.peer_hostname()
+            uuid = c.root.peer_uuid()
             cluster_iface = c.root.peer_get_cluster_iface()
 
             ifaces = c.root.peer_list_addrs()
             addrs = dict([(y['addr'], y['netmask']) for x in ifaces.values() for y in x])
 
-            if None in [hostname, ifaces, addrs, cluster_iface]:
+            if None in [hostname, uuid, ifaces, addrs, cluster_iface]:
                 raise Exception("Peer discovery probe has invalid data.")
 
             #logger.info("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
@@ -72,11 +73,9 @@ class Discovery(Component):
             logger.error("Peer discovery (host='%s') failed: %s", host, e)
             return
 
-        # TODO Each node should prolly get a UUID, glusterfs already assigns one, but maybe we
-        # should do it a layer above.
+        peer, created = Peer.objects.get_or_create(uuid=uuid, defaults={'hostname': hostname})
 
-        peer, created = Peer.objects.get_or_create(hostname=hostname)
-
+        peer.hostname = hostname
         peer.addrs = list(addrs.keys())
         peer.netmasks = list(addrs.values())
         peer.ifaces = list(ifaces.keys())

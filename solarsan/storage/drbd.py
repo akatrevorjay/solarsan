@@ -51,7 +51,11 @@ class DrbdPeer(m.EmbeddedDocument):
     @property
     def is_local(self):
         """Checks if this DrbdPeer is localhost"""
-        return self.hostname == conf.hostname
+        return self.uuid == conf.config['uuid']
+
+    @property
+    def uuid(self):
+        return self.peer.uuid
 
     @property
     def hostname(self):
@@ -170,7 +174,7 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
                                          volume=self.remote.volume,
                                          )
 
-        res.remote = remote_drbd_peer_obj(peer=remote_peer_obj.objects.get(hostname=conf.hostname),
+        res.remote = remote_drbd_peer_obj(peer=remote_peer_obj.objects.get(uuid=conf.config['uuid']),
                                           minor=self.local.minor,
                                           pool=self.local.pool,
                                           volume=self.local.volume,

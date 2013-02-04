@@ -6,7 +6,6 @@ from storage.pool import Pool
 from storage.volume import Volume
 from storage.drbd import DrbdResource, DrbdPeer, DrbdResourceService, drbd_find_free_minor
 from storage.parsers.drbd import drbd_overview_parser
-from solarsan.models import Config
 from configure.models import Nic, get_all_local_ipv4_addrs
 from cluster.models import Peer
 import rpyc
@@ -72,8 +71,9 @@ class StorageService(rpyc.Service):
 
     def peer_get_cluster_iface(self):
         """Gets Cluster IP"""
-        config = Config.objects.get(name='cluster')
-        iface = config.network_iface
+        if 'cluster_iface' not in conf.config:
+            conf.config['cluster_iface'] = 'eth1'
+        iface = conf.config['cluster_iface']
         nic = Nic(str(iface))
         #nic_config = nic.config._data
         #nic_config.pop(None)
@@ -97,3 +97,7 @@ class StorageService(rpyc.Service):
     def peer_hostname(self):
         """Returns hostname"""
         return conf.hostname
+
+    def peer_uuid(self):
+        """Returns UUID"""
+        return conf.config['uuid']

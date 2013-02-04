@@ -1,9 +1,35 @@
 
-#from solarsan.models import Config
 import socket
-
 hostname = socket.gethostname()
 
+
+SOLARSAN_ROOT = '/opt/solarsan'
+SERVER_ID = hostname
+
+
+import os
+CONFIG_FILE = os.path.join(SOLARSAN_ROOT, 'etc', 'solarsan', 'solarsan.conf')
+
+
+# Read old-style file config
+from configobj import ConfigObj
+config = ConfigObj(infile=CONFIG_FILE)
+config.filename = CONFIG_FILE
+
+
+# Every box gets a UUID.
+if not 'uuid' in config:
+    from uuid import uuid1
+    config['uuid'] = uuid1()
+    config.write()
+
+
+if not 'cluster_iface' in config:
+    config['cluster_iface'] = 'eth1'
+    config.write()
+
+
+# logging
 LOGGING = {
     'version': 1,
     #'disable_existing_loggers': True,
@@ -71,6 +97,7 @@ LOGGING = {
     }
 }
 
+
 rpyc_conn_config = {
     'allow_exposed_attrs': False,
     'allow_public_attrs': True,
@@ -81,11 +108,9 @@ rpyc_conn_config = {
     'include_local_traceback': True,
 }
 
+
 auto_snap = {
 }
 
-scst_config_file = '/etc/scst.conf'
 
-#def get(name):
-#    created, ret = Config.objects.get(name=name)
-#    return ret
+scst_config_file = '/etc/scst.conf'
