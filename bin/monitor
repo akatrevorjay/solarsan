@@ -15,6 +15,7 @@ from solarsan.monitor.udev import UDev
 from solarsan.monitor.discovery import Discovery
 from ha.models import ActivePassiveIP
 #from configure.models import Nic
+import random
 
 
 """
@@ -108,7 +109,7 @@ class ResourceHealthCheck(Event):
 
 
 class ResourceManager(Component):
-    res_health_check_every = 10.0
+    res_health_check_every = 10.0 + random.randrange(2, 10)
 
     def __init__(self):
         super(ResourceManager, self).__init__()
@@ -166,10 +167,21 @@ class TargetStopped(Event):
     """Stop Target"""
 
 
+class TargetCheckLunAvailability(Event):
+    """Checks if Target can Start"""
+
+
 class TargetMonitor(Component):
     def __init__(self, target):
         super(TargetMonitor, self).__init__()
         self.target = target
+
+    def target_check_lun_availability(self, target):
+        if target.pk != self.target.pk:
+            return
+        if self.check_if_missing_devices():
+            return
+        self.fire(TargetStart(self.target))
 
     # When a Peer that we split this target with failsover,
     # become primary for the target.
@@ -209,6 +221,18 @@ class TargetMonitor(Component):
         if missing_devices:
             logger.error('Target "%s" cannot start because some luns are not available: "%s".', self.target.name,
                          missing_devices)
+
+            # TODO Need to do a random choice between both when they are both
+            # detined to be king.
+            if len(missing_devices) < len(self.target.devices):
+                if random.randrange(0, 9999) < 5000:
+                    for dev in self.target.devices:
+                        if dev.role == 'Primary':
+                            self.fire(ResourceSecondary(dev))
+
+            # Makes them fight over it. Hmm.
+            #self._check_lun_timer = Timer(8.0 + random.randrange(2, 8), TargetCheckLunAvailability(self.target)).register(self)
+
             return True
         return False
 
