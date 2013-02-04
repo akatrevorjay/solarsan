@@ -14,6 +14,7 @@ from target.models import iSCSITarget
 from solarsan.monitor.udev import UDev
 from solarsan.monitor.discovery import Discovery
 from ha.models import ActivePassiveIP
+#from configure.models import Nic
 
 
 """
@@ -195,32 +196,32 @@ class FailoverIPMonitor(Component):
     def __init__(self, ip):
         super(FailoverIPMonitor, self).__init__()
         self.ip = ip
+        if ip.is_active:
+            logger.info('Floating IP "%s" is currently active.', self.ip.iface_name)
 
-    #@handler('peer_failover', channel='*')
-    #def _on_peer_failover(self, peer):
-    #    if peer.uuid != self.ip.peer.uuid:
-    #        return
-    #    logger.error('Failing over floating IP for Peer "%s".', self.ip.peer.hostname)
-    #    self.fire(ActiveIP(self.ip))
-
-    @handler('peer_offline', channel='*')
-    def _on_peer_offline(self, peer):
+    # peer_offline hits faster, but we want the IP comeup to be the very last
+    # thing to be done throughout a failover.
+    @handler('peer_failover', channel='*')
+    def _on_peer_failover(self, peer):
         if peer.uuid != self.ip.peer.uuid:
             return
-        logger.error('Failing over floating IP for offline Peer "%s".', self.ip.peer.hostname)
+        logger.error('Failing over floating IP "%s" for offline Peer "%s".',
+                     self.ip.iface_name, self.ip.peer.hostname)
         self.fire(ActiveIP(self.ip))
 
-    @handler('active_i_p', channel='*')
-    def active_ip(self, ip):
+    @handler('active_ip', channel='*')
+    def ifup(self, ip):
         if ip.name != self.ip.name:
             return
-        #ip.start()
+        if not self.ip.is_active:
+            self.ip.ifup()
 
-    @handler('passive_i_p', channel='*')
-    def passive_ip(self, ip):
+    @handler('passive_ip', channel='*')
+    def ifdown(self, ip):
         if ip.name != self.ip.name:
             return
-        #ip.stop()
+        if self.ip.is_active:
+            self.ip.ifdown()
 
 
 """
@@ -260,6 +261,10 @@ class PeerFailover(Event):
 
 class PeerPoolNotHealthy(Event):
     """Pool is Not Healthy"""
+
+
+class PeerStillOffline(Event):
+    """Peer is *still* offline"""
 
 
 class PeerMonitor(Component):
@@ -323,13 +328,24 @@ class PeerMonitor(Component):
             logger.warning('Peer "%s" is ONLINE!', self.peer.hostname)
         self.peer.is_offline = False
         self.peer.save()
+        if hasattr(self, '_offline_timer'):
+            self._offline_timer.unregister()
+            delattr(self, '_offline_timer')
         self._heartbeat_timeout_count = 0
 
     def mark_offline(self):
         logger.error('Peer "%s" is OFFLINE!', self.peer.hostname)
         self.peer.is_offline = True
         self.peer.save()
+        self._offline_timer = Timer(60.0, PeerStillOffline(self.peer), persist=True).register(self)
         self.fire(PeerFailover(self.peer))
+
+    # nagnagnagnagnagnag
+    @handler('peer_still_offline', channel='*')
+    def _on_peer_still_offline(self, peer):
+        if peer.uuid != self.peer.uuid:
+            return
+        logger.warning("Peer '%s' is STILL offline!", peer.hostname)
 
     @handler('peer_discovered', channel='*')
     def _on_peer_discovered(self, peer, created=False):
