@@ -17,7 +17,7 @@ class CreatedModifiedDocMixIn(object):
         """Overrides save for created and modified properties"""
         if not self.pk:
             self.created = datetime.utcnow()
-        if self._changed_fields:
+        if self._get_changed_fields():
             self.modified = datetime.utcnow()
         return super(CreatedModifiedDocMixIn, self).save(*args, **kwargs)
 

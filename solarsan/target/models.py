@@ -7,21 +7,98 @@ from . import scstadmin
 from storage.drbd import DrbdResource
 
 
-class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
+class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
     meta = {'abstract': True}
     #meta = {'allow_inheritance': True}
+    name = m.StringField()
+    handler = 'vdisk_blockio'
+
+    @property
+    def device(self):
+        raise NotImplemented
+
+    def open(self):
+        if not scstadmin.does_device_exist(self.name):
+            scstadmin.open_dev(self.name, self.handler, filename=self.device)
+
+    def close(self):
+        if scstadmin.does_device_exist(self.name):
+            scstadmin.close_dev(self.name, self.handler, force=True)
+
+
+class VolumeDevice(Device):
+    pool = m.StringField()
+    volume = m.StringField()
+
+    @property
+    def device(self):
+        return '/dev/zvol/%s/%s' % (self.pool, self.volume)
+
+
+class ResourceDevice(Device):
+    resource = m.ReferenceField(DrbdResource, dbref=False)
+    #resource = m.GenericReferenceField()
+
+    @property
+    def device(self):
+        return self.resource.device
+
+
+class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
+    meta = {'abstract': True}
 
     name = m.StringField()
-    luns = m.ListField()
+    devices = m.ListField(m.GenericReferenceField())
     #initiators = m.ListField()
     is_enabled = m.BooleanField()
 
-    def enumerate_luns(self):
-        return enumerate(self.luns)
+    @property
+    def is_target_added(self):
+        return scstadmin.does_target_exist(self.name, self.driver)
 
     @property
-    def is_enabled_int(self):
-        return int(self.is_enabled)
+    def is_target_enabled(self):
+        return scstadmin.is_target_enabled(self.name, self.driver)
+
+    def _add_target(self):
+        if not self.is_target_added:
+            scstadmin.add_target(self.name, self.driver)
+
+    def _remove_target(self):
+        if self.is_target_added:
+            scstadmin.rem_target(self.name, self.driver)
+
+    def disable_target(self):
+        if self.is_target_enabled:
+            scstadmin.disable_target(self.name, self.driver)
+
+    def enable_target(self):
+        if not self.is_target_enabled:
+            scstadmin.enable_target(self.name, self.driver)
+
+    def _add_devices(self):
+        for x, device in enumerate(self.devices):
+            x += 1
+            device.open()
+            if not scstadmin.does_target_lun_exist(self.name, self.driver, x):
+                scstadmin.add_lun(x, self.driver, self.name, device.name)
+
+    def _remove_devices(self):
+        for x, device in enumerate(self.devices):
+            x += 1
+            if scstadmin.does_target_lun_exist(self.name, self.driver, x):
+                scstadmin.rem_lun(x, self.driver, self.name)
+            device.close()
+
+    def start(self):
+        self._add_target()
+        self._add_devices()
+        self.enable_target()
+
+    def stop(self):
+        self.disable_target()
+        self._remove_devices()
+        self._remove_target()
 
 
 class iSCSITarget(Target):
@@ -41,49 +118,7 @@ class iSCSITarget(Target):
             self.generate_wwn()
         super(iSCSITarget, self).save(*args, **kwargs)
 
-    def add_target(self):
-        scstadmin.add_target(self.name, self.driver)
-
-    def rem_target(self):
-        scstadmin.rem_target(self.name, self.driver)
-
-    def disable_target(self):
-        scstadmin.disable_target(self.name, self.driver)
-
-    def enable_target(self):
-        scstadmin.enable_target(self.name, self.driver)
-
-    def open_devs(self):
-        ress = {}
-        for res in DrbdResource.objects.filter(role='Primary'):
-            ress[res.name] = res
-
-        for lun in self.luns:
-            if lun not in ress:
-                logger.info('Target "%s" luns are not all available.', self.name)
-                return False
-
-        logger.info('Target "%s" luns are available.', self.name)
-
-        for lun in self.luns:
-            scstadmin.open_dev(lun, 'vdisk_blockio', filename=ress[lun].device)
-
-    def close_devs(self):
-        ress = {}
-        for res in DrbdResource.objects.filter(role='Primary'):
-            ress[res.name] = res
-
-        for lun in self.luns:
-            if lun not in ress:
-                logger.info('Target "%s" luns are not all available.', self.name)
-                return False
-
-        logger.info('Target "%s" luns are available.', self.name)
-
-        for lun in self.luns:
-            scstadmin.close_dev(lun, 'vdisk_blockio')
-
 
 class SRPTarget(Target):
     #meta = {'allow_inheritance': True}
-    pass
+    driver = 'srpt'

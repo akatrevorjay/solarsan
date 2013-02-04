@@ -1,6 +1,46 @@
 
-
+from solarsan.utils.files import fread
+import os
 import sh
+
+
+SCST_SYS_PATH = "/sys/kernel/scst_tgt"
+
+
+def does_driver_exist(driver):
+    return os.path.isdir('%s/targets/%s' % (SCST_SYS_PATH, driver))
+
+
+def is_driver_enabled(driver):
+    fn = '%s/targets/%s/enabled' % (SCST_SYS_PATH, driver)
+    if os.path.isfile(fn):
+        ret = fread(fn)
+        return bool(ret)
+    return False
+
+
+def does_target_exist(target, driver):
+    return os.path.isdir('%s/targets/%s/%s' % (SCST_SYS_PATH, driver, target))
+
+
+def is_target_enabled(target, driver):
+    fn = '%s/targets/%s/%s/enabled' % (SCST_SYS_PATH, driver, target)
+    if os.path.isfile(fn):
+        ret = fread(fn)
+        return bool(ret)
+    return False
+
+
+def does_device_exist(device):
+    return os.path.isdir('%s/devices/%s' % (SCST_SYS_PATH, device))
+
+
+def does_device_group_exist(group):
+    return os.path.isdir('%s/device_groups/%s' % (SCST_SYS_PATH, group))
+
+
+def does_target_lun_exist(target, driver, lun):
+    return os.path.isdir('%s/targets/%s/%s/luns/%d' % (SCST_SYS_PATH, driver, target, lun))
 
 
 def config(config_file, force=False):
@@ -168,10 +208,14 @@ def resync_dev(device):
     sh.scstadmin('-noprompt', '-resync_dev', device)
 
 
-def close_dev(device, handler):
+def close_dev(device, handler, force=True):
     """Remove the specified device from SCST.
     -close_dev <device> -handler <handler>"""
-    sh.scstadmin('-close_dev', device, '-handler', handler)
+    args = []
+    if force:
+        args.append('-force')
+    args.extend(['-noprompt', '-close_dev', device, '-handler', handler])
+    sh.scstadmin(*args)
 
 
 def add_target(target, driver):
@@ -229,6 +273,7 @@ def add_lun(lun, driver, target, device, group=None, **attributes):
     args = ['-noprompt', '-add_lun', lun, '-driver', driver, '-target', target]
     if group:
         args.extend(['-group', group])
+    args.extend(['-device', device])
     if attributes:
         attrs = []
         for k, v in attributes.iteritems():
