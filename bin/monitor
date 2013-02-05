@@ -16,6 +16,7 @@ from solarsan.monitor.discovery import Discovery
 from ha.models import ActivePassiveIP
 #from configure.models import Nic
 import random
+import signal
 
 
 """
@@ -30,18 +31,17 @@ class MonitorStatusUpdate(Event):
 class Monitor(Component):
     def __init__(self):
         super(Monitor, self).__init__()
-        logger.info('Monitor starting..')
 
+    def started(self, *args):
+        self.fire(MonitorStatusUpdate('Starting'))
         Discovery().register(self)
         PeerManager().register(self)
         ResourceManager().register(self)
         TargetManager().register(self)
         DeviceManager().register(self)
-        FailoverIPManager().register(self)
-
-    def started(self, *args):
+        FloatingIPManager().register(self)
         self.fire(MonitorStatusUpdate('Started'))
-        logger.info('Monitor started.')
+        return True
 
     @handler('monitor_status_update', channel='*')
     def status_update(self, append=None):
@@ -78,13 +78,11 @@ class PeerManager(Component):
         super(PeerManager, self).__init__()
         self.peers = {}
         self.monitors = {}
-        Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
-        Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
 
-    @handler('started', channel='*')
-    def _on_started(self, *args):
         for peer in Peer.objects.all():
             self.add_peer(peer)
+        Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
+        #Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
 
     @handler('peer_discovered', channel='*')
     def _on_peer_discovered(self, peer, created=None):
@@ -115,11 +113,9 @@ class ResourceManager(Component):
         super(ResourceManager, self).__init__()
         self.resources = {}
         self.monitors = {}
-        Timer(self.res_health_check_every, ResourceHealthCheck(), persist=True).register(self)
 
-    @handler('started', channel='*')
-    def _on_started(self, *args):
         self.do_all_resources()
+        Timer(self.res_health_check_every, ResourceHealthCheck(), persist=True).register(self)
 
     def do_all_resources(self):
         for res in DrbdResource.objects.all():
@@ -145,7 +141,6 @@ class TargetManager(Component):
         #self.targets = {}
         self.monitors = {}
 
-    def started(self, *args):
         for tgt in iSCSITarget.objects.all():
             #self.targets[tgt.name] = tgt
             self.monitors[tgt.name] = TargetMonitor(tgt).register(self)
@@ -175,6 +170,7 @@ class TargetMonitor(Component):
     def __init__(self, target):
         super(TargetMonitor, self).__init__()
         self.target = target
+        logger.info('Monitoring Target "%s".', self.target.name)
 
     def target_check_lun_availability(self, target):
         if target.pk != self.target.pk:
@@ -258,16 +254,15 @@ Failover IP Manager
 """
 
 
-class FailoverIPManager(Component):
+class FloatingIPManager(Component):
     def __init__(self):
-        super(FailoverIPManager, self).__init__()
+        super(FloatingIPManager, self).__init__()
         self.ips = {}
         self.monitors = {}
 
-    def started(self, *args):
         for ip in ActivePassiveIP.objects.all():
             self.ips[ip.name] = ip
-            self.monitors[ip.name] = FailoverIPMonitor(ip).register(self)
+            self.monitors[ip.name] = FloatingIPMonitor(ip).register(self)
 
 
 """
@@ -276,28 +271,31 @@ Failover IP Monitor
 
 
 class ActiveIP(Event):
-    """Start FailoverIP"""
+    """Start FloatingIP"""
 
 
 class PassiveIP(Event):
-    """Stop FailoverIP"""
+    """Stop FloatingIP"""
 
 
-class FailoverIPMonitor(Component):
+class FloatingIPMonitor(Component):
     def __init__(self, ip):
-        super(FailoverIPMonitor, self).__init__()
+        super(FloatingIPMonitor, self).__init__()
         self.ip = ip
-        if ip.is_active:
+
+        logger.info('Monitoring Floating IP "%s".', self.ip.iface_name)
+
+        if self.ip.is_active:
             logger.warn('Floating IP "%s" is currently active upon startup.', self.ip.iface_name)
             # May want to just disable on startup..
             #logger.warn('Floating IP "%s" is currently active upon startup. Deactivating..', self.ip.iface_name)
-            #self.ip.ifdown()
-            if ip.is_peer_active():
-                logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', self.ip.iface_name)
-
-                """ TODO See which host has the assoc target running too. If one is running it, they win. """
-
-                self.ip.ifdown()
+            self.ip.ifdown()
+            #if ip.is_peer_active():
+            #    logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', self.ip.iface_name)
+            #
+            #    """ TODO See which host has the assoc target running too. If one is running it, they win. """
+            #
+            #    self.ip.ifdown()
 
             """ TODO Timer to scan for dual active floating IPs every so often """
             #Timer(30.0, DualFloatingCheck(), persist=True).register(self)
@@ -314,12 +312,14 @@ class FailoverIPMonitor(Component):
 
     @handler('target_started', channel='*')
     def _on_target_started(self, target):
+        """When a Target assoc with this floating IP has been started, start her up"""
         if target.floating_ip.pk != self.ip.pk:
             return
         self.fire(ActiveIP(self.ip))
 
     @handler('target_stopping', channel='*')
     def _on_target_stopping(self, target):
+        """When a Target assoc with this floating IP has been stopped, start her up"""
         if target.floating_ip.pk != self.ip.pk:
             return
         self.fire(PassiveIP(self.ip))
@@ -483,6 +483,14 @@ class PeerMonitor(Component):
     def _on_peer_pool_health_check(self):
         if self.peer.is_offline:
             return
+
+        def timeout(signum, frame):
+            raise Exception('Pool check on Peer "%s" timed out.' % self.peer.hostname)
+
+        # Set the signal handler and a 5-second alarm
+        signal.signal(signal.SIGALRM, timeout)
+        signal.alarm(5)
+
         try:
             storage = self.peer.get_service('storage', default=None)
             Pool = storage.root.pool()
@@ -497,6 +505,8 @@ class PeerMonitor(Component):
             if not pool.is_healthy():
                 self.fire(PeerPoolNotHealthy(self.peer, pool.name))
                 ret = False
+
+        signal.alarm(0)          # Disable the alarm
         return ret
 
     @handler('peer_pool_not_healthy', channel='*')
@@ -863,7 +873,6 @@ def set_proctitle(append=None):
 
 
 def main():
-    set_proctitle('Starting')
     try:
         #(Discovery()).run()
         #(Discovery() + Debugger()).run()

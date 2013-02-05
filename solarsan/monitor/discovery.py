@@ -30,7 +30,6 @@ class Discovery(Component):
     def __init__(self):
         super(Discovery, self).__init__()
 
-    def started(self, *args):
         self.fire(DiscoverPeers())
         Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
 
