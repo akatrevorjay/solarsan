@@ -11,42 +11,32 @@ import os
 
 
 from config import Config as _BaseConfig
+CONFIG_FILE = os.path.join(SOLARSAN_ROOT, 'etc', 'solarsan', 'solarsan.conf')
+
 
 class Config(_BaseConfig):
-    CONFIG_FILE = os.path.join(SOLARSAN_ROOT, 'etc', 'solarsan', 'solarsan.conf')
-
     def __init__(self):
-        f = file(self.CONFIG_FILE)
+        f = file(CONFIG_FILE)
         super(Config, self).__init__(f)
 
-    def save():
-        f = file(self.CONFIG_FILE)
+    def save(self):
+        f = file(CONFIG_FILE)
         super(Config, self).save(f)
 
 
-# Read old-style file config
-def _get_config():
-    from config import Config
-
-    return Config(CONFIG_FILE)
-config = _get_config()
-
-
-def save_config():
-    f = file(CONFIG_FILE)
-    config.save(f)
+config = Config()
 
 
 # Every box gets a UUID.
 if not 'uuid' in config:
     from uuid import uuid1
     config['uuid'] = uuid1()
-    save_config()
+    config.save()
 
 
 if not 'cluster_iface' in config:
     config['cluster_iface'] = 'eth1'
-    save_config()
+    config.save()
 
 
 # logging
