@@ -235,7 +235,7 @@ class TargetMonitor(Component):
         self.log(logger.warning, 'Trying to start in %ds.', retry_in)
         self._start_try_timer = Timer(retry_in, TargetStartTry(self.target)).register(self)
 
-    def target_start_try(self, target):
+    def target_start_try(self, target, attempt=0):
         if target.pk != self.target.pk:
             return
 
@@ -264,7 +264,7 @@ class TargetMonitor(Component):
 
             # TODO Need to do a random choice between both when they are both
             # detined to be king.
-            if len(missing_devices) < len(self.target.devices):
+            if attempt > 1 and len(missing_devices) < len(self.target.devices):
                 if random.randrange(0, 9999) < 5000:
                     for dev in self.target.devices:
                         if dev.role == 'Primary':
@@ -273,7 +273,7 @@ class TargetMonitor(Component):
             remove_start_try_timer()
             retry_in = 8.0 + random.randrange(2, 8)
             self.log(logger.warning, 'Retrying to start in %ds.', retry_in)
-            self._start_try_timer = Timer(retry_in, TargetStartTry(self.target)).register(self)
+            self._start_try_timer = Timer(retry_in, TargetStartTry(self.target, attempt=attempt + 1)).register(self)
             return
 
         self.log(logger.info, 'Can now start!')
