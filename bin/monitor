@@ -204,8 +204,9 @@ class TargetMonitor(Component):
         for dev in self.target.devices:
             if dev.pk == res.pk:
                 self.log(logger.info, 'Member Resource "%s" has become primary.', res.name)
-                if not hasattr(self, '_start_try_timer'):
-                    self.fire(TargetStart(self.target))
+                #if not hasattr(self, '_start_try_timer'):
+                #    self.fire(TargetStart(self.target))
+                self.fire(TargetStart(self.target))
                 return
 
     def resource_secondary_pre(self, res):
@@ -248,6 +249,10 @@ class TargetMonitor(Component):
             if dev.remote_role == 'Primary':
                 self.log(logger.error, 'Cannot start because remote is primary on Resource "%s".',
                          dev.name)
+
+                if hasattr(self, '_start_try_timer'):
+                    self._start_try_timer.unregister()
+                    delattr(self, '_start_try_timer')
                 return
 
         if missing_devices:
@@ -276,7 +281,13 @@ class TargetMonitor(Component):
             self.target.start()
         except Exception, e:
             self.log(logger.error, 'Could not start: %s', e.message)
+            if hasattr(self, '_start_try_timer'):
+                self._start_try_timer.unregister()
+                delattr(self, '_start_try_timer')
             return False
+        if hasattr(self, '_start_try_timer'):
+            self._start_try_timer.unregister()
+            delattr(self, '_start_try_timer')
         self.fire(TargetStarted(self.target))
 
     def target_started(self, target):
