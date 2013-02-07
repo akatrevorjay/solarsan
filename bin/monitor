@@ -20,6 +20,15 @@ import signal
 
 
 """
+Exceptions
+"""
+
+
+class TimeoutError(Exception):
+    pass
+
+
+"""
 Monitor
 """
 
@@ -82,7 +91,7 @@ class PeerManager(Component):
         for peer in Peer.objects.all():
             self.add_peer(peer)
         Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
-        #Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
+        Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
 
     @handler('peer_discovered', channel='*')
     def _on_peer_discovered(self, peer, created=None):
@@ -175,7 +184,7 @@ class TargetMonitor(Component):
     def target_check_lun_availability(self, target):
         if target.pk != self.target.pk:
             return
-        if self.check_if_missing_devices():
+        if self.check_for_missing_devices():
             return
         self.fire(TargetStart(self.target))
 
@@ -189,7 +198,8 @@ class TargetMonitor(Component):
             if dev.remote.uuid != peer.uuid:
                 continue
 
-            self.fire(TargetStart(self.target))
+            # Makes them fight over it. Hmm.
+            self._check_lun_timer = Timer(10.0 + random.randrange(2, 8), TargetStart(self.target)).register(self)
             return True
 
     def resource_primary_post(self, res):
@@ -208,9 +218,12 @@ class TargetMonitor(Component):
                 #               'being part of an active target.',
                 #               self.target.name, res.name)
 
-    def check_if_missing_devices(self):
+    def check_for_missing_devices(self):
         missing_devices = []
         for dev in self.target.devices:
+            # Reload device from database as it may of changed since we last
+            # retrieved it.
+            dev.reload()
             if not dev.role == 'Primary':
                 missing_devices.append(dev.name)
 
@@ -227,7 +240,7 @@ class TargetMonitor(Component):
                             self.fire(ResourceSecondary(dev))
 
             # Makes them fight over it. Hmm.
-            #self._check_lun_timer = Timer(8.0 + random.randrange(2, 8), TargetCheckLunAvailability(self.target)).register(self)
+            self._check_lun_timer = Timer(8.0 + random.randrange(2, 8), TargetCheckLunAvailability(self.target)).register(self)
 
             return True
         return False
@@ -235,11 +248,22 @@ class TargetMonitor(Component):
     def target_start(self, target):
         if target.name != self.target.name:
             return
-        if self.check_if_missing_devices():
+        if self.check_for_missing_devices():
             return
         logger.info('Target "%s" can now start!', self.target.name)
-        self.target.start()
+        try:
+            self.target.start()
+        except Exception, e:
+            logger.error('Could not start Target "%s": %s', self.target.name, e.message)
+            return False
         self.fire(TargetStarted(self.target))
+
+    def target_started(self, target):
+        if target.name != self.target.name:
+            return
+        if hasattr(self, '_check_lun_timer'):
+            self._check_lun_timer.unregister()
+            delattr(self, '_check_lun_timer')
 
     def target_stop(self, target):
         if target.name != self.target.name:
@@ -485,26 +509,30 @@ class PeerMonitor(Component):
             return
 
         def timeout(signum, frame):
-            raise Exception('Pool check on Peer "%s" timed out.' % self.peer.hostname)
+            raise TimeoutError('Pool check on Peer "%s" timed out.' % self.peer.hostname)
 
         # Set the signal handler and a 5-second alarm
         signal.signal(signal.SIGALRM, timeout)
         signal.alarm(5)
 
         try:
-            storage = self.peer.get_service('storage', default=None)
-            Pool = storage.root.pool()
-        except AttributeError:
-            logger.error('Could not connect to Peer "%s". Is it offline and we don\'t know it yet?',
-                         self.peer.hostname)
-            return
-        pools = Pool.list()
-        #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
-        ret = True
-        for pool in pools:
-            if not pool.is_healthy():
-                self.fire(PeerPoolNotHealthy(self.peer, pool.name))
-                ret = False
+            try:
+                storage = self.peer.get_service('storage', default=None)
+                Pool = storage.root.pool()
+            except AttributeError:
+                logger.error('Could not connect to Peer "%s"; is it offline and we don\'t know it yet?',
+                             self.peer.hostname)
+                return
+            pools = Pool.list()
+            #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
+            ret = True
+            for pool in pools:
+                if not pool.is_healthy():
+                    self.fire(PeerPoolNotHealthy(self.peer, pool.name))
+                    ret = False
+        except TimeoutError, e:
+            logger.error('Could not check pools on Peer "%s": %s',
+                         self.peer.hostname, e.message)
 
         signal.alarm(0)          # Disable the alarm
         return ret
@@ -530,6 +558,10 @@ class ResourcePrimaryPre(Event):
 
 class ResourcePrimary(Event):
     """Promote to Primary"""
+
+
+class ResourcePrimaryTry(Event):
+    """Promote to Primary Try"""
 
 
 class ResourcePrimaryPost(Event):
@@ -580,13 +612,17 @@ class ResourceMonitor(Component):
     def _on_peer_failover(self, peer):
         if peer.uuid != self.res.remote.peer.uuid:
             return
+
+        # Update status and send out proper events first
+        self.status()
+
         logger.error('Failing over Peer "%s" for Resource "%s".',
                      self.res.remote.hostname, self.res.name)
 
-        ## TODO Take over the volumes, write out any targets, enable any HA ips, etc
         if self.res.role != 'Primary':
             self.fire(ResourcePrimary(self.res))
 
+    # TODO What exactly to do upon pool not healthy
     @handler('peer_pool_not_healthy', channel='*')
     def _on_peer_pool_not_healthy(self, peer, pool):
         if peer.uuid == self.res.local.peer.uuid and pool == self.res.local.pool:
@@ -661,17 +697,18 @@ class ResourceMonitor(Component):
         return ret
 
     def resource_connection_state_change(self, res, cstate):
-        if self.res.name != res.name:
+        if self.res.pk != res.pk:
             return
+        logger.error("Resource '%s' is %s!", self.res.name, cstate)
 
         if cstate == 'Connected':
             """Connected. A DRBD connection has been established, data mirroring is now active. This is the
             normal state"""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
 
         elif cstate == 'WFConnection':
             """WFConnection. This node is waiting until the peer node becomes visible on the network."""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
             #if self.res.role != 'Primary':
             #    self.fire(ResourcePrimary(self.res))
 
@@ -679,14 +716,14 @@ class ResourceMonitor(Component):
             """StandAlone. No network configuration available. The resource has not yet been connected, or
             has been administratively disconnected (using drbdadm disconnect), or has dropped its connection
             due to failed authentication or split brain."""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
             #if self.res.role != 'Primary':
             #    self.fire(ResourcePrimary(self.res))
 
         elif cstate == 'SyncSource':
             """SyncSource. Synchronization is currently running, with the local node being the source of
             synchronization"""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
             #if self.res.role != 'Primary':
             #    self.fire(ResourcePrimary(self.res))
 
@@ -694,97 +731,98 @@ class ResourceMonitor(Component):
             """PausedSyncS. The local node is the source of an ongoing synchronization, but synchronization
             is currently paused. This may be due to a dependency on the completion of another synchronization
             process, or due to synchronization having been manually interrupted by drbdadm pause-sync."""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
 
         elif cstate == 'SyncTarget':
             """SyncTarget. Synchronization is currently running, with the local node being the target of
             synchronization."""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
 
         elif cstate == 'PausedSyncT':
             """PausedSyncT. The local node is the target of an ongoing synchronization, but synchronization
             is currently paused. This may be due to a dependency on the completion of another synchronization
             process, or due to synchronization having been manually interrupted by drbdadm pause-sync."""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
 
         elif cstate == 'VerifyS':
             """VerifyS. On-line device verification is currently running, with the local node being the source
             of verification."""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
 
         elif cstate == 'VerifyT':
             """VerifyT. On-line device verification is currently running, with the local node being the target
             of verification."""
-            logger.error("Resource '%s' is %s!", self.res.name, cstate)
+            pass
 
         else:
             raise Exception('Resource "%s" has an unknown connection state of "%s"!', cstate)
 
     def resource_disk_state_change(self, res, dstate):
-        if self.res.name != res.name:
+        if self.res.pk != res.pk:
             return
+        logger.error("Resource '%s' is %s!", self.res.name, dstate)
 
         if dstate == 'UpToDate':
             """UpToDate. Consistent, up-to-date state of the data. This is the normal state."""
-            logger.error("Resource '%s' is %s!", self.res.name, dstate)
 
         elif dstate == 'Diskless':
             """Diskless. No local block device has been assigned to the DRBD driver. This may mean that the
             resource has never attached to its backing device, that it has been manually detached using
             drbdadm detach, or that it automatically detached after a lower-level I/O error."""
-            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+            pass
 
         elif dstate == 'Inconsistent':
             """Inconsistent. The data is inconsistent. This status occurs immediately upon creation of a new
             resource, on both nodes (before the initial full sync). Also, this status is found in one node
             (the synchronization target) during synchronization."""
-            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+            pass
 
         elif dstate == 'Outdated':
             """Outdated. Resource data is consistent, but outdated."""
-            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+            pass
 
         elif dstate == 'DUnknown':
             """DUnknown. This state is used for the peer disk if no network connection is available."""
-            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+            pass
 
         elif dstate == 'Consistent':
             """Consistent. Consistent data of a node without connection. When the connection is established,
             it is decided whether the data is UpToDate or Outdated."""
-            logger.error("Resource '%s' is %s!", self.res.name, dstate)
+            pass
 
         else:
             raise Exception('Resource "%s" has an unknown disk state of "%s"!', dstate)
 
     def resource_role_change(self, res, role):
-        if self.res.name != res.name:
+        if self.res.pk != res.pk:
             return
+        logger.error("Resource '%s' is %s!", self.res.name, role)
 
         if role == 'Primary':
             """Primary. The resource is currently in the primary role, and may be read from and written to.
             This role only occurs on one of the two nodes, unless dual-primary mode is enabled."""
-            logger.error("Resource '%s' is %s!", self.res.name, role)
+            pass
 
         elif role == 'Secondary':
             """Secondary. The resource is currently in the secondary role. It normally receives updates from
             its peer (unless running in disconnected mode), but may neither be read from nor written to.
             This role may occur on one or both nodes."""
-            logger.error("Resource '%s' is %s!", self.res.name, role)
+            pass
 
         elif role == 'Unknown':
             """Unknown. The resource's role is currently unknown. The local resource role never has this
             status. It is only displayed for the peer's resource role, and only in disconnected mode."""
-            logger.error("Resource '%s' is %s!", self.res.name, role)
+            pass
 
         else:
             raise Exception('Resource "%s" has an unknown role of "%s"!', role)
 
     def resource_remote_disk_state_change(self, res, dstate):
-        if self.res.name != res.name:
+        if self.res.pk != res.pk:
             return
 
     def resource_remote_role_change(self, res, remote_role):
-        if self.res.name != res.name:
+        if self.res.pk != res.pk:
             return
 
     """
@@ -804,38 +842,45 @@ class ResourceMonitor(Component):
     Role Switching
     """
 
-    @handler('resource_primary', channel='*')
-    def _on_res_primary(self, res):
-        if res.name != self.res.name:
+    def resource_primary(self, res):
+        if res.pk != self.res.pk:
             return
+        logger.warning('Promoting self to Primary for Resource "%s".', self.res.name)
+        self.fire(ResourcePrimaryPre(self.res))
+        self.fire(ResourcePrimaryTry(self.res))
+
+    def resource_primary_try(self, res):
+        if res.pk != self.res.pk:
+            return
+
         self.status()
         if self.res.role == 'Primary':
+            logger.error('Cannot promote self to Primary for Resource "%s", ' +
+                         'as we\'re already Primary.', self.res.name)
             return
-
-        logger.warning('Promoting self to Primary for Resource "%s".', self.res.name)
-
         if self.res.disk_state != 'UpToDate':
             logger.error('Cannot promote self to Primary for Resource "%s", ' +
                          'as disk state is not UpToDate.', self.res.name)
             return
 
-        self.primary()
+        try:
+            self.service.primary()
+            logger.info('Promoted self to Primary for Resource "%s".', self.res.name)
+            self.fire(ResourcePrimaryPost(self.res))
+        except:
+            retry_in = 10.0 + random.randrange(2, 10)
+            logger.warning('Could not promote self to Primary for Resource "%s". Retrying in %ds.',
+                           self.res.name, retry_in)
+            self._primary_try_timer = Timer(retry_in, ResourcePrimaryTry(self.res))
 
-    @handler('resource_secondary_success', channel='*')
-    def _on_res_secondary(self, res, *values):
-        if res.name != self.res.name:
+    def resource_secondary(self, res, *values):
+        if res.pk != self.res.pk:
             return
         self.status()
         if self.res.role == 'Secondary':
             return
         logger.warning('Demoting self to Secondary for Resource "%s".', self.res.name)
         self.secondary()
-
-    def primary(self):
-        self.fire(ResourcePrimaryPre(self.res))
-        self.service.primary()
-        self.status()
-        self.fire(ResourcePrimaryPost(self.res))
 
     def secondary(self):
         self.fire(ResourceSecondaryPre(self.res))
