@@ -239,6 +239,11 @@ class TargetMonitor(Component):
         if target.pk != self.target.pk:
             return
 
+        def remove_start_try_timer():
+            if hasattr(self, '_start_try_timer'):
+                self._start_try_timer.unregister()
+                delattr(self, '_start_try_timer')
+
         missing_devices = []
         for dev in self.target.devices:
             # Reload device from database as it may of changed since we last
@@ -250,9 +255,7 @@ class TargetMonitor(Component):
                 self.log(logger.error, 'Cannot start because remote is primary on Resource "%s".',
                          dev.name)
 
-                if hasattr(self, '_start_try_timer'):
-                    self._start_try_timer.unregister()
-                    delattr(self, '_start_try_timer')
+                remove_start_try_timer()
                 return
 
         if missing_devices:
@@ -267,10 +270,7 @@ class TargetMonitor(Component):
                         if dev.role == 'Primary':
                             self.fire(ResourceSecondary(dev))
 
-            if hasattr(self, '_start_try_timer'):
-                self._start_try_timer.unregister()
-                delattr(self, '_start_try_timer')
-
+            remove_start_try_timer()
             retry_in = 8.0 + random.randrange(2, 8)
             self.log(logger.warning, 'Retrying to start in %ds.', retry_in)
             self._start_try_timer = Timer(retry_in, TargetStartTry(self.target)).register(self)
@@ -281,21 +281,15 @@ class TargetMonitor(Component):
             self.target.start()
         except Exception, e:
             self.log(logger.error, 'Could not start: %s', e.message)
-            if hasattr(self, '_start_try_timer'):
-                self._start_try_timer.unregister()
-                delattr(self, '_start_try_timer')
+            remove_start_try_timer()
             return False
-        if hasattr(self, '_start_try_timer'):
-            self._start_try_timer.unregister()
-            delattr(self, '_start_try_timer')
+        remove_start_try_timer()
         self.fire(TargetStarted(self.target))
+        return True
 
     def target_started(self, target):
         if target.pk != self.target.pk:
             return
-        if hasattr(self, '_start_try_timer'):
-            self._start_try_timer.unregister()
-            delattr(self, '_start_try_timer')
 
     def target_stop(self, target):
         if target.pk != self.target.pk:
