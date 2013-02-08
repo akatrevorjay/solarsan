@@ -112,3 +112,20 @@ class StorageService(rpyc.Service):
         return name in interfaces()
         #ip = ActivePassiveIP.objects.get(name=name)
         #return ip.is_active
+
+
+def main():
+    from rpyc.utils.server import ThreadedServer
+
+    local = Peer.get_local()
+    cluster_iface_bcast = local.cluster_nic.broadcast
+    # Allow all public attrs, because exposed_ is stupid and should be a
+    # fucking decorator.
+    t = ThreadedServer(StorageService, port=18862,
+                       registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast, logger=logger),
+                       auto_register=True, logger=logger, protocol_config=conf.rpyc_conn_config)
+    t.start()
+
+
+if __name__ == '__main__':
+    main()
