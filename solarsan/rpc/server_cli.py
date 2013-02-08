@@ -42,6 +42,12 @@ class CLIService(rpyc.Service):
     def system(self):
         return System()
 
+    def developer(self):
+        return Developer()
+
+    def benchmarks(self):
+        return Benchmarks()
+
 
 class System(object):
     def __init__(self):
@@ -119,9 +125,8 @@ Developer
 
 
 class Developer(object):
-    def __init__(self, parent):
-        super(Developer, self).__init__('developer', parent)
-        Benchmarks(self)
+    def __init__(self):
+        pass
 
     #def shell(self):
     #    return sh.bash")
@@ -175,7 +180,7 @@ class Developer(object):
         return sh.ibv_devinfo()
 
     def ibping(self, host):
-        print sh.ibping(host, _err_to_out=True)
+        return sh.ibping(host, _err_to_out=True)
 
     def ibrouters(self):
         return sh.ibrouters()
@@ -191,7 +196,7 @@ class Developer(object):
 
     def ibtool(self, *args):
         for line in sh.ibtool(*args, _iter=True, _err_to_out=True):
-            print line.rstrip("\n")
+            return line.rstrip("\n")
 
     def rdma(self, host=None):
         if host:
@@ -200,27 +205,12 @@ class Developer(object):
         else:
             logger.info("Running server on 0.0.0.0")
             ret = sh.rdma_server(_err_to_out=True, _iter=True)
-        for line in ret:
-            print line.rstrip("\n")
-
-    #def ibstat(self):
-    #    return sh."ibstat")
-
-    #def ibstat(self):
-    #    return sh."ibstat")
-
-    #def ipdb(self):
-    #    import ipdb
-    #    ipdb.set_trace()
-
-    #def ipdb_post_mortem(self):
-    #    import ipdb
-    #    ipdb.pm()
+        return ret
 
 
 class Benchmarks(object):
-    def __init__(self, parent):
-        super(Benchmarks, self).__init__('benchmarks', parent)
+    def __init__(self):
+        pass
 
     def netperf(self, host=None):
         args = []
@@ -229,8 +219,7 @@ class Benchmarks(object):
             args.extend(['-h', host])
         else:
             logger.info("Running server on 0.0.0.0")
-        for line in sh.NPtcp(*args, _iter=True, _err_to_out=True):
-            print line.rstrip("\n")
+        return sh.NPtcp(*args, _iter=True, _err_to_out=True)
 
     test_pool = 'dpool'
     test_filesystem_name = '%(pool)s/omfg_test_benchmark'
@@ -279,11 +268,11 @@ class Benchmarks(object):
         fs = self._create_test_filesystem(atime=atime, compress=compress)
 
         bonniepp = sh.Command('bonnie++')
-        for line in bonniepp('-u', 'nobody', '-d', str(fs.properties['mountpoint']),
-                             _iter=True, _err_to_out=True):
-            print line.rstrip("\n")
+        ret = bonniepp('-u', 'nobody', '-d', str(fs.properties['mountpoint']),
+                             _iter=True, _err_to_out=True)
 
         self._cleanup_test_filesystem()
+        return ret
 
     def iozone(self, atime='off', compress='on', size='1M', pool=None):
         if pool:
@@ -295,13 +284,13 @@ class Benchmarks(object):
 
         try:
             with sh.sudo('-u', 'nobody', _with=True):
-                for line in sh.iozone('-a', '-g', size, _iter=True, _err_to_out=True):
-                    print line.rstrip("\n")
+                ret = sh.iozone('-a', '-g', size, _iter=True, _err_to_out=True)
         finally:
             os.chdir(cwd)
 
         time.sleep(1)
         self._cleanup_test_filesystem()
+        return ret
 
 
 class CliRoot(object):

@@ -6,10 +6,12 @@ import sys
 
 
 class BaseServiceConfigNode(ConfigNode):
+    """Black magic for a service based config node"""
+
     def __init__(self, name, parent):
         if not name:
             name = self.__class__.__name__.lower()
-        super(BaseServiceConfigNode, self).__init__('system', parent)
+        super(BaseServiceConfigNode, self).__init__(name, parent)
         self._service = None
 
     @property

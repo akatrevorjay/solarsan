@@ -62,5 +62,6 @@ setproctitle==1.1.6
 sh==1.07
 six==1.2.0
 threadpool==1.2.7
+urwid==1.1.1
 wsgiref==0.1.2
 zerorpc==0.4.1

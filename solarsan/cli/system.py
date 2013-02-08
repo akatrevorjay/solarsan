@@ -3,6 +3,8 @@ from .base import BaseServiceConfigNode
 
 
 class System(BaseServiceConfigNode):
+    """System"""
+
     def __init__(self, parent):
         super(System, self).__init__(None, parent)
 

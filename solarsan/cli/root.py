@@ -5,7 +5,6 @@ from configshell import ConfigNode
 
 from .system import System
 from .developer import Developer
-from .benchmarks import Benchmarks
 
 
 class CliRoot(ConfigNode):
