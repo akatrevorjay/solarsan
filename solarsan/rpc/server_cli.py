@@ -83,6 +83,12 @@ class System(object):
         '''
         return sh.lscpu()
 
+    def lshw(self):
+        '''
+        lshw - List all hardware known by HAL
+        '''
+        return sh.lshw()
+
     def uptime(self):
         '''
         uptime - Tell how long the system has been running.

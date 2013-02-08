@@ -1,7 +1,7 @@
 #!/bin/bash -e
 basedir_raw=$(readlink -f "${BASH_SOURCE[0]%/*}")
 basedir=$(readlink -f "${basedir_raw%/bin}")
-export HOME=/root
+[[ -n "$HOME" && "$HOME" != "/" ]] || export HOME=/root
 virtualenv="$HOME/.virtualenvs/solarsan"
 
 if [[ "$0" != "bash" && -e "$basedir/lib/bashism/bashism" ]]; then

@@ -1,11 +1,4 @@
 
-#from solarsan.core import logger
-#from solarsan import conf
-#from solarsan.cluster.models import Peer
-#from configshell import ConfigNode
-#from solarsan.pretty import pp
-#from solarsan.utils.stack import get_current_func_name
-
 from .base import BaseServiceConfigNode
 
 
@@ -46,6 +39,12 @@ class System(BaseServiceConfigNode):
     def ui_command_lscpu(self):
         '''
         lscpu - CPU architecture information helper
+        '''
+        self()
+
+    def ui_command_lshw(self):
+        '''
+        lshw - List all hardware known by HAL
         '''
         self()
 
