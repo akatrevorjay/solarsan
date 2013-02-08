@@ -47,64 +47,64 @@ class System(object):
     def __init__(self):
         pass
 
-    def ui_command_hostname(self):
+    def hostname(self):
         '''
         Displays the system hostname
         '''
-        os.system("hostname -f")
+        return sh.hostname('-f')
 
-    def ui_command_uname(self):
+    def uname(self):
         '''
         Displays the system uname information.
         '''
-        os.system("uname -a")
+        return sh.uname('-a')
 
-    def ui_command_lsmod(self):
+    def lsmod(self):
         '''
         lsmod - program to show the status of modules in the Linux Kernel
         '''
-        os.system("lsmod")
+        return sh.lsmod()
 
-    def ui_command_lspci(self):
+    def lspci(self):
         '''
         lspci - list all PCI devices
         '''
-        os.system("lspci")
+        return sh.lspci()
 
-    def ui_command_lsusb(self):
+    def lsusb(self):
         '''
         lsusb - list USB devices
         '''
-        os.system("lsusb")
+        return sh.lsusb()
 
-    def ui_command_lscpu(self):
+    def lscpu(self):
         '''
         lscpu - CPU architecture information helper
         '''
-        os.system("lscpu")
+        return sh.lscpu()
 
-    def ui_command_uptime(self):
+    def uptime(self):
         '''
         uptime - Tell how long the system has been running.
         '''
-        os.system("uptime")
+        return sh.uptime()
 
-    def ui_command_shutdown(self):
+    def shutdown(self):
         '''
         shutdown - Shutdown system
         '''
         #status.tasks.shutdown.delay()
         raise NotImplemented
 
-    def ui_command_reboot(self):
+    def reboot(self):
         '''
         reboot - reboot system
         '''
         #status.tasks.reboot.delay()
         raise NotImplemented
 
-    def ui_command_check_services(self):
-        os.system("initctl list | egrep 'solarsan|targetcli|mongo'")
+    def check_services(self):
+        return sh.egrep(sh.initctl('list'), 'solarsan|targetcli|mongo')
 
 
 """
@@ -117,77 +117,77 @@ class Developer(object):
         super(Developer, self).__init__('developer', parent)
         Benchmarks(self)
 
-    def ui_command_shell(self):
-        os.system("bash")
+    #def shell(self):
+    #    return sh.bash")
 
-    def ui_command_pyshell(self):
-        os.system("/opt/solarsanweb/manage shell_plus")
+    #def pyshell(self):
+    #    return sh."/opt/solarsanweb/manage shell_plus")
 
-    def ui_command_ipyshell(self):
-        os.system("/opt/solarsanweb/manage shell_plus --ipython")
+    #def ipyshell(self):
+    #    return sh."/opt/solarsanweb/manage shell_plus --ipython")
 
-    def ui_command_ipynotebook(self):
-        os.system("/opt/solarsanweb/manage ipython notebook --ext=django_notebook")
+    #def ipynotebook(self):
+    #    return sh."/opt/solarsanweb/manage ipython notebook --ext=django_notebook")
 
-    def ui_command_mongo(self):
-        os.system("mongo")
+    #def mongo(self):
+    #    return sh."mongo")
 
-    def ui_command_stop_services(self):
-        os.system("stop solarsan")
+    def stop_services(self):
+        return sh.stop("solarsan")
 
-    def ui_command_start_services(self):
-        os.system("start solarsan")
+    def start_services(self):
+        return sh.start("solarsan")
 
-    def ui_command_targetcli(self):
-        os.system("targetcli")
+    #def targetcli(self):
+    #    return sh.targetcli("targetcli")
 
-    #def ui_command_export_clustered_pool_vdevs(self):
+    #def export_clustered_pool_vdevs(self):
     #    cluster.tasks.export_clustered_pool_vdevs.apply()
 
-    def ui_command_top(self):
-        os.system("top")
+    #def top(self):
+    #    return sh.top()
 
-    def ui_command_ps(self):
-        os.system("ps aux")
+    def ps(self):
+        return sh.ps("aux")
 
-    def ui_command_pstree(self):
-        os.system("pstree -ahuU")
+    def pstree(self):
+        return sh.pstree("-ahuU")
 
-    def ui_command_iostat(self):
-        os.system("iostat -m 5 2")
+    def iostat(self):
+        return sh.iostat('-m', '5', '2')
 
-    def ui_command_zpool_iostat(self):
-        os.system("zpool iostat -v 5 2")
+    def zpool_iostat(self):
+        return sh.zpool('iostat', '-v', '5', '2')
 
-    def ui_command_ibstat(self):
-        os.system("ibstat")
+    def ibstat(self):
+        return sh.ibstat()
 
-    def ui_command_ibstatus(self):
-        os.system("ibstatus")
+    def ibstatus(self):
+        return sh.ibstatus()
 
-    def ui_command_ibv_devinfo(self):
-        os.system("ibv_devinfo")
+    def ibv_devinfo(self):
+        return sh.ibv_devinfo()
 
-    def ui_command_ibping(self, host):
+    def ibping(self, host):
         print sh.ibping(host, _err_to_out=True)
 
-    def ui_command_ibrouters(self):
-        os.system("ibrouters")
+    def ibrouters(self):
+        return sh.ibrouters()
 
-    def ui_command_ibswitches(self):
-        os.system("ibswitches")
+    def ibswitches(self):
+        return sh.ibswitches()
 
-    def ui_command_ibdiscover(self):
-        os.system("ibdiscover")
+    def ibdiscover(self):
+        return sh.ibdiscover()
 
-    def ui_command_ibnodes(self):
-        os.system("ibnodes")
+    def ibnodes(self):
+        return sh.ibnodes()
 
-    def ui_command_ibtool(self, *args):
+    def ibtool(self, *args):
         for line in sh.ibtool(*args, _iter=True, _err_to_out=True):
             print line.rstrip("\n")
 
-    def ui_command_rdma(self, host=None):
+    def rdma(self, host=None):
         if host:
             logger.info("Running client to host='%s'", host)
             ret = sh.rdma_client(host, _err_to_out=True, _iter=True)
@@ -197,17 +197,17 @@ class Developer(object):
         for line in ret:
             print line.rstrip("\n")
 
-    #def ui_command_ibstat(self):
-    #    os.system("ibstat")
+    #def ibstat(self):
+    #    return sh."ibstat")
 
-    #def ui_command_ibstat(self):
-    #    os.system("ibstat")
+    #def ibstat(self):
+    #    return sh."ibstat")
 
-    def ui_command_ipdb(self):
-        import ipdb
-        ipdb.set_trace()
+    #def ipdb(self):
+    #    import ipdb
+    #    ipdb.set_trace()
 
-    #def ui_command_ipdb_post_mortem(self):
+    #def ipdb_post_mortem(self):
     #    import ipdb
     #    ipdb.pm()
 
@@ -216,7 +216,7 @@ class Benchmarks(object):
     def __init__(self, parent):
         super(Benchmarks, self).__init__('benchmarks', parent)
 
-    def ui_command_netperf(self, host=None):
+    def netperf(self, host=None):
         args = []
         if host:
             logger.info("Running client to host='%s'", host)
@@ -262,12 +262,12 @@ class Benchmarks(object):
         logger.info("Destroying test filesystem '%s'", fs)
         fs.destroy(confirm=True)
 
-    def ui_command_cleanup(self, pool=None):
+    def cleanup(self, pool=None):
         if pool:
             self.test_pool = pool
         self._cleanup_test_filesystem()
 
-    def ui_command_bonniepp(self, atime='off', compress='on', pool=None):
+    def bonniepp(self, atime='off', compress='on', pool=None):
         if pool:
             self.test_pool = pool
         fs = self._create_test_filesystem(atime=atime, compress=compress)
@@ -279,7 +279,7 @@ class Benchmarks(object):
 
         self._cleanup_test_filesystem()
 
-    def ui_command_iozone(self, atime='off', compress='on', size='1M', pool=None):
+    def iozone(self, atime='off', compress='on', size='1M', pool=None):
         if pool:
             self.test_pool = pool
         fs = self._create_test_filesystem(atime=atime, compress=compress)
@@ -310,12 +310,12 @@ class CliRoot(object):
         logger.info("New node: %s", new_node)
         return None
 
-    def refresh(self):
-        for child in self.children:
-            child.refresh()
+    #def refresh(self):
+    #    for child in self.children:
+    #        child.refresh()
 
-    def ui_command_refresh(self):
-        self.refresh()
+    #def refresh(self):
+    #    self.refresh()
 
     #def ui_getgroup_global(self, key):
     #    '''
@@ -340,74 +340,74 @@ class CliRoot(object):
     #    #self.assert_root()
     #    #self.rtsnode.set_global(key, value)
 
-    def ui_getgroup_param(self, param):
-        '''
-        This is the backend method for getting params.
-        @param param: The param to get the value of.
-        @type param: str
-        @return: The param's value
-        @rtype: arbitrary
-        '''
-        logger.info("attr=%s", param)
-        #return self.rtsnode.get_param(param)
+    #def ui_getgroup_param(self, param):
+    #    '''
+    #    This is the backend method for getting params.
+    #    @param param: The param to get the value of.
+    #    @type param: str
+    #    @return: The param's value
+    #    @rtype: arbitrary
+    #    '''
+    #    logger.info("attr=%s", param)
+    #    #return self.rtsnode.get_param(param)
 
-    def ui_setgroup_param(self, param, value):
-        '''
-        This is the backend method for setting params.
-        @param param: The param to set the value of.
-        @type param: str
-        @param value: The param's value
-        @type value: arbitrary
-        '''
-        logger.info("attr=%s val=%s", param, value)
-        #self.assert_root()
-        #self.rtsnode.set_param(param, value)
+    #def ui_setgroup_param(self, param, value):
+    #    '''
+    #    This is the backend method for setting params.
+    #    @param param: The param to set the value of.
+    #    @type param: str
+    #    @param value: The param's value
+    #    @type value: arbitrary
+    #    '''
+    #    logger.info("attr=%s val=%s", param, value)
+    #    #self.assert_root()
+    #    #self.rtsnode.set_param(param, value)
 
-    def ui_getgroup_attribute(self, attribute):
-        '''
-        This is the backend method for getting attributes.
-        @param attribute: The attribute to get the value of.
-        @type attribute: str
-        @return: The attribute's value
-        @rtype: arbitrary
-        '''
-        logger.info("attr=%s", attribute)
-        #return self.rtsnode.get_attribute(attribute)
+    #def ui_getgroup_attribute(self, attribute):
+    #    '''
+    #    This is the backend method for getting attributes.
+    #    @param attribute: The attribute to get the value of.
+    #    @type attribute: str
+    #    @return: The attribute's value
+    #    @rtype: arbitrary
+    #    '''
+    #    logger.info("attr=%s", attribute)
+    #    #return self.rtsnode.get_attribute(attribute)
 
-    def ui_setgroup_attribute(self, attribute, value):
-        '''
-        This is the backend method for setting attributes.
-        @param attribute: The attribute to set the value of.
-        @type attribute: str
-        @param value: The attribute's value
-        @type value: arbitrary
-        '''
-        logger.info("attr=%s val=%s", attribute, value)
-        #self.assert_root()
-        #self.rtsnode.set_attribute(attribute, value)
+    #def ui_setgroup_attribute(self, attribute, value):
+    #    '''
+    #    This is the backend method for setting attributes.
+    #    @param attribute: The attribute to set the value of.
+    #    @type attribute: str
+    #    @param value: The attribute's value
+    #    @type value: arbitrary
+    #    '''
+    #    logger.info("attr=%s val=%s", attribute, value)
+    #    #self.assert_root()
+    #    #self.rtsnode.set_attribute(attribute, value)
 
-    def ui_getgroup_parameter(self, parameter):
-        '''
-        This is the backend method for getting parameters.
-        @param parameter: The parameter to get the value of.
-        @type parameter: str
-        @return: The parameter's value
-        @rtype: arbitrary
-        '''
-        logger.info("parameter=%s", parameter)
-        #return self.rtsnode.get_parameter(parameter)
+    #def ui_getgroup_parameter(self, parameter):
+    #    '''
+    #    This is the backend method for getting parameters.
+    #    @param parameter: The parameter to get the value of.
+    #    @type parameter: str
+    #    @return: The parameter's value
+    #    @rtype: arbitrary
+    #    '''
+    #    logger.info("parameter=%s", parameter)
+    #    #return self.rtsnode.get_parameter(parameter)
 
-    def ui_setgroup_parameter(self, parameter, value):
-        '''
-        This is the backend method for setting parameters.
-        @param parameter: The parameter to set the value of.
-        @type parameter: str
-        @param value: The parameter's value
-        @type value: arbitrary
-        '''
-        logger.info("parameter=%s val=%s", parameter, value)
-        #self.assert_root()
-        #self.rtsnode.set_parameter(parameter, value)
+    #def ui_setgroup_parameter(self, parameter, value):
+    #    '''
+    #    This is the backend method for setting parameters.
+    #    @param parameter: The parameter to set the value of.
+    #    @type parameter: str
+    #    @param value: The parameter's value
+    #    @type value: arbitrary
+    #    '''
+    #    logger.info("parameter=%s val=%s", parameter, value)
+    #    #self.assert_root()
+    #    #self.rtsnode.set_parameter(parameter, value)
 
 
 def main():

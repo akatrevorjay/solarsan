@@ -1,80 +1,71 @@
 
-from solarsan.core import logger
-from solarsan import conf
-from solarsan.cluster.models import Peer
-from configshell import ConfigNode
+#from solarsan.core import logger
+#from solarsan import conf
+#from solarsan.cluster.models import Peer
+#from configshell import ConfigNode
+#from solarsan.pretty import pp
+#from solarsan.utils.stack import get_current_func_name
 
-import os
+from .base import BaseServiceConfigNode
 
 
-class System(ConfigNode):
+class System(BaseServiceConfigNode):
     def __init__(self, parent):
-        super(System, self).__init__('system', parent)
-        self._service = None
-
-    @property
-    def service(self):
-        if self._service:
-            p = Peer.get_local()
-            self._service_cli = p.get_service('cli')
-            self._service = self._service_cli.root.system()
-        return self._service
+        super(System, self).__init__(None, parent)
 
     def ui_command_hostname(self):
         '''
         Displays the system hostname
         '''
-        self._service.hostname()
+        self()
 
     def ui_command_uname(self):
         '''
         Displays the system uname information.
         '''
-        os.system("uname -a")
+        self()
 
     def ui_command_lsmod(self):
         '''
         lsmod - program to show the status of modules in the Linux Kernel
         '''
-        os.system("lsmod")
+        self()
 
     def ui_command_lspci(self):
         '''
         lspci - list all PCI devices
         '''
-        os.system("lspci")
+        self()
 
     def ui_command_lsusb(self):
         '''
         lsusb - list USB devices
         '''
-        os.system("lsusb")
+        self()
 
     def ui_command_lscpu(self):
         '''
         lscpu - CPU architecture information helper
         '''
-        os.system("lscpu")
+        self()
 
     def ui_command_uptime(self):
         '''
         uptime - Tell how long the system has been running.
         '''
-        os.system("uptime")
+        self()
 
     def ui_command_shutdown(self):
         '''
         shutdown - Shutdown system
         '''
-        #status.tasks.shutdown.delay()
-        raise NotImplemented
+        self()
 
     def ui_command_reboot(self):
         '''
         reboot - reboot system
         '''
-        #status.tasks.reboot.delay()
-        raise NotImplemented
+        self()
 
     def ui_command_check_services(self):
-        os.system("initctl list | egrep 'solarsan|targetcli|mongo'")
+        self()

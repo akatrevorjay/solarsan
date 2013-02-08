@@ -3,6 +3,10 @@ from solarsan.core import logger
 from solarsan import conf
 from configshell import ConfigNode
 
+from .system import System
+from .developer import Developer
+from .benchmarks import Benchmarks
+
 
 class CliRoot(ConfigNode):
     def __init__(self, shell, sections):
@@ -18,7 +22,7 @@ class CliRoot(ConfigNode):
 
         System(self)
 
-        if settings.DEBUG:
+        if conf.config.get('debug'):
             Developer(self)
 
     def summary(self):
@@ -132,7 +136,8 @@ class CliRoot(ConfigNode):
 def main():
     from configshell.shell import ConfigShell
 
-    CLI_TOP_SECTIONS = [Storage, Logs, Configure, Cluster]
+    #CLI_TOP_SECTIONS = [Storage, Logs, Configure, Cluster]
+    CLI_TOP_SECTIONS = []
 
     shell = ConfigShell('~/.solarsancli')
     root_node = CliRoot(shell, CLI_TOP_SECTIONS)
