@@ -52,11 +52,11 @@ class StorageNode(BaseServiceConfigNode):
     Child Creationism (Teach it to them young)
     """
 
-    def ui_command_create_filesystem(self, name):
-        '''
-        create - Creates a Filesystem
-        '''
-        self()
+    #def ui_command_create_filesystem(self, name):
+    #    '''
+    #    create - Creates a Filesystem
+    #    '''
+    #    self()
 
     def ui_command_create_volume(self, name, size):
         '''
