@@ -8,3 +8,7 @@ class ConnectionError(FormattedException):
 
 #class DeadPeer(ConnectionError):
 #    pass
+
+
+class TimeoutError(ConnectionError):
+    pass
