@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
 from circuits import Component, Event, Timer
-from target.models import iSCSITarget
+from solarsan.target.models import iSCSITarget
 import random
 
 

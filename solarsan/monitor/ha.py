@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
 from circuits import Component, Event, handler
-from ha.models import ActivePassiveIP
+from solarsan.ha.models import ActivePassiveIP
 
 
 """
