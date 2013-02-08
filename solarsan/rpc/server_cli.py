@@ -53,11 +53,27 @@ class CLIService(rpyc.Service):
     def storage(self):
         return Storage()
 
+    def pools(self):
+        return Pools()
+
+    def volumes(self):
+        return Volumes()
+
     def pool(self, pool):
         return PoolNode(pool)
 
     #def volume(self, volume):
     #    return VolumeNode(volume)
+
+
+class Pools(object):
+    def list(self):
+        return [p.name for p in Pool.list()]
+
+
+class Volumes(object):
+    def list(self):
+        return [v.name for v in Volume.list()]
 
 
 class System(object):
@@ -605,12 +621,6 @@ class Storage(object):
 
     def lsblk(self):
         return sh.lsblk()
-
-    def pool_list(self):
-        return [p.name for p in Pool.list()]
-
-    def volume_list(self):
-        return [v.name for v in Volume.list()]
 
 
 class CliRoot(object):

@@ -49,7 +49,7 @@ class StorageNode(BaseServiceConfigNode):
         #            add_child_dataset(self, child)
 
     """
-    Child Creationism (Teach it to them young)
+    Child Creationism (Teach it to 'em young)
     """
 
     #def ui_command_create_filesystem(self, name):
@@ -62,13 +62,13 @@ class StorageNode(BaseServiceConfigNode):
         '''
         create - Creates a volume
         '''
-        self()
+        self(name, size)
 
     def ui_command_create_snapshot(self, name):
         '''
         create - Creates a snapshot
         '''
-        self()
+        self(name)
 
     def ui_command_destroy(self, confirm=False):
         self(confirm=confirm)
@@ -204,7 +204,7 @@ class Pool(StorageNode):
     """
 
     def ui_command_iostat(self, capture_length=2):
-        self()
+        self(capture_length=capture_length)
 
     def ui_command_status(self):
         self()
@@ -234,11 +234,11 @@ class Pool(StorageNode):
     #    self()
 
 
-class Storage(BaseServiceConfigNode):
+class Pools(BaseServiceConfigNode):
     def __init__(self, parent):
-        super(Storage, self).__init__(None, parent)
+        super(Pools, self).__init__(None, parent)
 
-        for pool in self.service.pool_list():
+        for pool in self.service.list():
             Pool(self, pool)
 
     def ui_command_create_pool(self, name):
@@ -246,6 +246,27 @@ class Storage(BaseServiceConfigNode):
         create - Creates a storage Pool
         '''
         self()
+
+
+#class Volumes(BaseServiceConfigNode):
+#    def __init__(self, parent):
+#        super(Volumes, self).__init__(None, parent)
+#
+#        for volume in self.service.list():
+#            Volume(self, volume)
+#
+#    def ui_command_create_volume(self, name):
+#        '''
+#        create - Creates a storage Volume
+#        '''
+#        self()
+
+
+class Storage(BaseServiceConfigNode):
+    def __init__(self, parent):
+        super(Storage, self).__init__(None, parent)
+
+        Pools(self)
 
     def ui_command_lsscsi(self):
         '''
