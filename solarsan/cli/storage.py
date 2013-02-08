@@ -4,7 +4,7 @@ from .base import BaseServiceConfigNode
 
 class StorageNode(BaseServiceConfigNode):
     def __init__(self, parent, obj):
-        self.obj = obj
+        self._obj = obj
         obj_path = obj.split('/')
         super(StorageNode, self).__init__(obj_path[-1], parent)
 
@@ -173,8 +173,8 @@ class Pool(StorageNode):
                  ============
                  Storage Pools are dataset containers, they contain datasets such as a filesystem or a volume.
 
-                 Literally, it's just like a giant swimming pool for your data.
-                 That is, except someone replaced your water with solid state drives and rotating platters.
+                 Think of it as a giant swimming pool for your data.
+                 That is, except some odd fellow replaced your water with solid state drives and rotating platters.
                  '''
 
     def __init__(self, parent, pool):
@@ -236,10 +236,10 @@ class Pool(StorageNode):
 
 class Storage(BaseServiceConfigNode):
     def __init__(self, parent):
-        super(Storage, self).__init__('storage', parent)
+        super(Storage, self).__init__(None, parent)
 
-        #for pool in m.Pool.objects.all():
-        #    Pool(self, pool)
+        for pool in self.service.pool_list():
+            Pool(self, pool)
 
     def ui_command_create_pool(self, name):
         '''

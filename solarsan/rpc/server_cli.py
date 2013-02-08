@@ -53,6 +53,12 @@ class CLIService(rpyc.Service):
     def storage(self):
         return Storage()
 
+    def pool(self, pool):
+        return PoolNode(pool)
+
+    #def volume(self, volume):
+    #    return VolumeNode(volume)
+
 
 class System(object):
     def __init__(self):
@@ -300,7 +306,6 @@ class Benchmarks(object):
 
 class StorageNode(object):
     def __init__(self, obj):
-        self.obj = obj
 
         #obj_path = obj.path()
         #if hasattr(obj, 'children'):
@@ -322,6 +327,8 @@ class StorageNode(object):
         #
         #        for child in children:
         #            add_child_dataset(self, child)
+
+        pass
 
     """
     Getters
@@ -502,6 +509,7 @@ class DatasetNode(StorageNode):
 
 class PoolNode(StorageNode):
     def __init__(self, pool):
+        self.obj = Pool(name=pool)
         super(PoolNode, self).__init__(pool)
 
     def summary(self):
@@ -599,10 +607,10 @@ class Storage(object):
         return sh.lsblk()
 
     def pool_list(self):
-        return Pool.list()
+        return [p.name for p in Pool.list()]
 
     def volume_list(self):
-        return Volume.list()
+        return [v.name for v in Volume.list()]
 
 
 class CliRoot(object):

@@ -5,7 +5,6 @@ import sh
 #import re
 from solarsan.utils import LoggedException
 from datetime import datetime
-from django.utils import timezone
 
 '''
 from analytics.cube import CubeAnalytics
@@ -311,10 +310,8 @@ class Pool(Base):
                 # If this is our first record, skip till we get the header seperator
                 if not timestamp:
                     skip_past_dashline = True
-                # TZify the timestamp
-                timestamp = timezone.make_aware(
-                    datetime.fromtimestamp(int(line)),
-                    timezone.get_current_timezone())
+                # TODO TZify the timestamp
+                timestamp = datetime.fromtimestamp(int(line))
                 continue
 
             # If we haven't gotten the dashline yet, wait till the line after it
@@ -332,11 +329,12 @@ class Pool(Base):
 
             # Parse iostats output
             j = {}
+            j['timestamp'] = timestamp
             (j['name'],
              j['alloc'], j['free'],
              j['iops_read'], j['iops_write'],
              j['bandwidth_read'], j['bandwidth_write']) = line.strip().split()
-            j['timestamp'] = timestamp
+            # Cut the crap
             j.pop('name')
             return j
 
