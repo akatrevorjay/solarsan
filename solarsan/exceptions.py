@@ -2,6 +2,11 @@
 from solarsan.utils.exceptions import FormattedException
 
 
+"""
+Service
+"""
+
+
 class ConnectionError(FormattedException):
     pass
 
@@ -11,4 +16,13 @@ class ConnectionError(FormattedException):
 
 
 class TimeoutError(ConnectionError):
+    pass
+
+
+"""
+Storage
+"""
+
+
+class ZfsError(FormattedException):
     pass
