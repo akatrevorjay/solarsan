@@ -3,6 +3,16 @@ from solarsan.utils.exceptions import FormattedException
 
 
 """
+Common
+"""
+
+
+class UncleanlinessError(FormattedException):
+    """Wash the fuck up!"""
+    pass
+
+
+"""
 Service
 """
 

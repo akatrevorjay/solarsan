@@ -2,9 +2,11 @@
 from solarsan.core import logger
 from solarsan import conf
 from solarsan.storage.filesystem import Filesystem
-from solarsan.storage.volume import Volume
+from solarsan.storage.utils import clean_name
 from solarsan.storage.pool import Pool
-from solarsan.exceptions import FormattedException, ZfsError
+from solarsan.storage.volume import Volume
+from solarsan.storage.snapshot import Snapshot
+from solarsan.exceptions import ZfsError
 import os
 import rpyc
 import sh
@@ -47,6 +49,9 @@ class CLIService(rpyc.Service):
 
     def benchmarks(self):
         return Benchmarks()
+
+    def storage(self):
+        return Storage()
 
 
 class System(object):
@@ -291,6 +296,313 @@ class Benchmarks(object):
         time.sleep(1)
         self._cleanup_test_filesystem()
         return ret
+
+
+class StorageNode(object):
+    def __init__(self, obj):
+        self.obj = obj
+
+        #obj_path = obj.path()
+        #if hasattr(obj, 'children'):
+        #    all_children = obj.children()
+        #    if all_children:
+        #        def find_children(depth):
+        #            ret = []
+        #            for child in all_children:
+        #                child_path = child.path()
+        #                child_depth = len(child_path)
+        #                #if child_depth > max_child_depth:
+        #                #    max_child_depth = child_depth
+        #                if child_depth == depth:
+        #                    ret.append(child)
+        #            return ret
+        #
+        #        show_depth = len(obj_path) + 1
+        #        children = find_children(show_depth)
+        #
+        #        for child in children:
+        #            add_child_dataset(self, child)
+
+    """
+    Getters
+    """
+
+    def _get_pool(self):
+        if self.obj.type == 'pool':
+            return self.obj
+        else:
+            return self.obj.pool
+
+    def _get_filesystem(self):
+        if self.obj.type == 'pool':
+            return self.obj.filesystem
+        elif self.obj.type == 'filesystem':
+            return self.obj
+
+    """
+    Child Creationism (Teach it to 'em young)
+    """
+
+    #def create_filesystem(self, name):
+    #    '''
+    #    create - Creates a Filesystem
+    #    '''
+    #    parent = self._get_filesystem()
+    #    pool = self._get_pool()
+    #    cls = m.Filesystem
+    #    name = clean_name(name)
+    #
+    #    obj_name = os.path.join(parent.name, name)
+    #    obj = cls(name=obj_name)
+    #    if obj.exists():
+    #        raise ZfsError("Object '%s' already exists", name)
+    #    obj.create()
+
+    def create_volume(self, name, size):
+        '''
+        create - Creates a volume
+        '''
+        parent = self._get_filesystem()
+        #pool = self._get_pool()
+        cls = Volume
+        name = clean_name(name)
+
+        obj_name = os.path.join(parent.name, name)
+        obj = cls(name=obj_name)
+        if obj.exists():
+            raise ZfsError("Object '%s' already exists", name)
+        obj.create(size)
+        return True
+
+    def create_snapshot(self, name):
+        '''
+        create - Creates a snapshot
+        '''
+        parent = self._get_filesystem()
+        #pool = self._get_pool()
+        cls = Snapshot
+        name = clean_name(name)
+
+        obj_name = os.path.join(parent.name, name)
+        obj = cls(name=obj_name)
+        if obj.exists():
+            raise ZfsError("Object '%s' already exists", name)
+        obj.create()
+        return True
+
+    def destroy(self, confirm=False):
+        obj = self.obj
+        if not obj.exists():
+            raise ZfsError("Object '%s' does not exist", obj)
+        #if not confirm:
+        #    raise ZfsError("You must set confirm=True argument to confirm such an action of destruction")
+        obj.destroy(confirm=confirm)
+        return True
+
+    def rename(self, new):
+        path = self.obj.path(len=-1)
+        path.append(clean_name(new))
+        new = os.path.join(*path)
+        obj = self.obj
+        if not obj.exists():
+            raise ZfsError("Object '%s' does not exist", obj)
+        obj.rename(new)
+        return True
+
+    """
+    Properties
+    """
+
+    POOL_PROPERTIES = []
+
+    def ui_getgroup_property(self, property):
+        '''
+        This is the backend method for getting propertys.
+        @param property: The property to get the value of.
+        @type property: str
+        @return: The property's value
+        @rtype: arbitrary
+        '''
+        if property in self.POOL_PROPERTIES:
+            obj = self._get_pool()
+        else:
+            obj = self._get_filesystem()
+        return str(obj.properties[property])
+
+    def ui_setgroup_property(self, property, value):
+        '''
+        This is the backend method for setting propertys.
+        @param property: The property to set the value of.
+        @type property: str
+        @param value: The property's value
+        @type value: arbitrary
+        '''
+        if property in self.POOL_PROPERTIES:
+            obj = self._get_pool()
+        else:
+            obj = self._get_filesystem()
+        obj.properties[property] = value
+
+    POOL_STATISTICS = ['dedupratio']
+
+    def ui_getgroup_statistic(self, statistic):
+        '''
+        This is the backend method for getting statistics.
+        @param statistic: The statistic to get the value of.
+        @type statistic: str
+        @return: The statistic's value
+        @rtype: arbitrary
+        '''
+        if statistic in self.POOL_STATISTICS:
+            obj = self._get_pool()
+        else:
+            obj = self._get_filesystem()
+
+        return str(obj.properties[statistic])
+
+    def ui_setgroup_statistic(self, statistic, value):
+        '''
+        This is the backend method for setting statistics.
+        @param statistic: The statistic to set the value of.
+        @type statistic: str
+        @param value: The statistic's value
+        @type value: arbitrary
+        '''
+        #self.obj.properties[statistic] = value
+        return None
+
+
+#def add_child_dataset(self, child):
+#    if child.type == 'filesystem':
+#        DatasetNode(self, child)
+#    elif child.type == 'volume':
+#        DatasetNode(self, child)
+#    elif child.type == 'snapshot':
+#        DatasetNode(self, child)
+
+
+#class StorageNodeChildType(ConfigNode):
+#    def __init__(self, parent, child_type):
+#        self.child_type = child_type
+#        super(StorageNodeChildType, self).__init__('%ss' % child_type, parent)
+
+
+class DatasetNode(StorageNode):
+    def __init__(self, parent, dataset):
+        super(DatasetNode, self).__init__(parent, dataset)
+
+    #def ui_type_blah(self):
+    #    pass
+
+    def summary(self):
+        # TODO Check disk usage percentage, generic self.obj.errors/warnings
+        # interface perhaps?
+        return (self.obj.type, True)
+
+
+class PoolNode(StorageNode):
+    def __init__(self, pool):
+        super(PoolNode, self).__init__(pool)
+
+    def summary(self):
+        return (self.obj.health, self.obj.is_healthy())
+
+    def usage(self):
+        obj = self.obj
+        alloc = str(obj.properties['alloc'])
+        free = str(obj.properties['free'])
+        total = str(obj.properties['size'])
+        ret = {'alloc': alloc,
+               'free': free,
+               'total': total,
+               }
+        return ret
+
+    """
+    Devices
+    """
+
+    def lsdevices(self):
+        return self.obj.pretty_devices()
+
+    #def add_device(self, path, type='disk'):
+    #    logging.error("TODO")
+
+    #def replace_device(self, old, new):
+    #    logging.error("TODO")
+
+    """
+    Status
+    """
+
+    def iostat(self, capture_length=2):
+        return self.obj.iostat(capture_length=capture_length)
+
+    def status(self):
+        status = self.obj.status()
+        #config = []
+        #for k, v in status['config'].items():
+        #    v['name'] = k
+        #    config.append(v)
+        #status['config'] = config
+        status.pop('config')
+        return status
+
+    def health(self):
+        return str(self.obj.properties['health'])
+
+    def clear(self):
+        return self.obj.clear()
+
+    """
+    Import/Export
+    """
+
+    def import_(self):
+        return self.obj.import_()
+
+    def export(self):
+        return self.obj.export()
+
+    """
+    Cluster
+    """
+
+    ## TODO Attribute
+    #def is_clustered(self):
+    #    return self.obj.is_clustered
+
+
+class Storage(object):
+    def __init__(self):
+        pass
+
+    def create_pool(self, name):
+        '''
+        create - Creates a storage Pool
+        '''
+        raise NotImplemented
+
+    def lsscsi(self):
+        '''
+        lsscsi - list SCSI devices (or hosts) and their attributes
+        '''
+        return sh.lsscsi()
+
+    def df(self):
+        '''
+        df - report file system disk space usage
+        '''
+        return sh.df('-h')
+
+    def lsblk(self):
+        return sh.lsblk()
+
+    def pool_list(self):
+        return Pool.list()
+
+    def volume_list(self):
+        return Volume.list()
 
 
 class CliRoot(object):
