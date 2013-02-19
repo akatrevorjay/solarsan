@@ -7,11 +7,11 @@ from solarsan.storage.pool import Pool
 from solarsan.storage.volume import Volume
 from solarsan.storage.snapshot import Snapshot
 from solarsan.exceptions import ZfsError
+from setproctitle import setproctitle
 import os
 import rpyc
 import sh
 import time
-
 
 class CLIService(rpyc.Service):
     def on_connect(self):
@@ -133,14 +133,14 @@ class System(object):
         shutdown - Shutdown system
         '''
         #status.tasks.shutdown.delay()
-        raise NotImplemented
+        return sh.shutdown('-h', 'now')
 
     def reboot(self):
         '''
         reboot - reboot system
         '''
         #status.tasks.reboot.delay()
-        raise NotImplemented
+        return sh.reboot()
 
     def check_services(self):
         return sh.egrep(sh.initctl('list'), 'solarsan|targetcli|mongo')
@@ -738,6 +738,9 @@ class CliRoot(object):
 def main():
     from cluster.models import Peer
     from rpyc.utils.server import ThreadedServer
+    from setproctitle import setproctitle
+    title = 'SolarSan CLI'
+    setproctitle('[%s]' % title)
 
     local = Peer.get_local()
     cluster_iface_bcast = local.cluster_nic.broadcast

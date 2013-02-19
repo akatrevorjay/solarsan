@@ -117,6 +117,10 @@ class StorageService(rpyc.Service):
 def main():
     from rpyc.utils.server import ThreadedServer
 
+    from setproctitle import setproctitle
+    title = 'SolarSan Storage'
+    setproctitle('[%s]' % title)
+
     local = Peer.get_local()
     cluster_iface_bcast = local.cluster_nic.broadcast
     # Allow all public attrs, because exposed_ is stupid and should be a
