@@ -1,6 +1,6 @@
 
 from solarsan.utils import LoggedException
-import logging
+from solarsan.core import logger
 import sh
 from .dataset import Dataset
 
@@ -85,7 +85,7 @@ class Volume(Dataset):
 
         """
         old = self.name
-        logging.info("Renaming dataset '%s' to '%s'", old, new)
+        logger.info("Renaming dataset '%s' to '%s'", old, new)
         try:
             sh.zfs('rename', old, new)
             self.name = new

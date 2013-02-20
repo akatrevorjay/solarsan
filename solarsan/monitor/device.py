@@ -15,8 +15,8 @@ class DeviceManager(Component):
 
         UDev().register(self)
 
-    #def device_add(self, device):
-    #    pass
+    def device_add(self, device):
+        pass
 
-    #def device_remove(self, device):
-    #    pass
+    def device_remove(self, device):
+        pass

@@ -17,6 +17,8 @@ from storage.volume import Volume
 
 from storage.drbd import DrbdPeer, DrbdResource
 
+from storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices
+
 from target.models import Target, iSCSITarget, SRPTarget
 #Device, VolumeDevice, ResourceDevice
 import target.scst

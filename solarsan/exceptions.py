@@ -18,6 +18,7 @@ Service
 
 
 class ConnectionError(FormattedException):
+    """Generic connection error"""
     pass
 
 
@@ -26,6 +27,7 @@ class ConnectionError(FormattedException):
 
 
 class TimeoutError(ConnectionError):
+    """Timeout error"""
     pass
 
 
@@ -35,4 +37,5 @@ Storage
 
 
 class ZfsError(FormattedException):
+    """Generic ZFS Error"""
     pass
