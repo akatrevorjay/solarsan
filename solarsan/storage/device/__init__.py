@@ -1,5 +1,6 @@
 
 from solarsan.core import logger
+from solarsan.exceptions import DeviceHandlerNotFound
 import os
 from solarsan.utils.queryset import QuerySet
 
@@ -105,28 +106,28 @@ class Mirror(DeviceQuerySet):
         return self.append(other)
 
 
-class MyMeta(type):
-    def __new__(meta, name, bases, dct):
-        print '-----------------------------------'
-        print "Allocating memory for class", name
-        print meta
-        print bases
-        print dct
-        return super(MyMeta, meta).__new__(meta, name, bases, dct)
-
-    def __init__(cls, name, bases, dct):
-        print '-----------------------------------'
-        print "Initializing class", name
-        print cls
-        print bases
-        print dct
-        super(MyMeta, cls).__init__(name, bases, dct)
+#class MyMeta(type):
+#    def __new__(meta, name, bases, dct):
+#        print '-----------------------------------'
+#        print "Allocating memory for class", name
+#        print meta
+#        print bases
+#        print dct
+#        return super(MyMeta, meta).__new__(meta, name, bases, dct)
+#
+#    def __init__(cls, name, bases, dct):
+#        print '-----------------------------------'
+#        print "Initializing class", name
+#        print cls
+#        print bases
+#        print dct
+#        super(MyMeta, cls).__init__(name, bases, dct)
 
 
 class BaseDevice(backend.BaseDevice):
     """Device object
     """
-    __metaclass__ = MyMeta
+    #__metaclass__ = MyMeta
 
     path = None
     _mirrorable = False
@@ -142,6 +143,8 @@ class BaseDevice(backend.BaseDevice):
     def __init__(self, arg):
         if isinstance(arg, backend.RawDevice):
             self._backend_device = arg
+        elif isinstance(arg, BaseDevice):
+            self._backend_device = arg._backend_device
         else:
             self._backend_device = backend.get_device_by_path(arg)
         self.path = self.path_by_id(basename=True)
@@ -197,14 +200,28 @@ class Device(BaseDevice):
     def __new__(cls, backend_device, *args, **kwargs):
         #logger.debug("cls: %s backend_device=%s, args=%s kwargs=%s", cls, backend_device, args, kwargs)
 
-        for subclass in cls.__subclasses__():
-            meth = getattr(subclass, '_supports_backend', None)
-            if not meth:
-                continue
-            if meth(backend_device):
+        if isinstance(backend_device, BaseDevice):
+            backend_device = backend_device._backend_device
+
+        for subclass in cls._handlers():
+            if subclass._supports_backend(backend_device):
                 return super(Device, cls).__new__(subclass, backend_device, *args, **kwargs)
 
+        if getattr(cls, '_supports_backend', None):
+            raise DeviceHandlerNotFound(backend_device)
         return super(Device, cls).__new__(cls, backend_device, *args, **kwargs)
+
+    @classmethod
+    def _handlers(cls):
+        for c in cls.__subclasses__():
+        #for c in Device.__subclasses__():
+            #meth = getattr(subclass, '_handlers', None)
+            #if meth:
+            #    for sub in meth():
+            #        yield sub
+            meth = getattr(c, '_supports_backend', None)
+            if meth:
+                yield c
 
 
 class Disk(__MirrorableDeviceMixin, Device):

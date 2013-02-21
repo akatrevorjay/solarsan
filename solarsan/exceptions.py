@@ -37,5 +37,10 @@ Storage
 
 
 class ZfsError(FormattedException):
-    """Generic ZFS Error"""
+    """Generic ZFS error"""
+    pass
+
+
+class DeviceHandlerNotFound(FormattedException):
+    """Handler is not found for Device error"""
     pass
