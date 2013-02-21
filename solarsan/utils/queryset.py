@@ -42,15 +42,20 @@ class QuerySet(object):
     @property
     def objs(self):
         ret = None
-        if isinstance(self._objs, list):
-            ret = copy(self._objs)
-        if not ret:
+        #if isinstance(self._objs, list):
+        if self._objs is not None:
+            #ret = copy(self._objs)
+            ret = self._objs
+        else:
+        #if not ret:
+        #if ret is None:
             ret = self._get_objs_wrap()
         return ret
 
     def _get_objs_wrap(self):
         objs = self._get_objs()
-        if isinstance(self._objs, list):
+        #if isinstance(self._objs, list):
+        if self._objs is not None:
             self._objs = objs
         return objs
 

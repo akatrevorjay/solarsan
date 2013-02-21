@@ -7,10 +7,33 @@ from solarsan.utils.queryset import QuerySet
 from .os_linux import backend
 
 
-class DeviceQuerySet(QuerySet):
+class DeviceSet(QuerySet):
     # This will be set later after Device class is created
     _wrap_objects = None
 
+    #def _get_objs(self):
+    #    wrapper = getattr(self, '_wrap_objects', None)
+    #    devs = self._get_raw_objs()
+    #    if wrapper:
+    #        devs = [wrapper(d) for d in devs]
+    #    return devs
+
+    #def _get_raw_objs(self):
+    #    #return backend.get_devices()
+    #    #return list(Drives().all())
+    #    #return list(
+    #    return backend.get_devices()
+
+    def __init__(self, *args, **kwargs):
+        if 'devices' in kwargs:
+            kwargs['objects'] = kwargs.pop('devices')
+        super(DeviceSet, self).__init__(*args, **kwargs)
+
+    def _device_check(self):
+        pass
+
+
+class DeviceQuerySet(DeviceSet):
     def _get_objs(self):
         wrapper = getattr(self, '_wrap_objects', None)
         devs = self._get_raw_objs()
@@ -23,14 +46,6 @@ class DeviceQuerySet(QuerySet):
         #return list(Drives().all())
         #return list(
         return backend.get_devices()
-
-    def __init__(self, *args, **kwargs):
-        if 'devices' in kwargs:
-            kwargs['objects'] = kwargs.pop('devices')
-        super(DeviceQuerySet, self).__init__(*args, **kwargs)
-
-    def _device_check(self):
-        pass
 
 
 #class Device(object):
@@ -56,54 +71,6 @@ class DeviceQuerySet(QuerySet):
 #    #basepath = os.path.basename(path_by_id)
 #    #if basepath.startswith('zd'):
 #    #    continue
-
-
-class Mirror(DeviceQuerySet):
-    """Mirrored device object
-    """
-    _mirrorable = True
-
-    def _zpool_args(self):
-        assert len(self) % 2 == 0
-        modifiers = self._zpool_create_modifiers
-        return modifiers + [dev._zpool_arg() for dev in self.objects]
-
-    @property
-    def _zpool_create_modifiers(self):
-        ret = []
-        device_class = self._device_class
-        if device_class:
-            #ret.extend(device_class._zpool_create_modifiers)
-            modifier = device_class._zpool_create_modifier
-            if modifier:
-                ret.append(modifier)
-        ret.append('mirror')
-        return ret
-
-    @property
-    def _device_class(self):
-        if self:
-            return self[0].__class__
-
-    def _device_check(self, v):
-        device_class = self._device_class
-        if not device_class:
-            return
-        if not v.__class__ == device_class:
-            raise ValueError("Cannot mirror different types of devices")
-        if v in self.objects:
-            raise ValueError("Cannot mirror the same device multiple times")
-
-    def __setitem__(self, k, v):
-        self._device_check(v)
-        return super(Mirror, self).__setitem__(k, v)
-
-    def append(self, v):
-        self._device_check(v)
-        return super(Mirror, self).append(v)
-
-    def __add__(self, other):
-        return self.append(other)
 
 
 #class MyMeta(type):
@@ -186,7 +153,69 @@ class BaseDevice(backend.BaseDevice):
         return ret
 
 
-class __MirrorableDeviceMixin(object):
+class Mirror(DeviceSet):
+    """Mirrored device object
+    """
+    _mirrorable = True
+
+    def __init__(self, *args, **kwargs):
+        self._objs = []
+        super(Mirror, self).__init__(*args, **kwargs)
+
+    #def _get_objs(self):
+    #    return []
+
+    def _zpool_args(self):
+        assert len(self) % 2 == 0
+        modifiers = self._zpool_create_modifiers
+        return modifiers + [dev._zpool_arg() for dev in self.objs]
+
+    @property
+    def _zpool_create_modifiers(self):
+        ret = []
+        device_class = self._device_class
+        if device_class:
+            #ret.extend(device_class._zpool_create_modifiers)
+            modifier = device_class._zpool_create_modifier
+            if modifier:
+                ret.append(modifier)
+        ret.append('mirror')
+        return ret
+
+    @property
+    def _device_class(self):
+        if self:
+            return self[0].__class__
+
+    def _device_check(self, v):
+        device_class = self._device_class
+        if device_class:
+            #if not v.__class__ == device_class:
+            #if device_class in [Disk, Partition]:
+            #    if not
+            if not isinstance(v, device_class):
+                raise ValueError("Cannot mirror different types of devices")
+
+        mirrorable = getattr(v, '_mirrorable', None)
+        if not mirrorable:
+            raise ValueError("Device is not mirrorable")
+
+        if v in self:
+            raise ValueError("Cannot mirror the same device multiple times")
+
+    def __setitem__(self, k, v):
+        self._device_check(v)
+        return super(Mirror, self).__setitem__(k, v)
+
+    def append(self, v):
+        self._device_check(v)
+        return super(Mirror, self).append(v)
+
+    def __add__(self, other):
+        return self.append(other)
+
+
+class _MirrorableDeviceMixin(object):
     """_mirrorable device mixin
     """
     _mirrorable = True
@@ -224,7 +253,7 @@ class Device(BaseDevice):
                 yield c
 
 
-class Disk(__MirrorableDeviceMixin, Device):
+class Disk(_MirrorableDeviceMixin, Device):
     """Disk device object
     """
     @classmethod
@@ -232,7 +261,7 @@ class Disk(__MirrorableDeviceMixin, Device):
         return backend_device.DeviceIsDrive
 
 
-class Partition(__MirrorableDeviceMixin, Device):
+class Partition(_MirrorableDeviceMixin, Device):
     """Partiton device object
     """
     @classmethod
@@ -240,13 +269,25 @@ class Partition(__MirrorableDeviceMixin, Device):
         return backend_device.DeviceIsPartition
 
 
-class Cache(__MirrorableDeviceMixin, Device):
+#class PoolDevice(object):
+#    def __init__(self, device):
+#        if isinstance(device, PoolDevice):
+#            device = device._device
+#        self._device = device
+#        super(PoolDevice, self).__init__()
+
+
+#class PoolDeviceSet(object):
+#    pass
+
+
+class Cache(_MirrorableDeviceMixin, Device):
     """Cache device object
     """
     _zpool_create_modifier = 'cache'
 
 
-class Log(__MirrorableDeviceMixin, Device):
+class Log(_MirrorableDeviceMixin, Device):
     """Log device object
     """
     _zpool_create_modifier = 'log'
@@ -258,7 +299,8 @@ class Spare(Device):
     _zpool_create_modifier = 'spare'
 
 
-DeviceQuerySet._wrap_objects = Device
+#DeviceQuerySet._wrap_objects = Device
+DeviceSet._wrap_objects = Device
 #DeviceQuerySet._wrap_objects = backend.Device
 #Devices = Devices()
 #Drives = Drives()

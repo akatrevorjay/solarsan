@@ -19,6 +19,12 @@ from storage.drbd import DrbdPeer, DrbdResource
 
 from storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices
 
+devs = Devices()
+d = devs[0]
+e = devs[15]
+m = Mirror()
+m.append(d)
+
 from target.models import Target, iSCSITarget, SRPTarget
 #Device, VolumeDevice, ResourceDevice
 import target.scst
