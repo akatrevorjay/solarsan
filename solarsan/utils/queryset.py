@@ -1,4 +1,3 @@
-from copy import copy
 
 
 def filter_by_attrs(args, **kwargs):
