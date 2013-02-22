@@ -168,7 +168,7 @@ class Mirror(DeviceSet):
     def _zpool_args(self):
         assert len(self) % 2 == 0
         modifiers = self._zpool_create_modifiers
-        return modifiers + [dev._zpool_arg() for dev in self.objs]
+        return modifiers + [dev._zpool_arg() for dev in self._objs]
 
     @property
     def _zpool_create_modifiers(self):

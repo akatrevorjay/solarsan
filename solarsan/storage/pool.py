@@ -5,6 +5,7 @@ import sh
 #import re
 from solarsan.utils import LoggedException
 from datetime import datetime
+from collections import OrderedDict
 
 '''
 from analytics.cube import CubeAnalytics
@@ -223,18 +224,36 @@ class Pool(Base):
             )
 
         """
-        cmd = sh.zpool.bake('create', self.name)
+        #cmd = sh.zpool.bake('create', self.name)
+        cmd = sh.echo.bake('zpool', 'create', self.name)
+
+        devs = OrderedDict({
+            None: [],
+            'log': [],
+            'cache': [],
+        })
+
+        for dev in devices:
+            modifier = getattr(dev, '_zpool_create_modifier', None)
+            if getattr(dev, '_zpool_args', None):
+                devs[modifier].append(dev._zpool_args())
+            else:
+                devs[modifier].append(dev._zpool_arg())
 
         args = []
-        for dev in devices:
-            if getattr(dev, '_zpool_args'):
-                args.extend(dev._zpool_args())
-            else:
-                args.append(dev._zpool_arg())
+        for k, vs in devs.items():
+            if not vs:
+                continue
+            if k:
+                args.append(k)
+            for v in vs:
+                if isinstance(v, basestring):
+                    args.append(v)
+                else:
+                    args.extend(v)
 
-        # TODO Retval check, pool check, force a Zfs import scan in bg
         #try:
-        cmd(*args)
+        print cmd(*args)
         #except rv.ErrorReturnCode_1:
         #    return False
         return True
