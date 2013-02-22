@@ -326,12 +326,10 @@ class Devices(DeviceQuerySet):
     pass
 
 
-class Drives(DeviceQuerySet):
-
-    #base_filter={
-    #    # TODO This is for udisks, what attr fits here?
-    #    'DeviceIsDrive': True,
-    #}
+class Disks(DeviceQuerySet):
+    _base_filter = {
+        'is_drive': True,
+    }
 
     ## TODO Drives should maybe not show volume devs?
     #path_by_id = d.path_by_id()
@@ -339,4 +337,8 @@ class Drives(DeviceQuerySet):
     #if basepath.startswith('zd'):
     #    continue
 
+    pass
+
+
+class Partitions(DeviceQuerySet):
     pass

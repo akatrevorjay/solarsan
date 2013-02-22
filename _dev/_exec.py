@@ -17,13 +17,19 @@ from storage.volume import Volume
 
 from storage.drbd import DrbdPeer, DrbdResource
 
-from storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices
+from storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partitions
 
 devs = Devices()
 d = devs[0]
 e = devs[15]
 m = Mirror()
 m.append(d)
+m.append(e)
+c = Cache(d)
+try:
+    m.append(c)
+except:
+    print "Good, '%s' cannot be added to '%s'" % (c, m)
 
 from target.models import Target, iSCSITarget, SRPTarget
 #Device, VolumeDevice, ResourceDevice

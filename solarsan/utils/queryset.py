@@ -39,33 +39,11 @@ class QuerySet(object):
     _lazy = None
     _objs = None
 
-    @property
-    def objs(self):
-        ret = None
-        #if isinstance(self._objs, list):
-        if self._objs is not None:
-            #ret = copy(self._objs)
-            ret = self._objs
-        else:
-        #if not ret:
-        #if ret is None:
-            ret = self._get_objs_wrap()
-        return ret
-
-    def _get_objs_wrap(self):
-        objs = self._get_objs()
-        #if isinstance(self._objs, list):
-        if self._objs is not None:
-            self._objs = objs
-        return objs
-
     def _get_objs(self):
-        """This method gets overridden to specify how to get the list of objs"""
-        return super(QuerySet, self)._get_objs()
+        """This method can be overridden to specify how to get the list of obj if none are specified during inits"""
+        return []
 
     def __init__(self, objs=None, base_filter=None, base_filter_replace=False):
-        if objs:
-            self._objs = objs
         if base_filter:
             if base_filter_replace:
                 self._base_filter = base_filter
@@ -73,9 +51,14 @@ class QuerySet(object):
                 if not self._base_filter:
                     self._base_filter = {}
                 self._base_filter.update(base_filter)
+        if objs:
+            self._objs = objs
+        else:
+            self._objs = self._get_objs()
+        self._objs = list(self.filter())
 
     def all(self):
-        return self.filter()
+        return self._objs
 
     def filter(self, **kwargs):
         if self._base_filter:
@@ -83,25 +66,25 @@ class QuerySet(object):
         return filter_by_attrs(self, **kwargs)
 
     def __setitem__(self, k, v):
-        self.objs[k] = v
+        self._objs[k] = v
 
     def append(self, v):
-        self.objs.append(v)
+        self._objs.append(v)
 
     def __repr__(self):
-        return '<%s(%s)>' % (self.__class__.__name__, self.objs.__repr__())
+        return '<%s(%s)>' % (self.__class__.__name__, self._objs.__repr__())
 
     def __len__(self):
-        return len(self.objs)
+        return len(self._objs)
 
     def __getitem__(self, key):
-        return self.objs[key]
+        return self._objs[key]
 
     def __delitem__(self, key):
-        del self.objs[key]
+        del self._objs[key]
 
     def __iter__(self):
-        return iter(self.objs)
+        return iter(self._objs)
 
     def __reversed__(self):
-        return reversed(self.objs)
+        return reversed(self._objs)
