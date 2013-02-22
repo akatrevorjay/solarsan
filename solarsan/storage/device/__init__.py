@@ -190,11 +190,17 @@ class Mirror(DeviceSet):
     def _device_check(self, v):
         device_class = self._device_class
         if device_class:
-            #if not v.__class__ == device_class:
-            #if device_class in [Disk, Partition]:
-            #    if not
-            if not isinstance(v, device_class):
-                raise ValueError("Cannot mirror different types of devices")
+            success = True
+
+            meth = getattr(v, '_mirrorable_with', None)
+            if meth:
+                if not meth(device_class):
+                    success = False
+            elif not isinstance(v, device_class):
+                success = False
+
+            if not success:
+                raise ValueError("Device '%s' is not mirrorable with '%s'" % (v, device_class))
 
         mirrorable = getattr(v, '_mirrorable', None)
         if not mirrorable:
@@ -260,6 +266,11 @@ class Disk(_MirrorableDeviceMixin, Device):
     def _supports_backend(cls, backend_device):
         return backend_device.DeviceIsDrive
 
+    @classmethod
+    def _mirrorable_with(cls, device_class):
+        if device_class in [Disk, Partition]:
+            return True
+
 
 class Partition(_MirrorableDeviceMixin, Device):
     """Partiton device object
@@ -267,6 +278,11 @@ class Partition(_MirrorableDeviceMixin, Device):
     @classmethod
     def _supports_backend(cls, backend_device):
         return backend_device.DeviceIsPartition
+
+    @classmethod
+    def _mirrorable_with(cls, device_class):
+        if device_class in [Disk, Partition]:
+            return True
 
 
 #class PoolDevice(object):
