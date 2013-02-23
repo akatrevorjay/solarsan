@@ -45,39 +45,13 @@ class DeviceQuerySet(DeviceSet):
         return backend.get_devices()
 
 
-#class MyMeta(type):
-#    def __new__(meta, name, bases, dct):
-#        print '-----------------------------------'
-#        print "Allocating memory for class", name
-#        print meta
-#        print bases
-#        print dct
-#        return super(MyMeta, meta).__new__(meta, name, bases, dct)
-#
-#    def __init__(cls, name, bases, dct):
-#        print '-----------------------------------'
-#        print "Initializing class", name
-#        print cls
-#        print bases
-#        print dct
-#        super(MyMeta, cls).__init__(name, bases, dct)
-
-
 class BaseDevice(backend.BaseDevice):
     """Device object
     """
-    #__metaclass__ = MyMeta
-
     path = None
     _mirrorable = False
     _backend_device = None
     _zpool_create_modifier = None
-
-    #def __new__(cls, backend_device, *args, **kwargs):
-    #    print "cls: %s backend_device=%s, args=%s kwargs=%s" % (cls, backend_device, args, kwargs)
-    #    print backend_device.DeviceIsDrive
-    #    obj = super(Device, cls).__new__(cls, backend_device, *args, **kwargs)
-    #    return obj
 
     @classmethod
     def _get_backend_device(self, device):

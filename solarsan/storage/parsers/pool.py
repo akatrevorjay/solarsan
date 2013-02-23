@@ -4,9 +4,10 @@ import sh
 import yaml
 import re
 from storage.device import Device, Cache, Log, Spare, Mirror
-from solarsan.pretty import pp
+#from solarsan.pretty import pp
 
 
+# TODO Merge this into the original
 def zpool_status_parse2(from_string=None):
     if not from_string:
         from_string = sh.zpool('status', '-v').stdout
