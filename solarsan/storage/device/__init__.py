@@ -87,21 +87,38 @@ class BaseDevice(backend.BaseDevice):
             return device._backend_device
         elif isinstance(device, basestring):
             device = backend.guess_device_path(device)
-            return backend.get_device_by_path(device)
-        else:
-            raise Exception("Could not get backend device for '%s'" % device)
+            if device:
+                return backend.get_device_by_path(device)
+        #raise Exception("Could not get backend device for '%s'" % device)
 
     def __init__(self, device):
         self._backend_device = self._get_backend_device(device)
-        self.path = self.path_by_id(basename=True)
+        if self._backend_device:
+            self.path = self.path_by_id(basename=True)
+        else:
+            self._exists = False
+            self.path = device
 
     def __repr__(self):
-        return "<%s('%s')>" % (self.__class__.__name__, self.path)
+        append = ''
+
+        append += "'%s'" % self.path
+        if not self.exists():
+            append += ', exists=False'
+
+        return '<%s(%s)>' % (self.__class__.__name__, append)
+
+    def exists(self):
+        if self._backend_device:
+            return True
+        else:
+            return False
 
     def _zpool_arg(self):
         #assert self.is_drive or self.is_partition
         #assert not self.is_mounted
         #assert not self.is_partitioned
+        assert self.exists()
         return self.path_by_id()
 
     def path_by_id(self, basename=False):
@@ -192,8 +209,9 @@ class Mirror(DeviceSet):
         self._device_check(v)
         return super(Mirror, self).__setitem__(k, v)
 
-    def append(self, v):
-        self._device_check(v)
+    def append(self, v, _device_check=True):
+        if _device_check:
+            self._device_check(v)
         return super(Mirror, self).append(v)
 
     def __add__(self, other):
@@ -215,9 +233,10 @@ class Device(BaseDevice):
         backend_device = cls._get_backend_device(backend_device)
         #logger.debug("cls: %s backend_device=%s, args=%s kwargs=%s", cls, backend_device, args, kwargs)
 
-        for subclass in cls._handlers():
-            if subclass._supports_backend(backend_device):
-                return super(Device, cls).__new__(subclass, backend_device, *args, **kwargs)
+        if backend_device:
+            for subclass in cls._handlers():
+                if subclass._supports_backend(backend_device):
+                    return super(Device, cls).__new__(subclass, backend_device, *args, **kwargs)
 
         if getattr(cls, '_supports_backend', None):
             raise DeviceHandlerNotFound(backend_device)

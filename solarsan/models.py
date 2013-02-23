@@ -29,7 +29,7 @@ class ReprMixIn(object):
         repr_vars = getattr(self, '_repr_vars', ['name'])
         for k in repr_vars:
             v = getattr(self, k, None)
-            if v:
+            if v is not None:
                 try:
                     append += " %s='%s'" % (k, v)
                 except:

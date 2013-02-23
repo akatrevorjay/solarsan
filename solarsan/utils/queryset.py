@@ -105,7 +105,8 @@ class QuerySet(object):
         self._objs.append(v)
 
     def __repr__(self):
-        return '<%s(%s)>' % (self.__class__.__name__, self._objs.__repr__())
+        append = ', '.join(['%s' % v for v in self._objs])
+        return '<%s(%s)>' % (self.__class__.__name__, append)
 
     def __len__(self):
         return len(self._objs)
