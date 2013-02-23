@@ -1,5 +1,5 @@
 from solarsan.utils import convert_bytes_to_human
-#import os
+import os
 import udisks
 _udisks = udisks.UDisks()
 
@@ -11,6 +11,19 @@ def get_device_by_path(path):
     dbus_obj = _udisks.iface.FindDeviceByDeviceFile(path)
     if dbus_obj:
         return udisks.device.Device(dbus_obj)
+
+
+GUESS_DEV_PATHS = ['/dev/disk/by-uuid', '/dev/disk/by-id', '/dev/disk/by-path', '/dev/disk/by-label',
+                   '/dev/disk/by-partlabel', '/dev/disk/by-partuuid', '/dev']
+
+
+def guess_device_path(name_or_path):
+    """Guesses device path for a basename of a device path"""
+    name_or_path = os.path.basename(name_or_path)
+    for path in GUESS_DEV_PATHS:
+        try_path = os.path.join(path, name_or_path)
+        if os.path.exists(try_path):
+            return try_path
 
 
 def get_devices():

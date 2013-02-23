@@ -323,6 +323,15 @@ class Pool(Base):
         ret = zpool_status_parse(from_string=out)
         return ret[self.name]
 
+    def devices(self):
+        """Returns devices of storage pool.
+
+        pool = Pool('dpool')
+        pool.devices()
+
+        """
+        return self.status().get('devices')
+
     def iostat(self, capture_length=30):
         """Returns iostat of storage pool.
 

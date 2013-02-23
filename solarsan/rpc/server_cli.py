@@ -13,6 +13,7 @@ import rpyc
 import sh
 import time
 
+
 class CLIService(rpyc.Service):
     def on_connect(self):
         logger.debug('Client connected.')
@@ -547,7 +548,9 @@ class PoolNode(StorageNode):
     """
 
     def lsdevices(self):
-        return self.obj.pretty_devices()
+        return self.obj.devices()
+
+    lsd = lsdevices
 
     #def add_device(self, path, type='disk'):
     #    logging.error("TODO")
@@ -563,14 +566,7 @@ class PoolNode(StorageNode):
         return self.obj.iostat(capture_length=capture_length)
 
     def status(self):
-        status = self.obj.status()
-        #config = []
-        #for k, v in status['config'].items():
-        #    v['name'] = k
-        #    config.append(v)
-        #status['config'] = config
-        status.pop('config')
-        return status
+        return self.obj.status()
 
     def health(self):
         return str(self.obj.properties['health'])

@@ -42,35 +42,7 @@ class DeviceQuerySet(DeviceSet):
         return devs
 
     def _get_raw_objs(self):
-        #return backend.get_devices()
-        #return list(Drives().all())
-        #return list(
         return backend.get_devices()
-
-
-#class Device(object):
-#    """Device object"""
-#
-#    def __init__(self, path):
-#        self._parted = get_device_by_path(path)
-#        self._udisks = get_device_by_path(path)
-#    # TODO
-
-
-#class Devices(DeviceQuerySet):
-#    pass
-
-
-#class Drives(DeviceQuerySet):
-#    base_filter = {
-#        'DeviceIsDrive': True,
-#    }
-
-#    ## TODO Drives should maybe not show volume devs?
-#    #path_by_id = d.path_by_id()
-#    #basepath = os.path.basename(path_by_id)
-#    #if basepath.startswith('zd'):
-#    #    continue
 
 
 #class MyMeta(type):
@@ -107,13 +79,20 @@ class BaseDevice(backend.BaseDevice):
     #    obj = super(Device, cls).__new__(cls, backend_device, *args, **kwargs)
     #    return obj
 
-    def __init__(self, arg):
-        if isinstance(arg, backend.RawDevice):
-            self._backend_device = arg
-        elif isinstance(arg, BaseDevice):
-            self._backend_device = arg._backend_device
+    @classmethod
+    def _get_backend_device(self, device):
+        if isinstance(device, backend.RawDevice):
+            return device
+        elif isinstance(device, BaseDevice):
+            return device._backend_device
+        elif isinstance(device, basestring):
+            device = backend.guess_device_path(device)
+            return backend.get_device_by_path(device)
         else:
-            self._backend_device = backend.get_device_by_path(arg)
+            raise Exception("Could not get backend device for '%s'" % device)
+
+    def __init__(self, device):
+        self._backend_device = self._get_backend_device(device)
         self.path = self.path_by_id(basename=True)
 
     def __repr__(self):
@@ -233,10 +212,8 @@ class _MirrorableDeviceMixin(object):
 
 class Device(BaseDevice):
     def __new__(cls, backend_device, *args, **kwargs):
+        backend_device = cls._get_backend_device(backend_device)
         #logger.debug("cls: %s backend_device=%s, args=%s kwargs=%s", cls, backend_device, args, kwargs)
-
-        if isinstance(backend_device, BaseDevice):
-            backend_device = backend_device._backend_device
 
         for subclass in cls._handlers():
             if subclass._supports_backend(backend_device):

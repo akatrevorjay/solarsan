@@ -167,6 +167,7 @@ class Dataset(StorageNode):
     #    return (self.obj.type, True)
 
 
+
 class Pool(StorageNode):
     help_intro = '''
                  STORAGE POOL
@@ -174,7 +175,7 @@ class Pool(StorageNode):
                  Storage Pools are dataset containers, they contain datasets such as a filesystem or a volume.
 
                  Think of it as a giant swimming pool for your data.
-                 That is, except some odd fellow replaced your water with solid state drives and rotating platters.
+                 That is, except some strange fellow replaced your water with solid state drives and rotating platters.
                  '''
 
     def __init__(self, parent, pool):
@@ -190,8 +191,22 @@ class Pool(StorageNode):
     Devices
     """
 
+    def select_devices_wizard(self):
+        print "Select the devices to add:"
+        #return []
+
     def ui_command_lsdevices(self):
         self()
+
+    ui_command_lsd = ui_command_lsdevices
+
+    def ui_command_add_device_wizard(self, name):
+        '''
+        Add Device Wizard - Adds a Device to a storage Pool
+        '''
+        raise NotImplemented
+        devices = self.select_devices_wizard()
+        self(name, *devices)
 
     #def ui_command_add_device(self, path, type='disk'):
     #    logging.error("TODO")
@@ -241,11 +256,23 @@ class Pools(BaseServiceConfigNode):
         for pool in self.service.list():
             Pool(self, pool)
 
-    def ui_command_create_pool(self, name):
+    #def ui_command_create_pool(self, name):
+    #    '''
+    #    create - Creates a storage Pool
+    #    '''
+    #    self()
+
+    def select_devices_wizard(self):
+        print "Select the devices to add:"
+        #return []
+
+    def ui_command_create_pool_wizard(self, name):
         '''
         create - Creates a storage Pool
         '''
-        self()
+        raise NotImplemented
+        devices = self.select_devices_wizard()
+        self(name, *devices)
 
 
 #class Volumes(BaseServiceConfigNode):

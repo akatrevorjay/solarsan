@@ -3,6 +3,7 @@
 import sh
 import yaml
 import re
+from storage.device import Device, Cache, Log, Spare, Mirror
 
 
 def zpool_status_parse(from_string=None):
@@ -27,43 +28,59 @@ def zpool_status_parse(from_string=None):
             pool_name = m.pop('pool')
             pool = ret[pool_name] = m
 
-            disks = pool['devices'] = {}
+            devices = pool['devices'] = {}
+            devices2 = pool['devices2'] = {}
             parent = None
-            for disk in re.finditer("(?P<indent>[ \t]+)(?P<name>[^ \t\n]+)( +(?P<state>[^ \t\n]+) +)?("
-                                    "(?P<read>[^ \t\n]+) +(?P<write>[^ \t\n]+) +"
-                                    "(?P<cksum>[^\n]+))?(?P<notes>[^\n]+)?\n",
-                                    pool.pop('config')):
-                disk = disk.groupdict()
-                if not disk['name'] or disk['name'] in ("NAME", pool_name):
+            parent_type = None
+            for device in re.finditer("(?P<indent>[ \t]+)(?P<name>[^ \t\n]+)( +(?P<state>[^ \t\n]+) +)?("
+                                      "(?P<read>[^ \t\n]+) +(?P<write>[^ \t\n]+) +"
+                                      "(?P<cksum>[^\n]+))?(?P<notes>[^\n]+)?\n",
+                                      pool.pop('config')):
+                device = device.groupdict()
+                if not device['name'] or device['name'] in ("NAME", pool_name):
                     continue
-                disk_name = disk.pop('name').strip()
-                disk.pop('indent')
+                device_name = device.pop('name').strip()
+                device.pop('indent')
 
                 is_parent = False
-                for disk_type in ('mirror', 'log', 'raid', 'spare', 'cache'):
-                    if disk_name.startswith(disk_type):
-                        parent = disk_name
-                        disks[disk_name] = disk
-                        disks[parent]['children'] = {}
+                for device_type in ('mirror', 'log', 'raid', 'spare', 'cache'):
+                    if device_name.startswith(device_type):
+                        parent = device_name
+                        parent_type = device_type
+                        devices[device_name] = device
+                        devices[parent]['children'] = {}
+
+                        if device_type == 'mirror':
+                            devices2[device_name] = Mirror()
+
                         is_parent = True
                         break
                 if is_parent:
                     continue
 
-                if parent:
-                    disks[parent]['children'][disk_name] = disk
+                # TODO May fail if device is not found
+                device_type_map = {'log': Log, 'cache': Cache, 'spare': Spare}
+                if parent_type in device_type_map:
+                    dev = device_type_map[parent_type](device_name)
                 else:
-                    disks[disk_name] = disk
+                    dev = Device(device_name)
+
+                if parent:
+                    devices[parent]['children'][device_name] = device
+                    if parent_type == 'mirror':
+                        devices2[parent].append(dev)
+                else:
+                    devices[device_name] = device
+                    devices2[device_name] = dev
 
     return ret
 
 
-class ZdbPoolCacheParser(object):
-    def __call__(self):
-        """ Snags pool status and vdev info from zdb as zpool status kind of sucks """
-        zargs = ['-C', '-v']
-        #if pool_name:
-        #    zargs.append(pool_name)
-        zdb = sh.zdb(*zargs)
-        ret = yaml.safe_load(zdb.stdout)
-        return ret
+def zdb_pool_cache_parse():
+    """ Snags pool status and vdev info from zdb as zpool status kind of sucks """
+    zargs = ['-C', '-v']
+    #if pool_name:
+    #    zargs.append(pool_name)
+    zdb = sh.zdb(*zargs)
+    ret = yaml.safe_load(zdb.stdout)
+    return ret
