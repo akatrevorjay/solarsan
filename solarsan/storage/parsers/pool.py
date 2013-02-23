@@ -3,21 +3,20 @@
 import sh
 import yaml
 import re
-from collections import defaultdict
 
 
 def zpool_status_parse(from_string=None):
     if not from_string:
         from_string = sh.zpool('status', '-v').stdout
 
-    ret = defaultdict(dict)
+    ret = {}
 
     pools_m = from_string.split("pool:")
     for pool_m in pools_m:
         if not pool_m.strip():
             continue
 
-        for m in re.finditer(" (?P<pool>[^\n]+)\n *"  # We've split on pool:, so our first word is the pool name
+        for m in re.finditer(" (?P<pool>[^\n]+)\n *"
                              "state: (?P<state>[^ ]+)\n *"
                              "(status: (?P<status>(.|\n)+)\n *)??"
                              "scan: (?P<scan>(.|\n)*)\n *"
@@ -56,7 +55,7 @@ def zpool_status_parse(from_string=None):
                 else:
                     disks[disk_name] = disk
 
-    return dict(ret)
+    return ret
 
 
 class ZdbPoolCacheParser(object):
