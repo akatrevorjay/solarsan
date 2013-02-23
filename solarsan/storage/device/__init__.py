@@ -1,5 +1,5 @@
 
-from solarsan.core import logger
+#from solarsan.core import logger
 from solarsan.exceptions import DeviceHandlerNotFound
 import os
 from solarsan.utils.queryset import QuerySet
@@ -329,16 +329,11 @@ class Devices(DeviceQuerySet):
 class Disks(DeviceQuerySet):
     _base_filter = {
         'is_drive': True,
+        'path__notstartswith': ['zd', 'drbd', 'zram'],
     }
-
-    ## TODO Drives should maybe not show volume devs?
-    #path_by_id = d.path_by_id()
-    #basepath = os.path.basename(path_by_id)
-    #if basepath.startswith('zd'):
-    #    continue
-
-    pass
 
 
 class Partitions(DeviceQuerySet):
-    pass
+    _base_filter = {
+        'is_partition': True
+    }

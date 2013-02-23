@@ -1,4 +1,6 @@
 
+#from solarsan.core import logger
+
 
 def filter_by_attrs(args, **kwargs):
     """Takes a list of objects and returns only those where each **kwargs
@@ -13,12 +15,44 @@ def filter_by_attrs(args, **kwargs):
             if not isinstance(attr_vals, list):
                 attr_vals = [attr_vals]
 
-            #logging.debug("arg=%s getattr=%s attr=%s attr_vals=%s", arg,
-            #              getattr(arg, attr), attr, attr_vals)
-            if getattr(arg, attr) not in attr_vals:
-                add_arg = False
-                break
-        #logging.debug("add_arg=%s", add_arg)
+            mod = None
+            reverse = False
+            attr = attr.split('__', 1)
+            if len(attr) > 1:
+                attr, mod = attr
+                if mod.startswith('not'):
+                    reverse = True
+                    mod = mod.split('not', 1)[1]
+            else:
+                attr = attr[0]
+            attr_val = getattr(arg, attr)
+
+            #logger.debug("obj=%s, mod=%s, %s=%s, attr_vals=%s",
+            #             arg, mod, attr, attr_val, attr_vals)
+
+            if mod:
+                if mod == 'lambda':
+                    matched_vals = [v for v in attr_vals if not v(attr_val)]
+                    if not reverse and matched_vals or reverse and len(matched_vals) != len(attr_vals):
+                        add_arg = False
+                        break
+
+                elif mod in ['startswith', 'endswith']:
+                    meth = getattr(attr_val, mod)
+                    matched_vals = [v for v in attr_vals if not meth(v)]
+                    if not reverse and matched_vals or reverse and len(matched_vals) != len(attr_vals):
+                        add_arg = False
+                        break
+                else:
+                    raise Exception("Unknown modifier '%s'" % mod)
+
+            else:  # No modifier means simple == check
+                if attr_val not in attr_vals:
+                    add_arg = False
+                    break
+
+        #logger.debug("add_arg=%s", add_arg)
+
         if add_arg:
             ret.append(arg)
         else:
