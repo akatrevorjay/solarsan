@@ -522,3 +522,13 @@ class Pool(Base):
 
         cmd(*args)
         return True
+
+    def upgrade(self):
+        """Upgrades storage pool version.
+
+        pool = Pool('dpool')
+        pool.upgrade()
+
+        """
+        sh.zpool('upgrade', self.name)
+        return True
