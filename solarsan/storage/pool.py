@@ -322,7 +322,8 @@ class Pool(Base):
         out = sh.zpool('status', '-v', self.name).stdout
         ret = zpool_status_parse2(from_string=out)
         ret = ret[self.name]
-        ret.pop('devices', None)
+        if not devices:
+            ret.pop('devices', None)
         return ret
 
     def devices(self):
