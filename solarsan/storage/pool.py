@@ -15,7 +15,7 @@ from pypercube.expression import Sum, Min, Max, Median, Distinct
 
 from .base import Base, BaseProperty
 #from . import device
-from .parsers.pool import ZpoolStatusParser
+from .parsers.pool import zpool_status_parse
 
 
 '''
@@ -212,21 +212,8 @@ class Pool(Base):
         else:
             return 'error'
 
-    def create(self, *devices):
-        """Creates storage pool.
-
-        pool = Pool('dpool')
-        pool.create(Mirror(Disk('sda'), Disk('sdb')),
-            Disk('sda') + Disk('sdb'),
-            Log('sda') + Log('sdb'),
-            Cache('sde'),
-            Cache('sdf'),
-            )
-
-        """
-        #cmd = sh.zpool.bake('create', self.name)
-        cmd = sh.echo.bake('zpool', 'create', self.name)
-
+    @classmethod
+    def _devices_to_args(cls, *devices):
         devs = OrderedDict({
             None: [],
             'log': [],
@@ -252,8 +239,33 @@ class Pool(Base):
                 else:
                     args.extend(v)
 
+        return args
+
+    def create(self, *devices, **kwargs):
+        """Creates storage pool.
+
+        pool = Pool('dpool')
+        pool.create(Mirror(Disk('sda'), Disk('sdb')),
+            Disk('sda') + Disk('sdb'),
+            Log('sda') + Log('sdb'),
+            Cache('sde'),
+            Cache('sdf'),
+            )
+
+        """
+        dry_run = kwargs.pop('dry_run', False)
+        if dry_run:
+            cmd = sh.echo.bake('zpool', 'create', self.name)
+        else:
+            cmd = sh.zpool.bake('create', self.name)
+
+        args = self._devices_to_args(*devices)
+
         #try:
-        print cmd(*args)
+        if dry_run:
+            print cmd(*args)
+        else:
+            cmd(*args)
         #except rv.ErrorReturnCode_1:
         #    return False
         return True
@@ -307,9 +319,8 @@ class Pool(Base):
         pool.status()
 
         """
-        p = ZpoolStatusParser()
         out = sh.zpool('status', '-v', self.name).stdout
-        ret = p(out)
+        ret = zpool_status_parse(from_string=out)
         return ret[self.name]
 
     def iostat(self, capture_length=30):

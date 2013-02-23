@@ -1,54 +1,62 @@
+
+#from solarsan.core import logger
 import sh
 import yaml
-from collections import defaultdict, OrderedDict
-from pyparsing import *
+import re
+from collections import defaultdict
 
 
-class ZpoolStatusParser(object):
-    """Parses 'zpool status' output
-    # TODO status -v (verbose)
+def zpool_status_parse(from_string=None):
+    if not from_string:
+        from_string = sh.zpool('status', '-v').stdout
 
-    p = ZpoolStatusParser()
-    ret = p()
-    pp(ret)
-    """
+    ret = defaultdict(dict)
 
-    p_section_content = Combine(restOfLine + ZeroOrMore(LineEnd()
-                                + Suppress(White(exact=8)) + restOfLine))
-    p_section = Suppress(':') + p_section_content
+    pools_m = from_string.split("pool:")
+    for pool_m in pools_m:
+        if not pool_m.strip():
+            continue
 
-    p_first_section = Word('pool') + p_section
-    p_not_first_section = NotAny(Word('pool')) + Word(alphas) + p_section
+        for m in re.finditer(" (?P<pool>[^\n]+)\n *"  # We've split on pool:, so our first word is the pool name
+                             "state: (?P<state>[^ ]+)\n *"
+                             "(status: (?P<status>(.|\n)+)\n *)??"
+                             "scan: (?P<scan>(.|\n)*)\n *"
+                             "config: ?(?P<config>(.|\n)*)\n *"
+                             "errors: (?P<errors>[^\n]*)",
+                             pool_m):
+            m = m.groupdict()
+            pool_name = m.pop('pool')
+            pool = ret[pool_name] = m
 
-    p_pool = Dict(Group(p_first_section)) + OneOrMore(Dict(Group(p_not_first_section)))
-    p_status = OneOrMore(Dict(Group(p_pool)))
+            disks = pool['devices'] = {}
+            parent = None
+            for disk in re.finditer("(?P<indent>[ \t]+)(?P<name>[^ \t\n]+)( +(?P<state>[^ \t\n]+) +)?("
+                                    "(?P<read>[^ \t\n]+) +(?P<write>[^ \t\n]+) +"
+                                    "(?P<cksum>[^\n]+))?(?P<notes>[^\n]+)?\n",
+                                    pool.pop('config')):
+                disk = disk.groupdict()
+                if not disk['name'] or disk['name'] in ("NAME", pool_name):
+                    continue
+                disk_name = disk.pop('name').strip()
+                disk.pop('indent')
 
-    def __call__(self, arg=None):
-        if not arg:
-            arg = sh.zpool('status', '-v').stdout
-        ret = OrderedDict()
-        for v in self.p_status.parseString(str(arg)).asList():
-            v = dict(v)
-            v['config'] = self._config_parser(v)
-            pool_name = v.pop('pool')
-            ret[pool_name] = v
-        return ret
+                is_parent = False
+                for disk_type in ('mirror', 'log', 'raid', 'spare', 'cache'):
+                    if disk_name.startswith(disk_type):
+                        parent = disk_name
+                        disks[disk_name] = disk
+                        disks[parent]['children'] = {}
+                        is_parent = True
+                        break
+                if is_parent:
+                    continue
 
-    p_config_line = Dict(Group(Word(srange("[-:0-9A-z.]")).setResultsName('name')
-                         + Word(alphanums).setResultsName('state')
-                         + Word(alphanums).setResultsName('read')
-                         + Word(alphanums).setResultsName('write')
-                         + Word(alphanums).setResultsName('cksum')
-                         + Suppress(LineEnd())))
-    p_config = Suppress(restOfLine + LineEnd()) + OneOrMore(p_config_line)
+                if parent:
+                    disks[parent]['children'][disk_name] = disk
+                else:
+                    disks[disk_name] = disk
 
-    def _config_parser(self, arg):
-        # Config parse for multi-pool (short)
-        # TODO handle children / whitespace in front
-        ret = OrderedDict()
-        for v in self.p_config.parseString(str(arg['config'])):
-            ret[v['name']] = v.asDict()
-        return ret
+    return dict(ret)
 
 
 class ZdbPoolCacheParser(object):
