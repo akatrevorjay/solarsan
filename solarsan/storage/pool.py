@@ -15,7 +15,7 @@ from pypercube.expression import Sum, Min, Max, Median, Distinct
 
 from .base import Base, BaseProperty
 #from . import device
-from .parsers.pool import zpool_status_parse, zpool_status_parse2
+from .parsers.pool import zpool_status_parse2
 
 
 '''
@@ -312,7 +312,7 @@ class Pool(Base):
         sh.zpool('destroy', self.name)
         return True
 
-    def status(self):
+    def status(self, devices=False):
         """Returns status of storage pool.
 
         pool = Pool('dpool')
@@ -320,19 +320,10 @@ class Pool(Base):
 
         """
         out = sh.zpool('status', '-v', self.name).stdout
-        ret = zpool_status_parse(from_string=out)
-        return ret[self.name]
-
-    def status2(self):
-        """Returns status2 of storage pool.
-
-        pool = Pool('dpool')
-        pool.status2()
-
-        """
-        out = sh.zpool('status', '-v', self.name).stdout
         ret = zpool_status_parse2(from_string=out)
-        return ret[self.name]
+        ret = ret[self.name]
+        ret.pop('devices', None)
+        return ret
 
     def devices(self):
         """Returns devices of storage pool.
@@ -341,8 +332,7 @@ class Pool(Base):
         pool.devices()
 
         """
-        devices = self.status2().get('devices')
-        return devices
+        return self.status(devices=True).get('devices')
 
     def iostat(self, capture_length=30):
         """Returns iostat of storage pool.
