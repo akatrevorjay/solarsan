@@ -21,8 +21,9 @@ def zpool_status_parse2(from_string=None):
 
         for m in re.finditer(" (?P<pool>[^\n]+)\n *"
                              "state: (?P<state>[^ ]+)\n *"
-                             "(status: (?P<status>(.|\n        )+)\n *)??"
-                             "(action: (?P<action>(.|\n        )+)\n *)??"
+                             # Some versions of zpool use tabs, some do not.
+                             "(status: (?P<status>(.|\n {8}|\n\t)+)\n *)??"
+                             "(action: (?P<action>(.|\n {8}|\n\t)+)\n *)??"
                              "scan: (?P<scan>(.|\n)*)\n *"
                              "config: ?(?P<config>(.|\n)*)\n *"
                              "errors: (?P<errors>[^\n]*)",
@@ -33,14 +34,14 @@ def zpool_status_parse2(from_string=None):
             for k, v in m.items():
                 if k == 'config' or not v:
                     continue
-                m[k] = v.replace("\n        ", " ")
+                # Some versions of zpool use tabs, some do not.
+                m[k] = v.replace("\n\t", " ")
+                m[k] = m[k].replace("\n        ", " ")
 
             pool_name = m.pop('pool')
             pool = ret[pool_name] = m
 
             devices = pool['devices'] = {}
-            logs = pool['logs'] = {}
-            caches = pool['caches'] = {}
 
             _devices = [d.groupdict() for d in re.finditer("(?P<indent>[ \t]+)(?P<name>[^ \t\n]+)( +(?P<state>[^ \t\n]+) +)?("
                                                            "(?P<read>[^ \t\n]+) +(?P<write>[^ \t\n]+) +"
@@ -49,11 +50,12 @@ def zpool_status_parse2(from_string=None):
             _devices = filter(lambda d: d['name'] and not d['name'] == 'NAME', _devices)
 
             ancestry = []
-            dev_types = {'devices': (devices, Device),
-                         'logs': (logs, Log),
-                         'cache': (caches, Cache), }
+            #ancestry_level = 0
+            dev_types = {'devices': Device,
+                         'logs': Log,
+                         'cache': Cache,
+                         'spare': Spare, }
             dev_type_cls = None
-            dev_type = None
 
             for device in _devices:
                 device_name = device.pop('name').strip()
@@ -68,7 +70,7 @@ def zpool_status_parse2(from_string=None):
                 if cur_level == 0 and device_name in dev_types.keys() or device_name == pool_name:
                     if device_name == pool_name:
                         device_name = 'devices'
-                    dev_type, dev_type_cls = dev_types.pop(device_name)
+                    dev_type_cls = dev_types.pop(device_name)
                     ancestry.append(device_name)
                     continue
 
@@ -76,7 +78,7 @@ def zpool_status_parse2(from_string=None):
                 for level in ancestry[:cur_level]:
                     #print level
                     if not cur:
-                        cur = dev_type
+                        cur = devices
                         continue
                     if not level in cur:
                         cur[level] = {}
@@ -92,10 +94,6 @@ def zpool_status_parse2(from_string=None):
                     cur.append(dev, _device_check=False)
                 else:
                     cur[device_name] = dev
-
-                #cur.append(Device(device_name))
-                #dev_type.append(device_name)
-
 
     return ret
 
@@ -123,11 +121,8 @@ def zpool_status_parse(from_string=None):
             pool = ret[pool_name] = m
 
             devices = pool['devices'] = {}
-            devices2 = pool['devices2'] = {}
-            devices3 = pool['devices3'] = {}
 
             parent = None
-            parent_type = None
             for device in re.finditer("(?P<indent>[ \t]+)(?P<name>[^ \t\n]+)( +(?P<state>[^ \t\n]+) +)?("
                                       "(?P<read>[^ \t\n]+) +(?P<write>[^ \t\n]+) +"
                                       "(?P<cksum>[^\n]+))?(?P<notes>[^\n]+)?\n",
@@ -142,32 +137,17 @@ def zpool_status_parse(from_string=None):
                 for device_type in ('mirror', 'log', 'raid', 'spare', 'cache'):
                     if device_name.startswith(device_type):
                         parent = device_name
-                        parent_type = device_type
                         devices[device_name] = device
                         devices[parent]['children'] = {}
-
-                        if device_type == 'mirror':
-                            devices2[device_name] = Mirror()
-
                         is_parent = True
                         break
                 if is_parent:
                     continue
 
-                # TODO May fail if device is not found
-                device_type_map = {'log': Log, 'cache': Cache, 'spare': Spare}
-                if parent_type in device_type_map:
-                    dev = device_type_map[parent_type](device_name)
-                else:
-                    dev = Device(device_name)
-
                 if parent:
                     devices[parent]['children'][device_name] = device
-                    if parent_type == 'mirror':
-                        devices2[parent].append(dev)
                 else:
                     devices[device_name] = device
-                    devices2[device_name] = dev
 
     return ret
 
