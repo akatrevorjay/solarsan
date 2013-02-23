@@ -329,7 +329,8 @@ class Devices(DeviceQuerySet):
 class Disks(DeviceQuerySet):
     _base_filter = {
         'is_drive': True,
-        'path__notstartswith': ['zd', 'drbd', 'zram'],
+        #'path__notstartswith': ['zd', 'drbd', 'zram'],
+        'path__notlambda': lambda v: v.startswith('zd') or v.startswith('drbd') or v.startswith('zram'),
     }
 
 
