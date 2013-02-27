@@ -1,8 +1,9 @@
-Django==1.4.3
+Django==1.4.5
 IPy==0.75
 Jinja2==2.6
+-e git://github.com/Lokaltog/powerline.git@3c62e060be8b319dd00457cd3800d3cec9267f4b#egg=Powerline-dev
 PyYAML==3.10
-Pygments==1.5
+Pygments==1.6
 Pyro4==4.17
 SimpleParse==2.1.1
 South==0.7.6
@@ -11,8 +12,9 @@ anyjson==0.3.3
 argparse==1.2.1
 billiard==2.7.3.19
 bpython==0.12
+-e git://github.com/smartfile/caulk.git@e87e8bf08e1370dee6e433af31a5a6b7fd12bdc0#egg=caulk-dev
 celery==3.0.12
-circuits==2.0.1
+-e hg+https://bitbucket.org/prologic/circuits@8a35e76b201e5199fa764a132fd92a946053e252#egg=circuits-dev
 config==0.3.9
 configobj==4.7.2
 decorator==3.4.0
@@ -34,17 +36,22 @@ greenlet==0.4.0
 httplib2==0.7.7
 ipaddr==2.1.10
 ipcalc==0.6
+ipdb==0.7
 ipython==0.13.1
 iterpipes==0.4
 -e git://github.com/davidhalter/jedi.git@23f36c86d7d7c5b890fef9eb9eb46cd1fe553329#egg=jedi-dev
 kombu==2.5.4
 librabbitmq==1.0.1
 line-profiler==1.0b3
+memory-profiler==0.23
 mongoengine==0.7.9
 msgpack-python==0.2.4
 netbeacon==1.1
 netifaces==0.8
 oauth==1.0.1
+objgraph==1.7.2
+protobuf==2.4.1
+psutil==0.6.1
 pymongo==2.4.2
 pynetlinux==1.1
 pyparsing==1.5.6
@@ -57,9 +64,11 @@ pytz==2012j
 pyudev==0.16.1
 pyzmq==2.2.0.1
 requests==1.1.0
+riak==1.5.2
+riak-pb==1.2.1
 rpyc==3.2.3
 setproctitle==1.1.6
-sh==1.07
+sh==1.08
 six==1.2.0
 threadpool==1.2.7
 urwid==1.1.1

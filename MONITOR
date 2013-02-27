@@ -1,0 +1,114 @@
+
+
+Monitor:
+- PeerManager
+- Discovery
+
+
+PeerManager:
+- For each remote Peer:
+    - PeerMonitor
+
+
+PeerMonitor:
+- For each resource with remote Peer:
+    - ResourceMonitor
+
+
+----------
+
+
+Monitor:
+- PeerManager
+- ResourceManager
+- Discovery
+
+
+PeerManager:
+- For each Peer (including self):
+    - PeerMonitor
+
+
+ResourceManager:
+- For each Resource:
+    - ResourceMonitor
+
+
+---------
+DRBD
+---------
+
+Notable Conn States
+
+StandAlone. No network configuration available. The resource has not yet been connected, or has been administratively disconnected (using drbdadm disconnect), or has dropped its connection due to failed authentication or split brain.
+
+WFConnection. This node is waiting until the peer node becomes visible on the network.
+
+Connected. A DRBD connection has been established, data mirroring is now active. This is the normal state
+
+SyncSource. Synchronization is currently running, with the local node being the source of synchronization
+
+PausedSyncS. The local node is the source of an ongoing synchronization, but synchronization is currently paused. This may be due to a dependency on the completion of another synchronization process, or due to synchronization having been manually interrupted by drbdadm pause-sync.
+
+
+SyncTarget. Synchronization is currently running, with the local node being the target of synchronization.
+
+PausedSyncT. The local node is the target of an ongoing synchronization, but synchronization is currently paused. This may be due to a dependency on the completion of another synchronization process, or due to synchronization having been manually interrupted by drbdadm pause-sync.
+
+
+VerifyS. On-line device verification is currently running, with the local node being the source of verification.
+
+VerifyT. On-line device verification is currently running, with the local node being the target of verification.
+
+
+
+---------
+
+Notable Roles
+
+    Primary. The resource is currently in the primary role, and may be read from and written to. This role only occurs on one of the two nodes, unless dual-primary mode is enabled.
+
+    Secondary. The resource is currently in the secondary role. It normally receives updates from its peer (unless running in disconnected mode), but may neither be read from nor written to. This role may occur on one or both nodes.
+
+    Unknown. The resource's role is currently unknown. The local resource role never has this status. It is only displayed for the peer's resource role, and only in disconnected mode.
+
+
+----------
+
+Notable Disk States
+
+Diskless. No local block device has been assigned to the DRBD driver. This may mean that the resource has never attached to its backing device, that it has been manually detached using drbdadm detach, or that it automatically detached after a lower-level I/O error.
+
+
+Inconsistent. The data is inconsistent. This status occurs immediately upon creation of a new resource, on both nodes (before the initial full sync). Also, this status is found in one node (the synchronization target) during synchronization.
+
+Outdated. Resource data is consistent, but outdated.
+
+
+DUnknown. This state is used for the peer disk if no network connection is available.
+
+Consistent. Consistent data of a node without connection. When the connection is established, it is decided whether the data is UpToDate or Outdated.
+
+
+UpToDate. Consistent, up-to-date state of the data. This is the normal state.
+
+
+
+----------
+
+STOP OVERTHINKING. IT JUST HAS TO BE SIMPLE ACTIVE/PASSIVE FAILOVER.
+
+Create HA IP,
+Attach Targets to HA IP,
+Attach Resources to Targets,
+Attach Volumes to Resources.
+
+
+
+
+
+
+
+
+
+

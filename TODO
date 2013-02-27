@@ -19,3 +19,59 @@ Much Later:
 
 - Web interface
 
+
+Links:
+
+python auto reloader - https://github.com/kivy/pythonar/blob/master/reloader.py
+dstat for example stats code - https://github.com/dagwieers/dstat
+nice infiniband howto including bonding and perf tweaks - http://pve.proxmox.com/wiki/Infiniband
+drbd 3 way repl - http://www.drbd.org/users-guide/s-three-way-repl.html
+
+riak python - http://basho.github.com/riak-python-client/tutorial.html#quick-start
+riak - http://basho.com/riak/
+riak basic cluster - http://docs.basho.com/riak/latest/cookbooks/Basic-Cluster-Setup/
+
+tracing python memleaks - http://www.lshift.net/blog/2008/11/14/tracing-python-memory-leaks
+
+querylist - https://github.com/thomasw/querylist
+dee makes python relational - http://www.quicksort.co.uk/DeeDoc.html#makes-python-relational
+
+pyjs examples - http://pyjs.org/examples/
+
+targetd - https://github.com/agrover/targetd
+
+FANTASTIC python-rdma: http://www.obsidianresearch.com/products/software/python-rdma/doc/IBA.html#subnet-management-14
+
+SCST VDI SSD howto: http://marcitland.blogspot.com/2011/03/accelerating-vdi-using-scst-and-ssds.html
+
+ZFS evil tuning guide for solaris: http://www.solarisinternals.com/wiki/index.php/ZFS_Evil_Tuning_Guide
+
+python iscsi target - http://pytarget.codeplex.com/
+python libiscsi bindings - https://github.com/agrover/open-iscsi/blob/libiscsi-wip/libiscsi/pylibiscsi.c
+
+python-hatools managed lvm/iet/open-iscsi/drbd - http://code.google.com/p/python-hatools/
+more cluster mgmt - https://github.com/feist/pcs/blob/master/pcs/status.py
+
+SCST guide over Infiniband using SRP guide - http://inqbus-hosting.de/support/dokumentation/docs/howto-install-scst-on-debian-sqeeze
+
+drbd concurrent writes:
+- http://www.gossamer-threads.com/lists/drbd/users/19328
+- http://lists.linbit.com/pipermail/drbd-user/2009-April/011914.html
+- http://old.nabble.com/Re%3A-IET-1.4.20.2-hosting-vmfs-on-drbd-complainsabout-concurrent-write-p29767518.html
+- http://en.usenet.digipedia.org/thread/15095/2757/
+- http://www.gossamer-threads.com/lists/drbd/users/17199#17199
+- http://copilotco.com/mail-archives/scst.2009/msg00756.html
+- http://www.gossamer-threads.com/lists/drbd/users/18976?do=post_view_threaded
+
+
+
+TDD:
+- http://www.tdd-django-tutorial.com/tutorial/1/
+- http://agiliq.com/blog/2012/05/test-driven-development-python/
+TDD/BDD:
+- http://in.pycon.org/2012/funnel/pyconindia2012/10-guide-to-tdd-and-flight-to-bdd-with-python-django
+BDD:
+- http://packages.python.org/behave/tutorial.html#features
+
+vim tut - http://blog.interlinked.org/tutorials/vim_tutorial.html
+
