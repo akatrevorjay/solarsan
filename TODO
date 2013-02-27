@@ -1,26 +1,28 @@
 
-Now:
+--- Now:
 
-- Finish Storage HA loop
+X Finish Storage HA loop
 
-- SRP Targets in scst.conf template
+~ Find and squash memory leak(s) in monitor
 
-Then:
+~ Take old configshell cli idea and rework it to use the new APIs.
 
-- Take old configshell cli idea and rework it to use the new APIs.
+--- Then:
 
-Later:
+- SRP Targets
 
-- Health checks
+--- Later:
+
+~ Health checks
 
 - Alerts
 
-Much Later:
+--- Much Later:
 
-- Web interface
+~ Web interface
 
 
-Links:
+--- Links:
 
 python auto reloader - https://github.com/kivy/pythonar/blob/master/reloader.py
 dstat for example stats code - https://github.com/dagwieers/dstat
