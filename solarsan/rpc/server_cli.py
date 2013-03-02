@@ -321,10 +321,10 @@ class TargetsNode(AutomagicNode):
 
 class TargetNode(AutomagicNode):
     def summary(self):
-        if self.obj.is_target_added:
-            return ('added', True)
-        elif self.obj.is_target_enabled:
+        if self.obj.is_target_enabled:
             return ('active', True)
+        elif self.obj.is_target_added:
+            return ('added', True)
         else:
             return ('inactive', True)
 
@@ -895,7 +895,8 @@ class SystemNode(AutomagicNode):
 
 class NetworkingNode(AutomagicNode):
     def ui_children_factory_interface_list(self):
-        return [iface for iface in Nic.list().keys()]
+        # TODO Don't just remove all ifaces with : in it.
+        return [iface for iface in Nic.list().keys() if ':' not in iface]
 
     def ui_children_factory_interface(self, name):
         return InterfaceNode(name)
