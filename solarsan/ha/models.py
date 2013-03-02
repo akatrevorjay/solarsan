@@ -6,6 +6,7 @@ from cluster.models import Peer
 import sh
 from netifaces import interfaces
 from solarsan.utils.pings import ping_once
+from .arp import send_arp
 
 
 class ActivePassiveIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
@@ -41,6 +42,7 @@ class ActivePassiveIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 
     def ifup(self):
         sh.ifup(self.iface_name)
+        send_arp(self.iface, self.ip)
 
     def ifdown(self):
         sh.ifdown(self.iface_name)

@@ -140,7 +140,7 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     def peers(self):
         return [self.local, self.remote]
 
-    def propogate_res_to_remote(self):
+    def __propogate_res_to_remote(self):
         logger.info('Propogating local Drbd Resource "%s" to Peer "%s".', self.name, self.remote.hostname)
         storage = self.remote.peer.get_service('storage')
         remote_res_obj = storage.root.drbd_res()
