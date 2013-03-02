@@ -20,9 +20,9 @@ Performance indicators. A number of counters and gauges reflecting the resource'
 """
 
 
-def proc_drbd_parser(resource=None):
-    """Drbd /proc/drbd parser"""
-    raise NotImplemented
+#def proc_drbd_parser(resource=None):
+#    """Drbd /proc/drbd parser"""
+#    raise NotImplemented
 
 
 def drbd_overview_parser(resource=None):

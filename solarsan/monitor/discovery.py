@@ -38,7 +38,7 @@ class Discovery(Component):
     """
 
     def discover_peers(self):
-        #logger.debug("Discovering nearby peers..")
+        logger.debug("Discovering nearby peers..")
         try:
             for host, port in rpyc.discover('storage'):
                 self.fire(ProbePeer(host))
@@ -66,11 +66,13 @@ class Discovery(Component):
             if None in [hostname, uuid, ifaces, addrs, cluster_iface]:
                 raise Exception("Peer discovery probe has invalid data.")
 
-            #logger.info("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
+            logger.debug("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
         except Exception, e:
-            #raise FormattedException("Peer discovery (host='%s') failed: %s", host, e)
             logger.error("Peer discovery (host='%s') failed: %s", host, e)
             return
+        finally:
+            c.close()
+            c = None
 
         peer, created = Peer.objects.get_or_create(uuid=uuid, defaults={'hostname': hostname})
 

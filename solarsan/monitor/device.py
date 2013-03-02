@@ -16,7 +16,7 @@ class DeviceManager(Component):
         UDev().register(self)
 
     def device_add(self, device):
-        logger.info('Device added: %s', device)
+        logger.debug('Device added: %s', device)
 
     def device_remove(self, device):
-        logger.info('Device removed: %s', device)
+        logger.debug('Device removed: %s', device)
