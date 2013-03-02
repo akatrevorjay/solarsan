@@ -9,15 +9,15 @@ from solarsan.core import logger
 
 from solarsan.models import Config
 
-from cluster.models import Peer
-from configure.models import Nic, NicConfig
+from solarsan.cluster.models import Peer
+from solarsan.configure.models import Nic, NicConfig
 
-from storage.pool import Pool
-from storage.volume import Volume
+from solarsan.storage.pool import Pool
+from solarsan.storage.volume import Volume
 
-from storage.drbd import DrbdPeer, DrbdResource
+from solarsan.storage.drbd import DrbdPeer, DrbdResource
 
-from storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partitions
+from solarsan.storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partitions
 
 devs = Devices()
 d = devs[0]
@@ -31,13 +31,13 @@ try:
 except:
     print "Good, '%s' cannot be added to '%s'" % (c, m)
 
-from target.models import Target, iSCSITarget, SRPTarget
+from solarsan.target.models import Target, iSCSITarget, SRPTarget
 #Device, VolumeDevice, ResourceDevice
-import target.scst
-from target import scstadmin, scst
-import target.utils
+import solarsan.target.scst
+from solarsan.target import scstadmin, scst
+import solarsan.target.utils
 
-from ha.models import FloatingIP
+from solarsan.ha.models import FloatingIP
 
 import rpyc
 

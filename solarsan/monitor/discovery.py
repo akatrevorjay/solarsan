@@ -1,6 +1,6 @@
 
 from solarsan.core import logger
-from cluster.models import Peer
+from solarsan.cluster.models import Peer
 from circuits import Component, Timer, Event
 from datetime import datetime
 import rpyc

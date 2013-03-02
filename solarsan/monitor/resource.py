@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
 from circuits import Component, Event, Timer, handler
-from storage.drbd import DrbdResource
+from solarsan.storage.drbd import DrbdResource
 import random
 
 

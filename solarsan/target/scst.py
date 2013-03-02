@@ -2,7 +2,7 @@
 from solarsan.core import logger
 from solarsan import conf
 from solarsan.template import quick_template
-from storage.drbd import DrbdResource
+from solarsan.storage.drbd import DrbdResource
 from .models import iSCSITarget
 import sh
 import random

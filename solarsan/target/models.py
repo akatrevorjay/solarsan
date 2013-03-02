@@ -4,8 +4,8 @@ import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from .utils import generate_wwn, is_valid_wwn
 from . import scstadmin
-#from storage.drbd import DrbdResource
-from ha.models import FloatingIP
+#from solarsan.storage.drbd import DrbdResource
+from solarsan.ha.models import FloatingIP
 
 
 class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):

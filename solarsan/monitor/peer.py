@@ -2,7 +2,7 @@
 from solarsan.core import logger
 from solarsan.exceptions import TimeoutError
 from circuits import Component, Event, Timer, handler
-from cluster.models import Peer
+from solarsan.cluster.models import Peer
 import signal
 
 """

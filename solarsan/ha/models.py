@@ -2,7 +2,7 @@
 
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
-from cluster.models import Peer
+from solarsan.cluster.models import Peer
 import sh
 from netifaces import interfaces
 from solarsan.utils.pings import ping_once

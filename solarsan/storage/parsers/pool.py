@@ -3,7 +3,7 @@
 import sh
 import yaml
 import re
-from storage.device import Device, Cache, Log, Spare, Mirror
+from ..device import Device, Cache, Log, Spare, Mirror
 #from solarsan.pretty import pp
 
 

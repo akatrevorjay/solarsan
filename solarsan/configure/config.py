@@ -4,7 +4,7 @@
 #from solarsan import conf
 from solarsan.template import quick_template
 from .models import NicConfig, get_network_config
-from ha.models import FloatingIP
+from solarsan.ha.models import FloatingIP
 import os
 import shutil
 
