@@ -315,18 +315,11 @@ Target
 
 
 class TargetsNode(AutomagicNode):
-    def ui_children_factory_iscsi_target_list(self):
-        return [tgt.name for tgt in iSCSITarget.objects.all()]
-
-    def ui_children_factory_iscsi_target(self, name):
-        return TargetNode(name)
+    def ui_child_iscsi(self):
+        return iSCSITargetsNode()
 
 
 class TargetNode(AutomagicNode):
-    def __init__(self, name):
-        self.obj = iSCSITarget.objects.get(name=name)
-        super(TargetNode, self).__init__()
-
     def summary(self):
         if self.obj.is_target_added:
             return ('added', True)
@@ -334,6 +327,20 @@ class TargetNode(AutomagicNode):
             return ('active', True)
         else:
             return ('inactive', True)
+
+
+class iSCSITargetsNode(AutomagicNode):
+    def ui_children_factory_iscsi_target_list(self):
+        return [tgt.name for tgt in iSCSITarget.objects.all()]
+
+    def ui_children_factory_iscsi_target(self, name):
+        return iSCSITargetNode(name)
+
+
+class iSCSITargetNode(TargetNode):
+    def __init__(self, name):
+        self.obj = iSCSITarget.objects.get(name=name)
+        super(iSCSITargetNode, self).__init__()
 
 
 """
