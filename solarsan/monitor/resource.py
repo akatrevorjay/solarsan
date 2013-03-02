@@ -112,10 +112,9 @@ class ResourceMonitor(Component):
         # Update status and send out proper events first
         self.status()
 
-        logger.error('Failing over Peer "%s" for Resource "%s".',
-                     self.res.remote.hostname, self.res.name)
-
         if self.res.role != 'Primary':
+            logger.error('Failing over Peer "%s" for Resource "%s".',
+                         self.res.remote.hostname, self.res.name)
             self.fire(ResourcePrimary(self.res))
 
     # TODO What exactly to do upon pool not healthy

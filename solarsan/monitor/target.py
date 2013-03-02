@@ -2,6 +2,7 @@
 from solarsan.core import logger
 from circuits import Component, Event, Timer
 from solarsan.target.models import iSCSITarget
+from .resource import ResourceSecondary
 import random
 
 
@@ -47,6 +48,9 @@ class TargetMonitor(Component):
         super(TargetMonitor, self).__init__()
         self.target = target
         logger.info('Monitoring Target "%s".', self.target.name)
+
+        # TODO Check if target is active, check if all resources are primary
+        # for target, if not stop ourselves.
 
     def log(self, level, message, *args, **kwargs):
         prepend = 'Target "%s": ' % self.target.name
@@ -163,5 +167,3 @@ class TargetMonitor(Component):
         self.log(logger.info, 'Can now stop!')
         self.target.stop()
         self.fire(TargetStopped(self.target))
-
-

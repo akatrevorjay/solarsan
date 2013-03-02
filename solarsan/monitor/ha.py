@@ -42,17 +42,16 @@ class FloatingIPMonitor(Component):
 
         if self.ip.is_active:
             logger.warn('Floating IP "%s" is currently active upon startup.', self.ip.iface_name)
+
             # May want to just disable on startup..
             #logger.warn('Floating IP "%s" is currently active upon startup. Deactivating..', self.ip.iface_name)
-            self.ip.ifdown()
+            #self.ip.ifdown()
             #if ip.is_peer_active():
             #    logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', self.ip.iface_name)
-            #
             #    """ TODO See which host has the assoc target running too. If one is running it, they win. """
-            #
             #    self.ip.ifdown()
 
-            """ TODO Timer to scan for dual active floating IPs every so often """
+            #""" TODO Timer to scan for dual active floating IPs every so often """
             #Timer(30.0, DualFloatingCheck(), persist=True).register(self)
 
     ## peer_offline hits faster, but we want the IP comeup to be the very last
@@ -83,24 +82,16 @@ class FloatingIPMonitor(Component):
     def _on_active_ip(self, ip):
         if ip.pk != self.ip.pk:
             return
-        self.ifup()
-
-    @handler('passive_ip', channel='*')
-    def _on_passive_ip(self, ip):
-        if ip.pk != self.ip.pk:
-            return
-        self.ifdown()
-
-    def ifup(self):
         if self.ip.is_active:
             return
         logger.info('Floating IP "%s" is being brought up.', self.ip.iface_name)
         self.ip.ifup()
 
-    def ifdown(self):
+    @handler('passive_ip', channel='*')
+    def _on_passive_ip(self, ip):
+        if ip.pk != self.ip.pk:
+            return
         if not self.ip.is_active:
             return
         logger.info('Floating IP "%s" is being brought down.', self.ip.iface_name)
         self.ip.ifdown()
-
-
