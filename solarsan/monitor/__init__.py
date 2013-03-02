@@ -8,6 +8,7 @@ from .resource import ResourceManager
 from .target import TargetManager
 from .device import DeviceManager
 from .ha import FloatingIPManager
+from .auto_snapshot import AutoSnapshotManager
 
 
 """
@@ -32,6 +33,7 @@ class Monitor(Component):
         TargetManager().register(self)
         DeviceManager().register(self)
         FloatingIPManager().register(self)
+        AutoSnapshotManager().register(self)
 
         self.fire(MonitorStatusUpdate('Started'))
         return True

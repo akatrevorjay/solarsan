@@ -16,11 +16,11 @@ CONFIG_FILE = os.path.join(SOLARSAN_ROOT, 'etc', 'solarsan', 'solarsan.conf')
 
 class Config(_BaseConfig):
     def __init__(self):
-        f = file(CONFIG_FILE)
+        f = file(CONFIG_FILE, 'r')
         super(Config, self).__init__(f)
 
     def save(self):
-        f = file(CONFIG_FILE)
+        f = file(CONFIG_FILE, 'w')
         super(Config, self).save(f)
 
 
@@ -36,6 +36,18 @@ if not 'uuid' in config:
 
 if not 'cluster_iface' in config:
     config['cluster_iface'] = 'eth1'
+    config.save()
+
+
+if not 'auto_snap' in config:
+    config['auto_snap'] = {
+        'daily': {
+            'interval': 86400,
+        },
+        'hourly': {
+            'interval': 3600,
+        },
+    }
     config.save()
 
 
@@ -116,10 +128,6 @@ rpyc_conn_config = {
     'allow_delattr': True,
     #'exposed_prefix': '',
     'include_local_traceback': True,
-}
-
-
-auto_snap = {
 }
 
 
