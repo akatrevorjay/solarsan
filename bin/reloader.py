@@ -99,7 +99,8 @@ class RestartHandler(FileSystemEventHandler):
     #    Popen(['/usr/bin/env', 'xdotool', 'windowmove', str(self.swid), x, y])
 
     def on_any_event(self, event):
-        if not isinstance(event, (FileMovedEvent, FileModifiedEvent)):
+        #if not isinstance(event, (FileMovedEvent, FileModifiedEvent)):
+        if not isinstance(event, (FileModifiedEvent, )):
             return
 
         if self.sleep and time() < self._last_restart + self.sleep:

@@ -51,10 +51,12 @@ class TargetMonitor(Component):
 
         # TODO Check if target is active, check if all resources are primary
         # for target, if not stop ourselves.
-
-    def log(self, level, message, *args, **kwargs):
-        prepend = 'Target "%s": ' % self.target.name
-        level(prepend + message, *args, **kwargs)
+        if self.target.is_target_enabled:
+            logger.warning('Target "%s" is currently active upon startup.', self.target.name)
+            #self.fire(TargetStart(self.target))
+            self.fire(TargetStarted(self.target))
+        elif self.target.is_target_added:
+            logger.warning('Target "%s" currently exists upon startup.', self.target.name)
 
     # When a Peer that we split this target with failsover,
     # become primary for the target.
@@ -73,7 +75,7 @@ class TargetMonitor(Component):
     def resource_role_change(self, res, role):
         for dev in self.target.devices:
             if dev.pk == res.pk:
-                self.log(logger.info, 'Member Resource "%s" has become primary.', res.name)
+                logger.info('Target "%s": ' + 'Member Resource "%s" has become primary.', self.target.name, res.name)
                 #if not hasattr(self, '_start_try_timer'):
                 #    self.fire(TargetStart(self.target))
                 self.fire(TargetStart(self.target))
@@ -102,7 +104,7 @@ class TargetMonitor(Component):
         #    delattr(self, '_start_try_timer')
 
         retry_in = 8.0 + random.randrange(2, 8)
-        self.log(logger.warning, 'Trying to start in %ds.', retry_in)
+        logger.warning('Target "%s": ' + 'Trying to start in %ds.', self.target.name, retry_in)
         self._start_try_timer = Timer(retry_in, TargetStartTry(self.target)).register(self)
 
     def target_start_try(self, target, attempt=0):
@@ -122,15 +124,15 @@ class TargetMonitor(Component):
             if not dev.role == 'Primary':
                 missing_devices.append(dev.name)
             if dev.remote_role == 'Primary':
-                self.log(logger.error, 'Cannot start because remote is primary on Resource "%s".',
-                         dev.name)
+                logger.error('Target "%s": ' + 'Cannot start because remote is primary on Resource "%s".',
+                             self.target.name, dev.name)
 
                 remove_start_try_timer()
                 return
 
         if missing_devices:
-            self.log(logger.error, 'Cannot start because some luns are not available: "%s".',
-                     missing_devices)
+            logger.error('Target "%s": ' + 'Cannot start because some luns are not available: "%s".',
+                         self.target.name, missing_devices)
 
             # TODO Need to do a random choice between both when they are both
             # detined to be king.
@@ -142,15 +144,16 @@ class TargetMonitor(Component):
 
             remove_start_try_timer()
             retry_in = 8.0 + random.randrange(2, 8)
-            self.log(logger.warning, 'Retrying to start in %ds.', retry_in)
+            logger.warning('Target "%s": ' + 'Retrying to start in %ds.', self.target.name, retry_in)
             self._start_try_timer = Timer(retry_in, TargetStartTry(self.target, attempt=attempt + 1)).register(self)
             return
 
         self.log(logger.info, 'Can now start!')
         try:
             self.target.start()
+            logger.info('Target "%s" started.', self.target.name)
         except Exception, e:
-            self.log(logger.error, 'Could not start: %s', e.message)
+            logger.error('Target "%s": ' + 'Could not start: %s', self.target.name, e.message)
             remove_start_try_timer()
             return False
         remove_start_try_timer()

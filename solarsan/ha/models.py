@@ -41,8 +41,12 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         return storage.root.floating_ip_is_active(self.name)
 
     def ifup(self):
+        if self.is_active:
+            return
         sh.ifup(self.iface_name)
         send_arp(self.iface, self.ip)
 
     def ifdown(self):
+        if not self.is_active:
+            return
         sh.ifdown(self.iface_name)

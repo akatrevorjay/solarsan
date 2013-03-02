@@ -119,7 +119,10 @@ def main():
     # fucking decorator.
     t = ThreadedServer(StorageService, port=18862,
                        registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast),
-                       auto_register=True, logger=logger, protocol_config=conf.rpyc_conn_config)
+                       auto_register=True,
+                       #logger=logger.getChild('rpc.server_storage'),
+                       logger=logger,
+                       protocol_config=conf.rpyc_conn_config)
     t.start()
 
 

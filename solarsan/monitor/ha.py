@@ -25,11 +25,11 @@ Failover IP Monitor
 """
 
 
-class FloatingIPStart(Event):
+class FloatingIpStart(Event):
     """Start FloatingIP"""
 
 
-class FloatingIPStop(Event):
+class FloatingIpStop(Event):
     """Stop FloatingIP"""
 
 
@@ -41,11 +41,10 @@ class FloatingIPMonitor(Component):
         logger.info('Monitoring Floating IP "%s".', self.ip.iface_name)
 
         if self.ip.is_active:
-            logger.warn('Floating IP "%s" is currently active upon startup.', self.ip.iface_name)
-
+            #logger.warn('Floating IP "%s" is currently active upon startup.', self.ip.iface_name)
             # May want to just disable on startup..
-            #logger.warn('Floating IP "%s" is currently active upon startup. Deactivating..', self.ip.iface_name)
-            #self.ip.ifdown()
+            logger.warn('Floating IP "%s" is currently active upon startup. Deactivating..', self.ip.iface_name)
+            self.ip.ifdown()
             #if ip.is_peer_active():
             #    logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', self.ip.iface_name)
             #    """ TODO See which host has the assoc target running too. If one is running it, they win. """
@@ -62,32 +61,28 @@ class FloatingIPMonitor(Component):
     #        return
     #    logger.error('Failing over floating IP "%s" for offline Peer "%s".',
     #                 self.ip.iface_name, self.ip.peer.hostname)
-    #    self.fire(FloatingIPStart(self.ip))
+    #    self.fire(FloatingIpStart(self.ip))
 
     def target_started(self, target):
         """When a Target assoc with this floating IP has been started, start her up"""
         if target.floating_ip.pk != self.ip.pk:
             return
-        self.fire(FloatingIPStart(self.ip))
+        self.fire(FloatingIpStart(self.ip))
 
     def target_stopping(self, target):
         """When a Target assoc with this floating IP has been stopped, start her up"""
         if target.floating_ip.pk != self.ip.pk:
             return
-        self.fire(FloatingIPStop(self.ip))
+        self.fire(FloatingIpStop(self.ip))
 
     def floating_ip_start(self, ip):
         if ip.pk != self.ip.pk:
-            return
-        if self.ip.is_active:
             return
         logger.info('Floating IP "%s" is being brought up.', self.ip.iface_name)
         self.ip.ifup()
 
     def floating_ip_stop(self, ip):
         if ip.pk != self.ip.pk:
-            return
-        if not self.ip.is_active:
             return
         logger.info('Floating IP "%s" is being brought down.', self.ip.iface_name)
         self.ip.ifdown()

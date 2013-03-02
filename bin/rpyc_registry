@@ -13,5 +13,6 @@ if __name__ == '__main__':
     reg = UDPRegistryServer(
         #host=peer.cluster_addr,
         #pruning_timeout=30,
-        logger=logger)
+        #logger=logger,
+    )
     reg.start()

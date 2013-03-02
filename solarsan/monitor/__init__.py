@@ -24,17 +24,17 @@ class Monitor(Component):
     def __init__(self):
         super(Monitor, self).__init__()
 
-    def started(self, *args):
         self.fire(MonitorStatusUpdate('Starting'))
 
-        Discovery().register(self)
-        PeerManager().register(self)
-        ResourceManager().register(self)
-        TargetManager().register(self)
         DeviceManager().register(self)
         FloatingIPManager().register(self)
+        PeerManager().register(self)
+        Discovery().register(self)
+        TargetManager().register(self)
+        ResourceManager().register(self)
         AutoSnapshotManager().register(self)
 
+    def started(self, *args):
         self.fire(MonitorStatusUpdate('Started'))
         return True
 
@@ -48,9 +48,8 @@ class Monitor(Component):
 
 def main():
     try:
-        #(Discovery()).run()
-        #(Discovery() + Debugger()).run()
-        (Monitor() + Debugger()).run()
+        #(Monitor() + Debugger()).run()
+        (Monitor()).run()
     except (SystemExit, KeyboardInterrupt):
         raise
 
