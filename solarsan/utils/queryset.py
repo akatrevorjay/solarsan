@@ -76,7 +76,7 @@ class QuerySet(object):
         """This method can be overridden to specify how to get the list of obj if none are specified during inits"""
         return []
 
-    def __init__(self, objs=None, base_filter=None, base_filter_replace=False):
+    def __init__(self, objs=None, base_filter=None, base_filter_replace=False, *args):
         if base_filter:
             if base_filter_replace:
                 self._base_filter = base_filter
@@ -87,7 +87,10 @@ class QuerySet(object):
         if objs:
             self._objs = objs
         else:
-            self._objs = self._get_objs()
+            if args:
+                self._objs = args
+            else:
+                self._objs = self._get_objs()
         self._objs = list(self.filter())
 
     def all(self):
@@ -106,7 +109,7 @@ class QuerySet(object):
 
     def __repr__(self):
         append = ', '.join(['%s' % v for v in self._objs])
-        return '<%s(%s)>' % (self.__class__.__name__, append)
+        return '<%s([%s])>' % (self.__class__.__name__, append)
 
     def __len__(self):
         return len(self._objs)

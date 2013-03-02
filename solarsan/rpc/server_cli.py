@@ -704,9 +704,6 @@ System
 
 
 class SystemNode(AutomagicNode):
-    def __init__(self):
-        pass
-
     def ui_command_hostname(self):
         '''
         Displays the system hostname

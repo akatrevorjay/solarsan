@@ -133,8 +133,23 @@ class ServiceConfigNode(ConfigNode):
         name = kwargs.pop('_meth', None)
         if not name:
             name = str(sys._getframe(frame).f_code.co_name)
-        meth = getattr(self.service, name)
-        ret = meth(*args, **kwargs)
+        try:
+            meth = getattr(self.service, name)
+            ret = meth(*args, **kwargs)
+        except Exception, e:
+            ret = e.message
+
+        if isinstance(ret, basestring):
+            ret = str(ret)
+        elif isinstance(ret, (list, set, tuple)):
+            ret = list(ret)
+        elif isinstance(ret, dict):
+            ret = dict(ret)
+        elif isinstance(ret, int):
+            ret = int(ret)
+        elif isinstance(ret, bool):
+            ret = bool(ret)
+
         if ret_pp:
             pp(ret)
         else:

@@ -25,8 +25,8 @@ class DeviceSet(QuerySet):
     #    return backend.get_devices()
 
     def __init__(self, *args, **kwargs):
-        if 'devices' in kwargs:
-            kwargs['objects'] = kwargs.pop('devices')
+        #if 'devices' in kwargs:
+        #    kwargs['objects'] = kwargs.pop('devices')
         super(DeviceSet, self).__init__(*args, **kwargs)
 
     def _device_check(self):
@@ -213,7 +213,8 @@ class Device(BaseDevice):
                     return super(Device, cls).__new__(subclass, backend_device, *args, **kwargs)
 
         if getattr(cls, '_supports_backend', None):
-            raise DeviceHandlerNotFound(backend_device)
+            if not cls._supports_backend(backend_device):
+                raise DeviceHandlerNotFound(backend_device)
         return super(Device, cls).__new__(cls, backend_device, *args, **kwargs)
 
     @classmethod

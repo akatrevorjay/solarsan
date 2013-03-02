@@ -17,7 +17,7 @@ from solarsan.storage.volume import Volume
 
 from solarsan.storage.drbd import DrbdPeer, DrbdResource
 
-from solarsan.storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partitions
+from solarsan.storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partition, Partitions
 
 devs = Devices()
 d = devs[0]
