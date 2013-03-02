@@ -1,9 +1,9 @@
 
 from solarsan.core import logger
-from solarsan.exceptions import TimeoutError
-from circuits import Component, Event, Timer
+#from solarsan.exceptions import TimeoutError
+from circuits import Component, Event, Timer, handler
 from solarsan.cluster.models import Peer
-import signal
+#import signal
 
 """
 Peer Manager
@@ -41,6 +41,7 @@ class PeerManager(Component):
 
     def peer_discovered(self, peer, created=None):
         self.add_peer(peer)
+        return True
 
     def add_peer(self, peer):
         if peer.uuid in self.peers:
@@ -151,11 +152,14 @@ class PeerMonitor(Component):
             return
         logger.warning("Peer '%s' is STILL offline!", peer.hostname)
 
+    #@handler('peer_discovered', channel='*')
     def peer_discovered(self, peer, created=False):
         if peer.uuid != self.peer.uuid:
             return
+        #logger.info('Discovered peer "%s"', self.peer)
         if self.peer.is_offline:
             self.fire(PeerOnline(self.peer))
+        return True
 
     def peer_pool_health_check(self):
         if self.peer.is_offline:
@@ -177,17 +181,18 @@ class PeerMonitor(Component):
                          self.peer.hostname)
             return
         #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
-        ret = True
+        #retval = True
         for pool, is_healthy in ret.iteritems():
             if not is_healthy:
                 self.fire(PeerPoolNotHealthy(self.peer, pool))
-                ret = False
+                #retval = False
         #except TimeoutError, e:
         #    logger.error('Could not check pools on Peer "%s": %s',
         #                 self.peer.hostname, e.message)
 
         #signal.alarm(0)          # Disable the alarm
-        return ret
+        #return retval
+        return True
 
     def peer_pool_not_healthy(self, peer, pool):
         if peer.uuid != self.peer.uuid:

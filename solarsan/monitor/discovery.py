@@ -56,11 +56,11 @@ class Discovery(Component):
         try:
             c = rpyc.connect_by_service('storage', host=host)
 
-            hostname = c.root.peer_hostname()
-            uuid = c.root.peer_uuid()
-            cluster_iface = c.root.peer_get_cluster_iface()
+            hostname = str(c.root.peer_hostname())
+            uuid = str(c.root.peer_uuid())
+            cluster_iface = dict(c.root.peer_get_cluster_iface())
 
-            ifaces = c.root.peer_list_addrs()
+            ifaces = dict(c.root.peer_list_addrs())
             addrs = dict([(y['addr'], y['netmask']) for x in ifaces.values() for y in x])
 
             if None in [hostname, uuid, ifaces, addrs, cluster_iface]:
@@ -71,8 +71,11 @@ class Discovery(Component):
             logger.error("Peer discovery (host='%s') failed: %s", host, e)
             return
         finally:
-            c.close()
-            c = None
+            try:
+                c.close()
+                c = None
+            except:
+                pass
 
         peer, created = Peer.objects.get_or_create(uuid=uuid, defaults={'hostname': hostname})
 

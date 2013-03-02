@@ -26,10 +26,10 @@ class Monitor(Component):
 
         self.fire(MonitorStatusUpdate('Starting'))
 
-        DeviceManager().register(self)
-        FloatingIPManager().register(self)
         PeerManager().register(self)
         Discovery().register(self)
+        DeviceManager().register(self)
+        FloatingIPManager().register(self)
         TargetManager().register(self)
         ResourceManager().register(self)
         AutoSnapshotManager().register(self)
@@ -48,8 +48,8 @@ class Monitor(Component):
 
 def main():
     try:
-        #(Monitor() + Debugger()).run()
-        (Monitor()).run()
+        (Monitor() + Debugger()).run()
+        #(Monitor()).run()
     except (SystemExit, KeyboardInterrupt):
         raise
 
