@@ -1,5 +1,5 @@
 
-from solarsan.utils import LoggedException
+from solarsan.exceptions import ZfsError
 import logging
 import sh
 from .dataset import Dataset
@@ -22,7 +22,7 @@ class _SnapshottableDatasetMixin(object):
     #    if kwargs.get('recursive', False) is True:
     #        zargs.append('-r')
     #    if not self.name:
-    #        raise LoggedException("Snapshot was attempted with an empty name")
+    #        raise ZfsError("Snapshot was attempted with an empty name")
     #    #if kwargs.get('name_strftime', True) == True:
     #    #    name = timezone.now().strftime(name)
     #    if not self.exists():
@@ -79,8 +79,8 @@ class Filesystem(Dataset):
         filesystem.destroy()
 
         """
-        if not confirm:
-            raise LoggedException('Destroy of storage filesystem requires confirm=True')
+        if confirm is not True:
+            raise ZfsError('Destroy of storage filesystem requires confirm=True')
         opts = ['destroy']
         if recursive:
             opts.append('-r')

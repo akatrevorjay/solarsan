@@ -1,5 +1,5 @@
 
-from solarsan.utils import LoggedException
+from solarsan.exceptions import ZfsError
 from solarsan.core import logger
 import sh
 from .dataset import Dataset
@@ -67,8 +67,9 @@ class Volume(Dataset):
         volume.destroy()
 
         """
-        if not confirm:
-            raise LoggedException('Destroy of storage volume requires confirm=True')
+        if confirm is not True:
+            raise ZfsError("It is required that you specify confirm=True for such an action of destruction.")
+
         opts = ['destroy']
         if recursive:
             opts.append('-r')

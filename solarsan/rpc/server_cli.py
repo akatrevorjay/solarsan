@@ -452,8 +452,8 @@ class StorageNode(AutomagicNode):
         obj = self.obj
         if not obj.exists():
             raise ZfsError("Object '%s' does not exist", obj)
-        #if not confirm:
-        #    raise ZfsError("You must set confirm=True argument to confirm such an action of destruction")
+        if confirm == 'True':
+            confirm = True
         obj.destroy(confirm=confirm)
         return True
 
@@ -600,8 +600,8 @@ class PoolNode(StorageNode):
         '''
         create - Creates a volume
         '''
-        parent = self._get_filesystem()
-        #pool = self._get_pool()
+        #parent = self._get_filesystem()
+        parent = self._get_pool()
         cls = Volume
         name = clean_name(name)
 

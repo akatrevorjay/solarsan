@@ -1,5 +1,5 @@
 
-from solarsan.utils import LoggedException
+from solarsan.exceptions import ZfsError
 #import logging
 import sh
 from .dataset import Dataset
@@ -51,8 +51,8 @@ class Snapshot(Dataset):
         snapshot.destroy()
 
         """
-        if not confirm:
-            raise LoggedException('Destroy of storage snapshot requires confirm=True')
+        if confirm is not True:
+            raise ZfsError('Destroy of storage snapshot requires confirm=True')
         opts = ['destroy']
         if recursive:
             opts.append('-r')

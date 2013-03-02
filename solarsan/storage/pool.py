@@ -3,7 +3,7 @@
 import sh
 #from collections import defaultdict, OrderedDict
 #import re
-from solarsan.utils import LoggedException
+from solarsan.exceptions import ZfsError
 from datetime import datetime
 from collections import OrderedDict
 
@@ -306,8 +306,8 @@ class Pool(Base):
         pool.destroy()
 
         """
-        if not confirm:
-            raise LoggedException('Destroy of storage pool requires confirm=True')
+        if confirm is not True:
+            raise ZfsError('Destroy of storage pool requires confirm=True')
         sh.zpool('destroy', self.name)
         return True
 
@@ -366,7 +366,7 @@ class Pool(Base):
 
             # If somehow we got here without a timestamp, something is probably wrong.
             if not timestamp:
-                raise LoggedException("Got unexpected input from zpool iostat: %s", line)
+                raise ZfsError("Got unexpected input from zpool iostat: %s", line)
 
             # Parse iostats output
             j = {}
@@ -399,7 +399,7 @@ class Pool(Base):
         elif ret_type == dict:
             ret = {}
         else:
-            raise LoggedException("Invalid return object type '%s' specified", ret_type)
+            raise ZfsError("Invalid return object type '%s' specified", ret_type)
 
         # Generate command and execute, parse output
         cmd = sh.zpool.bake('list', '-o', ','.join(props))
