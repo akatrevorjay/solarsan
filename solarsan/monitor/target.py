@@ -75,7 +75,8 @@ class TargetMonitor(Component):
     def resource_role_change(self, res, role):
         for dev in self.target.devices:
             if dev.pk == res.pk:
-                logger.info('Target "%s": ' + 'Member Resource "%s" has become primary.', self.target.name, res.name)
+                logger.info('Target "%s": ' + 'Member Resource "%s" has become primary.',
+                            self.target.name, res.name)
                 #if not hasattr(self, '_start_try_timer'):
                 #    self.fire(TargetStart(self.target))
                 self.fire(TargetStart(self.target))
@@ -84,8 +85,8 @@ class TargetMonitor(Component):
     def resource_secondary_pre(self, res):
         for dev in self.target.devices:
             if dev.pk == res.pk:
-                self.log(logger.info, 'Member Resource "%s" wants to become secondary. Trying to ' +
-                         'deconfigure quickly enough so it can.', res.name)
+                logger.info('Target "%s": Member Resource "%s" wants to become secondary. Trying to ' +
+                            'deconfigure quickly enough so it can.', self.target.name, res.name)
                 self.fire(TargetStop(self.target))
                 #self.log(logger.warning, 'Member Resource "%s" is trying to become secondary while ' +
                 #               'being part of an active target.',
@@ -148,7 +149,7 @@ class TargetMonitor(Component):
             self._start_try_timer = Timer(retry_in, TargetStartTry(self.target, attempt=attempt + 1)).register(self)
             return
 
-        self.log(logger.info, 'Can now start!')
+        logger.info('Target "%s": Can now start!', self.target.name)
         try:
             self.target.start()
             logger.info('Target "%s" started.', self.target.name)
@@ -167,6 +168,6 @@ class TargetMonitor(Component):
     def target_stop(self, target):
         if target.pk != self.target.pk:
             return
-        self.log(logger.info, 'Can now stop!')
+        logger.info('Target "%s": Can now stop!', self.target.name)
         self.target.stop()
         self.fire(TargetStopped(self.target))

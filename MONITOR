@@ -1,37 +1,18 @@
 
-
 Monitor:
-- PeerManager
-- Discovery
+X PeerManager
+X ResourceManager
+X Discovery
 
 
 PeerManager:
-- For each remote Peer:
-    - PeerMonitor
-
-
-PeerMonitor:
-- For each resource with remote Peer:
-    - ResourceMonitor
-
-
-----------
-
-
-Monitor:
-- PeerManager
-- ResourceManager
-- Discovery
-
-
-PeerManager:
-- For each Peer (including self):
-    - PeerMonitor
+X For each Peer (including self):
+    X PeerMonitor
 
 
 ResourceManager:
-- For each Resource:
-    - ResourceMonitor
+X For each Resource:
+    X ResourceMonitor
 
 
 ---------
@@ -102,13 +83,3 @@ Create HA IP,
 Attach Targets to HA IP,
 Attach Resources to Targets,
 Attach Volumes to Resources.
-
-
-
-
-
-
-
-
-
-
