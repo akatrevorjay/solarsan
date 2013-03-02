@@ -11,6 +11,8 @@ from solarsan.storage.drbd import DrbdResource
 from solarsan.target.models import iSCSITarget
 from solarsan.exceptions import ZfsError
 from solarsan.ha.models import FloatingIP
+from solarsan.configure.models import Nic
+from solarsan.configure.config import write_network_interfaces_config
 import os
 import rpyc
 import sh
@@ -815,6 +817,9 @@ System
 
 
 class SystemNode(AutomagicNode):
+    def ui_child_networking(self):
+        return NetworkingNode()
+
     def ui_command_hostname(self):
         '''
         Displays the system hostname
@@ -879,6 +884,39 @@ class SystemNode(AutomagicNode):
 
     def ui_command_check_services(self):
         return sh.egrep(sh.initctl('list'), 'solarsan|targetcli|mongo')
+
+
+class NetworkingNode(AutomagicNode):
+    def ui_children_factory_interface_list(self):
+        return [iface for iface in Nic.list().keys()]
+
+    def ui_children_factory_interface(self, name):
+        return InterfaceNode(name)
+
+    def ui_command_write_interfaces(self):
+        write_network_interfaces_config(confirm=True)
+        return True
+
+
+class InterfaceNode(AutomagicNode):
+    def __init__(self, name):
+        self.obj = Nic(name)
+        super(InterfaceNode, self).__init__()
+
+    def summary(self):
+        if self.obj.config and self.obj.config.proto:
+            return (self.obj.config.proto, True)
+        elif self.obj.name == 'lo':
+            return ('lo', True)
+        else:
+            return ('unconfigured', False)
+
+    # TODO Attributes for proto, ip, netmask, etc
+
+
+"""
+Main
+"""
 
 
 def main():
