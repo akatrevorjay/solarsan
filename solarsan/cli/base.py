@@ -84,6 +84,54 @@ class ServiceConfigNode(ConfigNode):
         summary = types.MethodType(summary, self)
         setattr(self, summary.__name__, summary)
 
+    def ui_getgroup_property(self, property):
+        '''
+        This is the backend method for getting propertys.
+        @param property: The property to get the value of.
+        @type property: str
+        @return: The property's value
+        @rtype: arbitrary
+        '''
+        #return self(property)
+        return self.service.ui_getgroup_property(property)
+
+    def ui_setgroup_property(self, property, value):
+        '''
+        This is the backend method for setting propertys.
+        @param property: The property to set the value of.
+        @type property: str
+        @param value: The property's value
+        @type value: arbitrary
+        '''
+        #return self(property, value)
+        return self.service.ui_setgroup_property(property, value)
+
+    #def ui_getgroup_statistic(self, statistic):
+    #    '''
+    #    This is the backend method for getting statistics.
+    #    @param statistic: The statistic to get the value of.
+    #    @type statistic: str
+    #    @return: The statistic's value
+    #    @rtype: arbitrary
+    #    '''
+    #    if statistic in self.POOL_STATISTICS:
+    #        obj = self._get_pool()
+    #    else:
+    #        obj = self._get_filesystem()
+    #
+    #    return str(obj.properties[statistic])
+
+    #def ui_setgroup_statistic(self, statistic, value):
+    #    '''
+    #    This is the backend method for setting statistics.
+    #    @param statistic: The statistic to set the value of.
+    #    @type statistic: str
+    #    @param value: The statistic's value
+    #    @type value: arbitrary
+    #    '''
+    #    #self.obj.properties[statistic] = value
+    #    return None
+
     """
     Service
     """
@@ -145,10 +193,10 @@ class ServiceConfigNode(ConfigNode):
             ret = list(ret)
         elif isinstance(ret, dict):
             ret = dict(ret)
-        elif isinstance(ret, int):
-            ret = int(ret)
         elif isinstance(ret, bool):
             ret = bool(ret)
+        elif isinstance(ret, int):
+            ret = int(ret)
 
         if ret_pp:
             pp(ret)

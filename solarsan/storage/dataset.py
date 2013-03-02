@@ -136,14 +136,13 @@ class Dataset(Base):
     """Base Dataset object
     """
 
-    def __init__(self, *args, **kwargs):
-        super(Dataset, self).__init__(*args, **kwargs)
-        name = kwargs.get('name')
+    def __init__(self, name=None, **kwargs):
+        super(Dataset, self).__init__(name, **kwargs)
         if name and getattr(self, 'name', None) is not name:
             self.name = name
-        self._init(*args, **kwargs)
+        self._init(name, **kwargs)
 
-    def _init(self, *args, **kwargs):
+    def _init(self, name, **kwargs):
         self.properties = DatasetProperties(self)
 
     #@property

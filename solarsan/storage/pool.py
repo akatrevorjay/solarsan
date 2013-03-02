@@ -240,6 +240,10 @@ class Pool(Base):
 
         return args
 
+    def get_filesystem(self):
+        from .filesystem import Filesystem
+        return Filesystem(self.name)
+
     def create(self, *devices, **kwargs):
         """Creates storage pool.
 

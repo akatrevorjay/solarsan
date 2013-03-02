@@ -235,6 +235,16 @@ class PeerNode(AutomagicNode):
     def __init__(self, hostname):
         self.obj = Peer.objects.get(hostname=hostname)
 
+    @property
+    def service(self):
+        return self.obj.get_service('storage')
+
+    def ui_command_ping(self):
+        return self.service.root.ping()
+
+    def ui_command_is_local(self):
+        return self.obj.is_local
+
 
 """
 Developer
@@ -424,7 +434,7 @@ class StorageNode(AutomagicNode):
 
     def _get_filesystem(self):
         if self.obj.type == 'pool':
-            return self.obj.filesystem
+            return self.obj.get_filesystem()
         elif self.obj.type == 'filesystem':
             return self.obj
 
@@ -436,7 +446,7 @@ class StorageNode(AutomagicNode):
         '''
         create - Creates a snapshot
         '''
-        parent = self._get_filesystem()
+        parent = self._get_pool()
         #pool = self._get_pool()
         cls = Snapshot
         name = clean_name(name)
