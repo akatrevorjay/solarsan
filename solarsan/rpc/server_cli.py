@@ -13,6 +13,11 @@ import rpyc
 import sh
 import time
 
+#import rdma
+#import libibtool
+#import libibtool.discovery
+#import libibtool.inquiry
+
 
 class CLIService(rpyc.Service):
     def on_connect(self):
@@ -198,7 +203,11 @@ class Developer(object):
     def zpool_iostat(self):
         return sh.zpool('iostat', '-v', '5', '2')
 
+    #def lsibdevices(self):
+    #    return rdma.get_devices().keys()
+
     def ibstat(self):
+        #return libibtool.inquiry.cmd_ibstat([], libibtool.tools.MyOptParse(
         return sh.ibstat()
 
     def ibstatus(self):

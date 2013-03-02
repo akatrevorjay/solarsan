@@ -25,12 +25,14 @@ class Monitor(Component):
 
     def started(self, *args):
         self.fire(MonitorStatusUpdate('Starting'))
+
         Discovery().register(self)
         PeerManager().register(self)
         ResourceManager().register(self)
         TargetManager().register(self)
         DeviceManager().register(self)
         FloatingIPManager().register(self)
+
         self.fire(MonitorStatusUpdate('Started'))
         return True
 

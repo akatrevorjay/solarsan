@@ -24,7 +24,7 @@ X Finish Storage HA loop
 
 --- Links:
 
-python auto reloader - https://github.com/kivy/pythonar/blob/master/reloader.py
+X python auto reloader - https://github.com/kivy/pythonar/blob/master/reloader.py
 dstat for example stats code - https://github.com/dagwieers/dstat
 nice infiniband howto including bonding and perf tweaks - http://pve.proxmox.com/wiki/Infiniband
 drbd 3 way repl - http://www.drbd.org/users-guide/s-three-way-repl.html

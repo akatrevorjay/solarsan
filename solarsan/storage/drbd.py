@@ -2,7 +2,7 @@
 from solarsan.core import logger
 from solarsan import conf
 from solarsan.template import quick_template
-from solarsan.utils.exceptions import LoggedException
+from solarsan.exceptions import DrbdResourceError
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from cluster.models import Peer
 from .volume import Volume
@@ -33,7 +33,6 @@ class DrbdPeer(m.EmbeddedDocument):
 
     def __init__(self, **kwargs):
         super(DrbdPeer, self).__init__(**kwargs)
-        self._service = None
 
     def __repr__(self):
         return "<%s peer='%s', minor='%s', volume='%s'>" % (
@@ -82,34 +81,17 @@ class DrbdPeer(m.EmbeddedDocument):
     """
     Service
     """
-
-    #@property
-    #def service(self):
-    #    storage = self.peer.get_service('storage')
-    #    retry_count = 0
-    #    retry_delay = 1
-    #    for attempt in xrange(retry_count + 1):
-    #        try:
-    #            # TODO self.volume IS NOT THE RESOURCE NAME BUT IT JUST HAPPENS TO WORK
-    #            # HACK FIX THIS SHIT
-    #            return storage.root.drbd_res_service(self.volume)
-    #        except Exception, e:
-    #            log_msg = 'Could not get Drbd Resource Service on Peer "%s"; '
-    #            if attempt < retry_count:
-    #                #logger.error(log_msg + 'retrying in %ds (%d/%d): "%s"',
-    #                #             self.peer, retry_delay, attempt + 1, retry_count + 1, e.message)
-    #                time.sleep(retry_delay)
-    #            else:
-    #                #logger.error(log_msg + 'Retry attempts exceeded.: "%s"',
-    #                #             self.peer, e.message)
-    #                raise
+    _service = None
 
     @property
     def service(self):
+        if not self._service:
+            self.get_new_service()
+        return self._service
+
+    def get_new_service(self):
         storage = self.peer.get_service('storage')
-        # HACK THIS IS NOT RIGHT, VOLUME NAME IS NOT THE SAME AS PARENT
-        # RESOURCE NAME
-        return storage.root.drbd_res_service(self.volume)
+        self._service = storage.root.drbd_res_service(self.volume)
 
     def __call__(self, method, *args, **kwargs):
         meth = getattr(self.service.root, method)
@@ -236,7 +218,7 @@ Env vars for ran scripts:
 """
 
 
-class DrbdResourceService(object):
+class DrbdLocalResource(object):
     def __init__(self, resource_name):
         self.res = DrbdResource.objects.get(name=resource_name)
 
@@ -297,7 +279,7 @@ class DrbdResourceService(object):
 
     def initialize(self):
         if self.res.is_initialized:
-            raise LoggedException('Resource "%s" is already initialized.', self.res)
+            raise DrbdResourceError('Resource "%s" is already initialized.', self.res)
         logger.info('Initializing Resource "%s".', self.res)
 
         volume_name = self.res.volume_full_name

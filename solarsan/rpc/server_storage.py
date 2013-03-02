@@ -4,7 +4,7 @@ from solarsan import conf
 #from solarsan.utils.exceptions import LoggedException
 from storage.pool import Pool
 from storage.volume import Volume
-from storage.drbd import DrbdResource, DrbdPeer, DrbdResourceService, drbd_find_free_minor
+from storage.drbd import DrbdResource, DrbdPeer, drbd_find_free_minor, DrbdLocalResource
 from storage.parsers.drbd import drbd_overview_parser
 from configure.models import Nic, get_all_local_ipv4_addrs
 from cluster.models import Peer
@@ -58,7 +58,7 @@ class StorageService(rpyc.Service):
         return DrbdPeer
 
     def drbd_res_service(self, name):
-        return DrbdResourceService(name)
+        return DrbdLocalResource(name)
 
     def drbd_status(resource=None):
         """Get status of specified or all DRBD replicated resources"""

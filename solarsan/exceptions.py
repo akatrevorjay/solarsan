@@ -44,3 +44,13 @@ class ZfsError(FormattedException):
 class DeviceHandlerNotFound(FormattedException):
     """Handler is not found for Device error"""
     pass
+
+
+"""
+Drbd Resource
+"""
+
+
+class DrbdResourceError(FormattedException):
+    """Generic Drbd Resource error"""
+    pass

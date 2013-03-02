@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
 from circuits import Component, Event, Timer, handler
-from storage.drbd import DrbdResource, drbd_overview_parser
+from storage.drbd import DrbdResource, DrbdLocalResource
 import random
 
 
@@ -98,6 +98,7 @@ class ResourceMonitor(Component):
     def __init__(self, res):
         super(ResourceMonitor, self).__init__()
         self.res = res
+        self.service = DrbdLocalResource(self.res.name)
         self.status()
 
     @handler('peer_failover', channel='*')
@@ -147,19 +148,12 @@ class ResourceMonitor(Component):
             #   attached to targets, and only whole targets can go up or down.
             #self.fire(ResourcePrimary(self.res))
 
-    @property
-    def service(self):
-        return self.res.local.service
-
-    #def get_service(self):
-    #    return self.res.local.service
-
     """
     Status Tracking
     """
 
     def status(self):
-        ret = drbd_overview_parser(self.res.name)
+        ret = self.service.status()
         if not ret:
             return ret
 
@@ -357,6 +351,7 @@ class ResourceMonitor(Component):
 
         try:
             self.service.primary()
+            self.status()
             logger.info('Promoted self to Primary for Resource "%s".', self.res.name)
             self.fire(ResourcePrimaryPost(self.res))
         except:
@@ -368,16 +363,16 @@ class ResourceMonitor(Component):
     def resource_secondary(self, res, *values):
         if res.pk != self.res.pk:
             return
+
         self.status()
         if self.res.role == 'Secondary':
             return
-        logger.warning('Demoting self to Secondary for Resource "%s".', self.res.name)
-        self.secondary()
 
-    def secondary(self):
+        logger.warning('Demoting self to Secondary for Resource "%s".', self.res.name)
         self.fire(ResourceSecondaryPre(self.res))
         self.service.secondary()
         self.status()
+        logger.warning('Demoted self to Secondary for Resource "%s".', self.res.name)
         self.fire(ResourceSecondaryPost(self.res))
 
     """
