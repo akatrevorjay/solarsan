@@ -52,9 +52,11 @@ class ServiceConfigNode(ConfigNode):
         for cmd_name, cmd in self.service.get_ui_commands().iteritems():
             self.generate_ui_command(cmd_name, cmd)
 
-    def generate_ui_command(self, name, command):
+    def generate_ui_command(self, display_name, command):
+        name = command.get('name', display_name)
+
         def func(self, *args, **kwargs):
-            self(_meth=name)
+            self(_meth=name, *args, **kwargs)
         func = types.MethodType(func, self)
         setattr(self, name, func)
         self._generated_ui_commands[name] = func
@@ -66,12 +68,12 @@ class ServiceConfigNode(ConfigNode):
         for child_name, child in self.service.get_ui_children().iteritems():
             self.generate_ui_child(child_name, child)
 
-    def generate_ui_child(self, name, service_config):
+    def generate_ui_child(self, display_name, service_config):
         class child(ServiceConfigNode):
             _service_config = service_config
-        child.__name__ = str(name)
-        c = child(name, self)
-        self._generated_ui_children[name] = c
+        child.__name__ = str(display_name)
+        c = child(display_name, self)
+        self._generated_ui_children[display_name] = c
 
     def generate_summary(self):
         if not getattr(self.service, 'summary', None):
@@ -109,11 +111,16 @@ class ServiceConfigNode(ConfigNode):
                 self._services_cli = cli = get_services_cli()
                 meth = getattr(cli.root, name)
             else:
-                raise Exception('No service blah')
+                raise Exception('No service found for "%s"' % cls_name)
 
             args = []
             if factory:
-                args.append(cls_name)
+                real_name = None
+                if self._service_config:
+                    real_name = self._service_config.get('name')
+                if not real_name:
+                    real_name = cls_name
+                args.append(real_name)
             #if hasattr(self, '_obj'):
             #    args.append(self._obj)
 
