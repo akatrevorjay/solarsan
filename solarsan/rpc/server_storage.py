@@ -2,12 +2,11 @@
 from solarsan.core import logger
 from solarsan import conf
 #from solarsan.utils.exceptions import LoggedException
-from storage.pool import Pool
-from storage.volume import Volume
-from storage.drbd import DrbdResource, DrbdPeer, drbd_find_free_minor, DrbdLocalResource
-from storage.parsers.drbd import drbd_overview_parser
-from configure.models import Nic, get_all_local_ipv4_addrs
-from cluster.models import Peer
+from solarsan.storage.pool import Pool
+from solarsan.storage.volume import Volume
+from solarsan.storage.drbd import DrbdResource, DrbdPeer, DrbdLocalResource
+from solarsan.configure.models import Nic, get_all_local_ipv4_addrs
+from solarsan.cluster.models import Peer
 #from ha.models import FloatingIP
 from netifaces import interfaces
 import rpyc
@@ -59,13 +58,6 @@ class StorageService(rpyc.Service):
 
     def drbd_res_service(self, name):
         return DrbdLocalResource(name)
-
-    def drbd_status(resource=None):
-        """Get status of specified or all DRBD replicated resources"""
-        return drbd_overview_parser(resource=resource)
-
-    def drbd_find_free_minor(self):
-        return drbd_find_free_minor()
 
     """
     Peer Probe

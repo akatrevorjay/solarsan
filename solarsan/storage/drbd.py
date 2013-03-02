@@ -4,7 +4,7 @@ from solarsan import conf
 from solarsan.template import quick_template
 from solarsan.exceptions import DrbdResourceError
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
-from cluster.models import Peer
+from solarsan.cluster.models import Peer
 from .volume import Volume
 from .parsers.drbd import drbd_overview_parser
 from random import getrandbits
@@ -40,10 +40,8 @@ class DrbdPeer(m.EmbeddedDocument):
 
     def save(self, *args, **kwargs):
         if not self.minor:
-            #try:
-            self.minor = self.peer.rpc('drbd_find_open_minor')
-            #except (zerorpc.TimeoutExpired, zerorpc.LostRemote):
-            #    pass
+            #self.minor = self.peer.rpc('drbd_find_free_minor')
+            self.minor = drbd_find_free_minor()
         ret = super(DrbdPeer, self).save(*args, **kwargs)
         return ret
 
@@ -140,7 +138,8 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     def peers(self):
         return [self.local, self.remote]
 
-    def __propogate_res_to_remote(self):
+    def propogate_res_to_remote(self):
+        """Heavy WIP, used to work, not sure if it does anymore"""
         logger.info('Propogating local Drbd Resource "%s" to Peer "%s".', self.name, self.remote.hostname)
         storage = self.remote.peer.get_service('storage')
         remote_res_obj = storage.root.drbd_res()
