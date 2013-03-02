@@ -7,7 +7,10 @@ from solarsan.storage.utils import clean_name
 from solarsan.storage.pool import Pool
 from solarsan.storage.volume import Volume
 from solarsan.storage.snapshot import Snapshot
+from solarsan.storage.drbd import DrbdResource
+from solarsan.target.models import iSCSITarget
 from solarsan.exceptions import ZfsError
+from solarsan.ha.models import FloatingIP
 import os
 import rpyc
 import sh
@@ -101,6 +104,9 @@ class CliRoot(AutomagicNode):
 
     def ui_child_cluster(self):
         return ClusterNode()
+
+    def ui_child_targets(self):
+        return TargetsNode()
 
     """
     Old Ye Stuffe
@@ -216,11 +222,16 @@ Cluster
 
 
 class ClusterNode(AutomagicNode):
-    def ui_command_info(self):
-        return 'omg'
-
     def ui_child_peers(self):
         return PeersNode()
+
+    def ui_child_floating_ips(self):
+        return FloatingIpsNode()
+
+    def ui_child_resources(self):
+        return ResourcesNode()
+
+    # TODO Attribute for config settings such as cluster_iface
 
 
 class PeersNode(AutomagicNode):
@@ -235,6 +246,12 @@ class PeerNode(AutomagicNode):
     def __init__(self, hostname):
         self.obj = Peer.objects.get(hostname=hostname)
 
+    def summary(self):
+        if self.obj.is_online:
+            return ('online', True)
+        else:
+            return ('offline', False)
+
     @property
     def service(self):
         return self.obj.get_service('storage')
@@ -244,6 +261,77 @@ class PeerNode(AutomagicNode):
 
     def ui_command_is_local(self):
         return self.obj.is_local
+
+
+class FloatingIpsNode(AutomagicNode):
+    def ui_children_factory_floating_ip_list(self):
+        return [ip.name for ip in FloatingIP.objects.all()]
+
+    def ui_children_factory_floating_ip(self, name):
+        return FloatingIpNode(name)
+
+    def ui_command_create_floating_ip(self, name):
+        # TODO Create Floating IP wizard
+        raise NotImplemented
+
+
+class FloatingIpNode(AutomagicNode):
+    def __init__(self, name):
+        self.obj = FloatingIP.objects.get(name=name)
+        super(FloatingIpNode, self).__init__()
+
+    def summary(self):
+        if self.obj.is_active:
+            return ('active', True)
+        else:
+            return ('inactive', True)
+
+
+class ResourcesNode(AutomagicNode):
+    def ui_children_factory_resource_list(self):
+        return [res.name for res in DrbdResource.objects.all()]
+
+    def ui_children_factory_resource(self, name):
+        return ResourceNode(name)
+
+
+class ResourceNode(AutomagicNode):
+    def __init__(self, name):
+        self.obj = DrbdResource.objects.get(name=name)
+        super(ResourceNode, self).__init__()
+
+    def summary(self):
+        return ('%s %s %s' % (self.obj.connection_state,
+                              self.obj.role,
+                              self.obj.disk_state,
+                              ), True)
+
+
+"""
+Target
+"""
+
+
+class TargetsNode(AutomagicNode):
+    def ui_children_factory_iscsi_target_list(self):
+        return [tgt.name for tgt in iSCSITarget.objects.all()]
+
+    def ui_children_factory_iscsi_target(self, name):
+        return TargetNode(name)
+
+
+class TargetNode(AutomagicNode):
+    def __init__(self, name):
+        self.obj = iSCSITarget.objects.get(name=name)
+        super(TargetNode, self).__init__()
+
+    def summary(self):
+        if self.obj.is_target_added:
+            return ('added', True)
+        elif self.obj.is_target_enabled:
+            return ('active', True)
+        else:
+            return ('inactive', True)
 
 
 """
