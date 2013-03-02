@@ -1,6 +1,7 @@
 
 from solarsan.core import logger
 from solarsan import conf
+from solarsan.cluster.models import Peer
 from solarsan.storage.filesystem import Filesystem
 from solarsan.storage.utils import clean_name
 from solarsan.storage.pool import Pool
@@ -19,7 +20,35 @@ import time
 #import libibtool.inquiry
 
 
-class CLIService(rpyc.Service):
+class AutomagicNode(object):
+    def get_ui_commands(self):
+        ret = {}
+        for attr in dir(self):
+            if not attr.startswith('ui_command_'):
+                continue
+            ret[attr] = {}
+        return ret
+
+    def get_ui_children(self):
+        ret = {}
+        for attr in dir(self):
+            if attr.startswith('ui_children_factory_'):
+                if not attr.endswith('_list'):
+                    continue
+
+                factory = attr.rpartition('_list')[0]
+
+                func = getattr(self, attr)
+                for name in func():
+                    ret[name] = dict(factory=factory)
+
+            elif attr.startswith('ui_child_'):
+                name = attr.partition('ui_child_')[2]
+                ret[name] = {}
+        return ret
+
+
+class CLIService(rpyc.Service, AutomagicNode):
     def on_connect(self):
         logger.debug('Client connected.')
 
@@ -44,11 +73,8 @@ class CLIService(rpyc.Service):
     Nodes
     """
 
-    def get_nodes(self):
-        pass
-
     def system(self):
-        return System()
+        return SystemNode()
 
     def developer(self):
         return Developer()
@@ -56,33 +82,57 @@ class CLIService(rpyc.Service):
     def benchmarks(self):
         return Benchmarks()
 
-    def storage(self):
+    def ui_child_storage(self):
         return Storage()
 
     def pools(self):
-        return Pools()
-
-    def volumes(self):
-        return Volumes()
+        return PoolsNode()
 
     def pool(self, pool):
         return PoolNode(pool)
 
-    #def volume(self, volume):
-    #    return VolumeNode(volume)
+    def volume(self, volume):
+        return VolumeNode(volume)
+
+    def ui_child_cluster(self):
+        return ClusterNode()
 
 
-class Pools(object):
-    def list(self):
+class ClusterNode(AutomagicNode):
+    def ui_command_info(self):
+        return 'omg'
+
+    def ui_child_peers(self):
+        return PeersNode()
+
+
+class PeersNode(AutomagicNode):
+    def ui_children_factory_peer_list(self):
+        return [p.hostname for p in Peer.objects.all()]
+
+    def ui_children_factory_peer(self, name):
+        return PeerNode(name)
+
+
+class PeerNode(AutomagicNode):
+    def __init__(self, hostname):
+        self.obj = Peer.objects.get(hostname=hostname)
+
+
+class PoolsNode(AutomagicNode):
+    def ui_children_factory_pool_list(self):
         return [p.name for p in Pool.list()]
 
-
-class Volumes(object):
-    def list(self):
-        return [v.name for v in Volume.list()]
+    def ui_children_factory_pool(self, name):
+        return PoolNode(name)
 
 
-class System(object):
+class VolumeNode(object):
+    def __init__(self, volume):
+        self.obj = Volume(name=volume)
+
+
+class SystemNode(object):
     def __init__(self):
         pass
 
@@ -376,37 +426,6 @@ class StorageNode(object):
     Child Creationism (Teach it to 'em young)
     """
 
-    #def create_filesystem(self, name):
-    #    '''
-    #    create - Creates a Filesystem
-    #    '''
-    #    parent = self._get_filesystem()
-    #    pool = self._get_pool()
-    #    cls = m.Filesystem
-    #    name = clean_name(name)
-    #
-    #    obj_name = os.path.join(parent.name, name)
-    #    obj = cls(name=obj_name)
-    #    if obj.exists():
-    #        raise ZfsError("Object '%s' already exists", name)
-    #    obj.create()
-
-    def create_volume(self, name, size):
-        '''
-        create - Creates a volume
-        '''
-        parent = self._get_filesystem()
-        #pool = self._get_pool()
-        cls = Volume
-        name = clean_name(name)
-
-        obj_name = os.path.join(parent.name, name)
-        obj = cls(name=obj_name)
-        if obj.exists():
-            raise ZfsError("Object '%s' already exists", name)
-        obj.create(size)
-        return True
-
     def create_snapshot(self, name):
         '''
         create - Creates a snapshot
@@ -551,6 +570,45 @@ class PoolNode(StorageNode):
                'total': total,
                }
         return ret
+
+    """
+    Children
+    """
+
+    #def create_filesystem(self, name):
+    #    '''
+    #    create - Creates a Filesystem
+    #    '''
+    #    parent = self._get_filesystem()
+    #    pool = self._get_pool()
+    #    cls = m.Filesystem
+    #    name = clean_name(name)
+    #
+    #    obj_name = os.path.join(parent.name, name)
+    #    obj = cls(name=obj_name)
+    #    if obj.exists():
+    #        raise ZfsError("Object '%s' already exists", name)
+    #    obj.create()
+
+    def create_volume(self, name, size):
+        '''
+        create - Creates a volume
+        '''
+        parent = self._get_filesystem()
+        #pool = self._get_pool()
+        cls = Volume
+        name = clean_name(name)
+
+        obj_name = os.path.join(parent.name, name)
+        obj = cls(name=obj_name)
+        if obj.exists():
+            raise ZfsError("Object '%s' already exists", name)
+        obj.create(size)
+        return True
+
+
+    def volumes(self):
+        return self.obj.volumes(ret_obj=False, ret=dict)
 
     """
     Devices

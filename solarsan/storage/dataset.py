@@ -176,7 +176,7 @@ class Dataset(Base):
         return name
 
     @classmethod
-    def list(cls, args=None, skip=None, props=None, ret=None, ret_obj=True, type=None):
+    def list(cls, args=None, skip=None, props=None, ret=None, ret_obj=True, type=None, pool=None):
         """Lists storage datasets.
         """
         if isinstance(args, basestring):
@@ -212,6 +212,9 @@ class Dataset(Base):
             name = cols['name']
 
             if skip and skip == name:
+                continue
+
+            if pool and name.split('/')[0] != pool:
                 continue
 
             if ret_obj:

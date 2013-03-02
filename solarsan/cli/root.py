@@ -17,7 +17,7 @@ class CliRoot(ConfigNode):
         #print self.get_group_param('global', 'developer_mode')
 
         for section in sections:
-            section(self)
+            section(None, self)
 
         System(self)
 
@@ -135,9 +135,10 @@ class CliRoot(ConfigNode):
 def main():
     from configshell.shell import ConfigShell
     from .storage import Storage
+    from .cluster import Cluster
 
     #CLI_TOP_SECTIONS = [Storage, Logs, Configure, Cluster]
-    CLI_TOP_SECTIONS = [Storage]
+    CLI_TOP_SECTIONS = [Storage, Cluster]
 
     shell = ConfigShell('~/.solarsancli')
     root_node = CliRoot(shell, CLI_TOP_SECTIONS)

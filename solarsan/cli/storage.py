@@ -58,12 +58,6 @@ class StorageNode(BaseServiceConfigNode):
     #    '''
     #    self()
 
-    def ui_command_create_volume(self, name, size):
-        '''
-        create - Creates a volume
-        '''
-        self(name, size)
-
     def ui_command_create_snapshot(self, name):
         '''
         create - Creates a snapshot
@@ -167,6 +161,9 @@ class Dataset(StorageNode):
     #    return (self.obj.type, True)
 
 
+class Volume(Dataset):
+    pass
+
 
 class Pool(StorageNode):
     help_intro = '''
@@ -181,11 +178,27 @@ class Pool(StorageNode):
     def __init__(self, parent, pool):
         super(Pool, self).__init__(parent, pool)
 
+        for name, volume in self.service.volumes().iteritems():
+            Volume(self, name)
+
+    #def summary(self):
+    #    self()
+
     #def summary(self):
     #    return (self.obj.health, self.obj.is_healthy())
 
     def ui_command_usage(self):
         self()
+
+    """
+    Children
+    """
+
+    def ui_command_create_volume(self, name, size):
+        '''
+        create - Creates a volume
+        '''
+        self(name, size)
 
     """
     Devices
@@ -234,8 +247,8 @@ class Pool(StorageNode):
     Import/Export
     """
 
-    def ui_command_import_(self):
-        self()
+    def ui_command_import(self):
+        self(_meth='import_')
 
     def ui_command_export(self):
         self()
@@ -249,12 +262,18 @@ class Pool(StorageNode):
     #    self()
 
 
-class Pools(BaseServiceConfigNode):
-    def __init__(self, parent):
-        super(Pools, self).__init__(None, parent)
+class StorageNodeParent(BaseServiceConfigNode):
+    _child_cls = None
 
-        for pool in self.service.list():
-            Pool(self, pool)
+    def __init__(self, parent):
+        super(StorageNodeParent, self).__init__(None, parent)
+
+        for child in self.service.list():
+            self._child_cls(self, child)
+
+
+class Pools(StorageNodeParent):
+    _child_cls = Pool
 
     #def ui_command_create_pool(self, name):
     #    '''
@@ -287,6 +306,7 @@ class Pools(BaseServiceConfigNode):
 #        create - Creates a storage Volume
 #        '''
 #        self()
+
 
 
 class Storage(BaseServiceConfigNode):

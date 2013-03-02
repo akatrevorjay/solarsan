@@ -435,6 +435,19 @@ class Pool(Base):
         return cls(**kwargs)
 
     """
+    Children
+    """
+
+    def volumes(self, **kwargs):
+        # TODO Fix this, nasty
+        from solarsan.storage.volume import Volume
+        kwargs['pool'] = self.name
+        return Volume.list(**kwargs)
+
+    def children(self):
+        return self.get_volumes()
+
+    """
     Device
     """
 
