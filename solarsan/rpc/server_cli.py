@@ -547,6 +547,10 @@ class PoolsNode(AutomagicNode):
     def ui_children_factory_pool(self, name):
         return PoolNode(name)
 
+    def ui_command_create_pool(self, name):
+        # TODO Create Pool Wizard
+        raise NotImplemented
+
 
 class DatasetNode(StorageNode):
     def __init__(self, dataset):
@@ -567,6 +571,12 @@ class VolumeNode(DatasetNode):
         self.obj = Volume(name=volume)
         super(VolumeNode, self).__init__(volume)
 
+    def summary(self):
+        return ('%s %s/%s' % (self.obj.type,
+                              str(self.obj.properties['used']),
+                              str(self.obj.properties['volsize']),
+                              ), True)
+
 
 class PoolNode(StorageNode):
     def __init__(self, pool):
@@ -574,7 +584,10 @@ class PoolNode(StorageNode):
         super(PoolNode, self).__init__()
 
     def summary(self):
-        return (self.obj.type, self.obj.is_healthy())
+        return ('%s %s/%s' % (self.obj.type,
+                              str(self.obj.properties['alloc']),
+                              str(self.obj.properties['size']),
+                              ), self.obj.is_healthy())
 
     def ui_command_usage(self):
         obj = self.obj
