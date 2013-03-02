@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
 from circuits import Component, Event, Timer, handler
-from storage.drbd import DrbdResource, DrbdLocalResource
+from storage.drbd import DrbdResource
 import random
 
 
@@ -98,8 +98,11 @@ class ResourceMonitor(Component):
     def __init__(self, res):
         super(ResourceMonitor, self).__init__()
         self.res = res
-        self.service = DrbdLocalResource(self.res.name)
         self.status()
+
+    @property
+    def service(self):
+        return self.res.local.service
 
     @handler('peer_failover', channel='*')
     def _on_peer_failover(self, peer):

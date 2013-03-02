@@ -86,16 +86,12 @@ class DrbdPeer(m.EmbeddedDocument):
     @property
     def service(self):
         if not self._service:
-            self.get_new_service()
+            if self.is_local:
+                self._service = DrbdLocalResource(self.volume)
+            else:
+                storage = self.peer.get_service('storage')
+                self._service = storage.root.drbd_res_service(self.volume)
         return self._service
-
-    def get_new_service(self):
-        storage = self.peer.get_service('storage')
-        self._service = storage.root.drbd_res_service(self.volume)
-
-    def __call__(self, method, *args, **kwargs):
-        meth = getattr(self.service.root, method)
-        return meth(*args, **kwargs)
 
 
 #class DrbdResourceTargetMapping(m.EmbeddedDocument):
