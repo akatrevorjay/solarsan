@@ -774,7 +774,7 @@ class SystemNode(AutomagicNode):
 
 
 def main():
-    from cluster.models import Peer
+    from solarsan.cluster.models import Peer
     from rpyc.utils.server import ThreadedServer
     from setproctitle import setproctitle
     title = 'SolarSan CLI'

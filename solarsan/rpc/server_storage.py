@@ -7,7 +7,7 @@ from solarsan.storage.volume import Volume
 from solarsan.storage.drbd import DrbdResource, DrbdPeer, DrbdLocalResource
 from solarsan.configure.models import Nic, get_all_local_ipv4_addrs
 from solarsan.cluster.models import Peer
-#from ha.models import FloatingIP
+#from solarsan.ha.models import FloatingIP
 from netifaces import interfaces
 import rpyc
 
