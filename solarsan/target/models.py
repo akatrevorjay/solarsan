@@ -1,11 +1,11 @@
 
-from solarsan.core import logger
+#from solarsan.core import logger
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from .utils import generate_wwn, is_valid_wwn
 from . import scstadmin
 #from storage.drbd import DrbdResource
-from ha.models import ActivePassiveIP
+from ha.models import FloatingIP
 
 
 class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
@@ -52,7 +52,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     devices = m.ListField(m.GenericReferenceField())
     #initiators = m.ListField()
 
-    floating_ip = m.ReferenceField(ActivePassiveIP, dbref=False)
+    floating_ip = m.ReferenceField(FloatingIP, dbref=False)
 
     @property
     def is_target_added(self):

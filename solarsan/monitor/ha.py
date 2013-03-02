@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
-from circuits import Component, Event, handler
-from solarsan.ha.models import ActivePassiveIP
+from circuits import Component, Event
+from solarsan.ha.models import FloatingIP
 
 
 """
@@ -15,7 +15,7 @@ class FloatingIPManager(Component):
         self.ips = {}
         self.monitors = {}
 
-        for ip in ActivePassiveIP.objects.all():
+        for ip in FloatingIP.objects.all():
             self.ips[ip.name] = ip
             self.monitors[ip.name] = FloatingIPMonitor(ip).register(self)
 
@@ -25,11 +25,11 @@ Failover IP Monitor
 """
 
 
-class ActiveIP(Event):
+class FloatingIPStart(Event):
     """Start FloatingIP"""
 
 
-class PassiveIP(Event):
+class FloatingIPStop(Event):
     """Stop FloatingIP"""
 
 
@@ -62,24 +62,21 @@ class FloatingIPMonitor(Component):
     #        return
     #    logger.error('Failing over floating IP "%s" for offline Peer "%s".',
     #                 self.ip.iface_name, self.ip.peer.hostname)
-    #    self.fire(ActiveIP(self.ip))
+    #    self.fire(FloatingIPStart(self.ip))
 
-    @handler('target_started', channel='*')
-    def _on_target_started(self, target):
+    def target_started(self, target):
         """When a Target assoc with this floating IP has been started, start her up"""
         if target.floating_ip.pk != self.ip.pk:
             return
-        self.fire(ActiveIP(self.ip))
+        self.fire(FloatingIPStart(self.ip))
 
-    @handler('target_stopping', channel='*')
-    def _on_target_stopping(self, target):
+    def target_stopping(self, target):
         """When a Target assoc with this floating IP has been stopped, start her up"""
         if target.floating_ip.pk != self.ip.pk:
             return
-        self.fire(PassiveIP(self.ip))
+        self.fire(FloatingIPStop(self.ip))
 
-    @handler('active_ip', channel='*')
-    def _on_active_ip(self, ip):
+    def floating_ip_start(self, ip):
         if ip.pk != self.ip.pk:
             return
         if self.ip.is_active:
@@ -87,8 +84,7 @@ class FloatingIPMonitor(Component):
         logger.info('Floating IP "%s" is being brought up.', self.ip.iface_name)
         self.ip.ifup()
 
-    @handler('passive_ip', channel='*')
-    def _on_passive_ip(self, ip):
+    def floating_ip_stop(self, ip):
         if ip.pk != self.ip.pk:
             return
         if not self.ip.is_active:

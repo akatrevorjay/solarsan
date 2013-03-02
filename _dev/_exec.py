@@ -37,7 +37,7 @@ import target.scst
 from target import scstadmin, scst
 import target.utils
 
-from ha.models import ActivePassiveIP
+from ha.models import FloatingIP
 
 import rpyc
 

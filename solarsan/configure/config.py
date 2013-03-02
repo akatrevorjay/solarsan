@@ -4,7 +4,7 @@
 #from solarsan import conf
 from solarsan.template import quick_template
 from .models import NicConfig, get_network_config
-from ha.models import ActivePassiveIP
+from ha.models import FloatingIP
 import os
 import shutil
 
@@ -14,7 +14,7 @@ def write_network_interfaces_config(confirm=False):
     context = dict(
         ifaces=NicConfig.objects.filter(is_enabled=True),
         netconf=get_network_config(),
-        floating_ips=ActivePassiveIP.objects.all(),
+        floating_ips=FloatingIP.objects.all(),
     )
     if confirm:
         fn = '/etc/network/interfaces'

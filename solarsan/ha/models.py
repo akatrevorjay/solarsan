@@ -9,7 +9,7 @@ from solarsan.utils.pings import ping_once
 from .arp import send_arp
 
 
-class ActivePassiveIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
+class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     name = m.StringField(unique=True)
     ip = m.StringField()
     netmask = m.StringField()
@@ -21,7 +21,7 @@ class ActivePassiveIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         return '%s:%s' % (self.iface, self.name)
 
     #def __init__(self, *args, **kwargs):
-    #    super(ActivePassiveIP, self).__init__(*args, **kwargs)
+    #    super(FloatingIP, self).__init__(*args, **kwargs)
     #    self.is_active = self.check_status()
 
     @property

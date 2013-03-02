@@ -1,5 +1,5 @@
 
-#from solarsan.core import logger
+from solarsan.core import logger
 from circuits import Component
 from solarsan.monitor.udev import UDev
 
@@ -16,7 +16,7 @@ class DeviceManager(Component):
         UDev().register(self)
 
     def device_add(self, device):
-        pass
+        logger.info('Device added: %s', device)
 
     def device_remove(self, device):
-        pass
+        logger.info('Device removed: %s', device)
