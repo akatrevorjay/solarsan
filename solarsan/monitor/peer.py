@@ -1,7 +1,7 @@
 
 from solarsan.core import logger
 from solarsan.exceptions import TimeoutError
-from circuits import Component, Event, Timer, handler
+from circuits import Component, Event, Timer
 from solarsan.cluster.models import Peer
 import signal
 
@@ -35,11 +35,11 @@ class PeerManager(Component):
 
         for peer in Peer.objects.all():
             self.add_peer(peer)
+
         Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
         Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
 
-    @handler('peer_discovered', channel='*')
-    def _on_peer_discovered(self, peer, created=None):
+    def peer_discovered(self, peer, created=None):
         self.add_peer(peer)
 
     def add_peer(self, peer):
@@ -88,8 +88,7 @@ class PeerMonitor(Component):
                            'still true.', self.peer.hostname)
             self.mark_online(startup=True)
 
-    @handler('peer_heartbeat', channel='*')
-    def _on_peer_heartbeat(self):
+    def peer_heartbeat(self):
         # This is done so the first try is always attempted, even if the Peer
         # is offline.
         if not self._heartbeat_timeout_count:
@@ -117,15 +116,13 @@ class PeerMonitor(Component):
             logger.error('Did not receive heartbeat for Peer "%s"', self.peer.hostname)
             return False
 
-    @handler('peer_online', channel='*')
-    def _on_peer_online(self, peer):
+    def peer_online(self, peer):
         if peer.uuid != self.peer.uuid:
             return
         if self.peer.is_offline:
             self.mark_online()
 
-    @handler('peer_offline', channel='*')
-    def _on_peer_offline(self, peer):
+    def peer_offline(self, peer):
         if peer.uuid != self.peer.uuid:
             return
         if not self.peer.is_offline:
@@ -149,55 +146,50 @@ class PeerMonitor(Component):
         self.fire(PeerFailover(self.peer))
 
     # nagnagnagnagnagnag
-    @handler('peer_still_offline', channel='*')
-    def _on_peer_still_offline(self, peer):
+    def peer_still_offline(self, peer):
         if peer.uuid != self.peer.uuid:
             return
         logger.warning("Peer '%s' is STILL offline!", peer.hostname)
 
-    @handler('peer_discovered', channel='*')
-    def _on_peer_discovered(self, peer, created=False):
+    def peer_discovered(self, peer, created=False):
         if peer.uuid != self.peer.uuid:
             return
         if self.peer.is_offline:
             self.fire(PeerOnline(self.peer))
 
-    @handler('peer_pool_health_check', channel='*')
-    def _on_peer_pool_health_check(self):
+    def peer_pool_health_check(self):
         if self.peer.is_offline:
             return
 
-        def timeout(signum, frame):
-            raise TimeoutError('Pool check on Peer "%s" timed out.' % self.peer.hostname)
+        #def timeout(signum, frame):
+        #    raise TimeoutError('Pool check on Peer "%s" timed out.' % self.peer.hostname)
 
-        # Set the signal handler and a 5-second alarm
-        signal.signal(signal.SIGALRM, timeout)
-        signal.alarm(5)
+        ## Set the signal handler and a 5-second alarm
+        #signal.signal(signal.SIGALRM, timeout)
+        #signal.alarm(5)
 
+        #try:
         try:
-            try:
-                storage = self.peer.get_service('storage', default=None)
-                Pool = storage.root.pool()
-            except AttributeError:
-                logger.error('Could not connect to Peer "%s"; is it offline and we don\'t know it yet?',
-                             self.peer.hostname)
-                return
-            pools = Pool.list()
-            #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
-            ret = True
-            for pool in pools:
-                if not pool.is_healthy():
-                    self.fire(PeerPoolNotHealthy(self.peer, pool.name))
-                    ret = False
-        except TimeoutError, e:
-            logger.error('Could not check pools on Peer "%s": %s',
-                         self.peer.hostname, e.message)
+            storage = self.peer.get_service('storage', default=None)
+            ret = dict(storage.root.pools_health_check())
+        except AttributeError:
+            logger.error('Could not connect to Peer "%s"; is it offline and we don\'t know it yet?',
+                         self.peer.hostname)
+            return
+        #logger.debug('Checking health of Pools "%s" on Peer "%s"', pools, self.peer.hostname)
+        ret = True
+        for pool, is_healthy in ret.iteritems():
+            if not is_healthy:
+                self.fire(PeerPoolNotHealthy(self.peer, pool))
+                ret = False
+        #except TimeoutError, e:
+        #    logger.error('Could not check pools on Peer "%s": %s',
+        #                 self.peer.hostname, e.message)
 
-        signal.alarm(0)          # Disable the alarm
+        #signal.alarm(0)          # Disable the alarm
         return ret
 
-    @handler('peer_pool_not_healthy', channel='*')
-    def _on_peer_pool_not_healthy(self, peer, pool):
+    def peer_pool_not_healthy(self, peer, pool):
         if peer.uuid != self.peer.uuid:
             return
         logger.error('Pool "%s" on Peer "%s" is NOT healthy!', pool, self.peer.hostname)

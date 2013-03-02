@@ -155,7 +155,7 @@ class ResourceMonitor(Component):
     """
 
     def status(self):
-        ret = self.service.status()
+        ret = dict(self.service.status())
         if not ret:
             return ret
 

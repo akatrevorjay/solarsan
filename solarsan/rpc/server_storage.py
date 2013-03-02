@@ -105,6 +105,20 @@ class StorageService(rpyc.Service):
         #ip = FloatingIP.objects.get(name=name)
         #return ip.is_active
 
+    """
+    Monitor
+    """
+
+    def pools_health_check(self):
+        ret = {}
+        pools = Pool.list(ret_obj=False, ret=dict)
+        for name, pool in pools.iteritems():
+            ret[name] = self.pool_health_check(name)
+        return ret
+
+    def pool_health_check(self, name):
+        return Pool(name).is_healthy()
+
 
 def main():
     from rpyc.utils.server import ThreadedServer

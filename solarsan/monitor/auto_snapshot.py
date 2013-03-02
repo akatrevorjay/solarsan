@@ -28,7 +28,7 @@ class AutoSnapshotManager(Component):
             conf = self._conf[name] = conf
             conf['timer'] = Timer(float(conf['interval']),
                                   AutoSnapshot(name, name),
-                                  _persist=True)
+                                  persist=True).register(self)
 
     def auto_snapshot(self, prefix):
         logger.error('TODO Auto snapshot')

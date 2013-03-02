@@ -26,10 +26,14 @@ m = Mirror()
 m.append(d)
 m.append(e)
 c = Cache(d)
-try:
-    m.append(c)
-except:
-    print "Good, '%s' cannot be added to '%s'" % (c, m)
+#try:
+#    m.append(c)
+#except:
+#    print "Good, '%s' cannot be added to '%s'" % (c, m)
+
+pl = Peer.get_local()
+stor = pl.storage
+
 
 from solarsan.target.models import Target, iSCSITarget, SRPTarget
 #Device, VolumeDevice, ResourceDevice

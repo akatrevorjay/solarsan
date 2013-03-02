@@ -169,14 +169,13 @@ class Pool(Base):
     """
     type = 'pool'
 
-    def __init__(self, *args, **kwargs):
-        super(Pool, self).__init__(*args, **kwargs)
-        name = kwargs.get('name')
+    def __init__(self, name, **kwargs):
+        super(Pool, self).__init__(name, **kwargs)
         if name and getattr(self, 'name', None) is not name:
             self.name = name
-        self._init(*args, **kwargs)
+        self._init(name, **kwargs)
 
-    def _init(self, *args, **kwargs):
+    def _init(self, name, **kwargs):
         self.properties = PoolProperties(self)
         #self.analytics = PoolAnalytics(self)
 
