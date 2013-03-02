@@ -1,28 +1,22 @@
 
 from solarsan.core import logger
-from solarsan import conf
-from configshell import ConfigNode
+#from solarsan import conf
+#from configshell import ConfigNode
 
-from .system import System
-from .developer import Developer
+from .base import ServiceConfigNode
 
 
-class CliRoot(ConfigNode):
-    def __init__(self, shell, sections):
-        super(CliRoot, self).__init__('/', shell=shell)
+class CliRoot(ServiceConfigNode):
+    def __init__(self, shell):
+        super(CliRoot, self).__init__('/', None, shell=shell)
 
         self.define_config_group_param(
             'global', 'developer_mode', 'bool',
             'If true, enables developer mode.')
         #print self.get_group_param('global', 'developer_mode')
 
-        for section in sections:
-            section(None, self)
-
-        System(self)
-
-        if conf.config.get('debug'):
-            Developer(self)
+        #if conf.config.get('debug'):
+        #    Developer(self)
 
     def summary(self):
         #return ('Thar be dragons.', False)
@@ -134,14 +128,10 @@ class CliRoot(ConfigNode):
 
 def main():
     from configshell.shell import ConfigShell
-    from .storage import Storage
-    from .cluster import Cluster
-
-    #CLI_TOP_SECTIONS = [Storage, Logs, Configure, Cluster]
-    CLI_TOP_SECTIONS = [Storage, Cluster]
 
     shell = ConfigShell('~/.solarsancli')
-    root_node = CliRoot(shell, CLI_TOP_SECTIONS)
+    #root_node = CliRoot(shell)
+    CliRoot(shell)
     shell.run_interactive()
 
 if __name__ == "__main__":
