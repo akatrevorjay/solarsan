@@ -58,8 +58,8 @@ class CLIService(rpyc.Service, AutomagicNode):
     def on_disconnect(self):
         logger.debug('Client disconnected.')
 
-    def ping(self):
-        return True
+    #def ping(self):
+    #    return True
 
     # Override the stupid prepending of expose_prefix to attrs, why is the
     # config not honored??

@@ -2,7 +2,6 @@
 from solarsan.core import logger
 #from solarsan import conf
 #from configshell import ConfigNode
-
 from .base import ServiceConfigNode
 
 
@@ -18,20 +17,9 @@ class CliRoot(ServiceConfigNode):
         #if conf.config.get('debug'):
         #    Developer(self)
 
-    def summary(self):
-        #return ('Thar be dragons.', False)
-        return ('Ready.', True)
-
     def new_node(self, new_node):
         logger.info("New node: %s", new_node)
         return None
-
-    def refresh(self):
-        for child in self.children:
-            child.refresh()
-
-    def ui_command_refresh(self):
-        self.refresh()
 
     #def ui_getgroup_global(self, key):
     #    '''

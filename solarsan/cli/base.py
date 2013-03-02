@@ -21,10 +21,6 @@ class ServiceConfigNode(ConfigNode):
         self.generate_ui_children()
         self.generate_summary()
 
-    """
-    Generation
-    """
-
     def refresh(self):
         for k, v in self._generated_ui_commands.iteritems():
             delattr(self, k)
@@ -37,6 +33,17 @@ class ServiceConfigNode(ConfigNode):
         self.generate_ui_children()
 
         self.generate_summary()
+
+        for child in self.children:
+            child.refresh()
+
+    def ui_command_refresh(self):
+        self.refresh()
+
+    """
+    Generation
+    """
+    # TODO Generate attributes and parameters!
 
     def generate_ui_commands(self):
         self._generated_ui_commands = {}
