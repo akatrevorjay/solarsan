@@ -4,6 +4,8 @@ from solarsan.pretty import pp
 from configshell import ConfigNode
 import sys
 import types
+#import errno
+#import time
 
 
 def get_services_cli():
@@ -187,14 +189,22 @@ class ServiceConfigNode(ConfigNode):
         except Exception, e:
             ret = e.message
 
-        if isinstance(ret, basestring):
+        if isinstance(ret, types.GeneratorType):
+            for line in ret:
+                print line
+
+        elif isinstance(ret, basestring):
             ret = str(ret)
+
         elif isinstance(ret, (list, set, tuple)):
             ret = list(ret)
+
         elif isinstance(ret, dict):
             ret = dict(ret)
+
         elif isinstance(ret, bool):
             ret = bool(ret)
+
         elif isinstance(ret, int):
             ret = int(ret)
 
