@@ -24,6 +24,7 @@ def zpool_status_parse2(from_string=None):
                              # Some versions of zpool use tabs, some do not.
                              "(status: (?P<status>(.|\n {8}|\n\t)+)\n *)??"
                              "(action: (?P<action>(.|\n {8}|\n\t)+)\n *)??"
+                             "(see: (?P<see>(.|\n {8}|\n\t)+)\n *)??"
                              "scan: (?P<scan>(.|\n)*)\n *"
                              "config: ?(?P<config>(.|\n)*)\n *"
                              "errors: (?P<errors>[^\n]*)",
