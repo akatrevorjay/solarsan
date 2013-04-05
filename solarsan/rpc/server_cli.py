@@ -1,6 +1,14 @@
 
 from solarsan.core import logger
 from solarsan import conf
+from solarsan.cluster.models import Peer
+from solarsan.target.models import iSCSITarget
+from solarsan.ha.models import FloatingIP
+from solarsan.configure.models import Nic
+from solarsan.configure.config import write_network_interfaces_config
+
+from solarsan.core import logger
+from solarsan import conf
 from solarsan.exceptions import SolarSanError
 from solarsan.cluster.models import Peer
 from solarsan.storage.filesystem import Filesystem
