@@ -1,6 +1,7 @@
 
 from solarsan.core import logger
 from solarsan import conf
+from solarsan.exceptions import SolarSanError
 from solarsan.cluster.models import Peer
 from solarsan.storage.filesystem import Filesystem
 from solarsan.storage.utils import clean_name
@@ -13,6 +14,7 @@ from solarsan.exceptions import ZfsError
 from solarsan.ha.models import FloatingIP
 from solarsan.configure.models import Nic
 from solarsan.configure.config import write_network_interfaces_config
+from django.template.defaultfilters import capfirst
 import os
 import rpyc
 import sh
@@ -26,6 +28,9 @@ import errno
 
 
 class AutomagicNode(object):
+    def summary(self):
+        return (None, None)
+
     def get_ui_commands(self):
         ret = {}
         for attr in dir(self):
@@ -54,6 +59,29 @@ class AutomagicNode(object):
             elif attr.startswith('ui_child_'):
                 name = attr.partition('ui_child_')[2]
                 ret[name] = {}
+        return ret
+
+    _config_group_params = {}
+
+    def define_config_group_param(self, group_name, name, type, desc=None, writable=True):
+        if group_name not in self._config_group_params:
+            self._config_group_params[group_name] = {}
+        self._config_group_params[group_name][name] = dict(desc=desc, writable=writable, type=type)
+
+    def get_ui_config_groups(self):
+        ret = {}
+        for attr in dir(self):
+            if not (attr.startswith('ui_setgroup_') or attr.startswith('ui_getgroup_')):
+                continue
+            getset, name = attr.split('_', 2)[1:]
+            getset = getset[:3]
+            if name not in ret:
+                ret[name] = {}
+            ret[name][getset] = True
+
+            params = self._config_group_params.get(name)
+            if params:
+                ret[name]['params'] = params
         return ret
 
 
@@ -92,6 +120,24 @@ CLI Root
 
 
 class CliRoot(AutomagicNode):
+    def __init__(self, *args, **kwargs):
+        super(CliRoot, self).__init__(*args, **kwargs)
+
+        """ Params examples
+        self.define_config_group_param(
+            'global', 'developer_mode', 'bool',
+            'If true, enables developer mode.')
+
+        print self.get_group_param('global', 'developer_mode')
+
+        if conf.config.get('debug'):
+            Developer(self)
+        """
+
+        self.define_config_group_param(
+            'attribute', 'developer_mode', 'bool',
+            'If true, enables developer mode.')
+
     """
     Nodes
     """
@@ -99,20 +145,17 @@ class CliRoot(AutomagicNode):
     def ui_child_system(self):
         return SystemNode()
 
-    def ui_child_developer(self):
-        return Developer()
-
     def ui_child_storage(self):
         return Storage()
 
-    def ui_child_cluster(self):
-        return ClusterNode()
+    #def ui_child_cluster(self):
+    #    return ClusterNode()
 
-    def ui_child_targets(self):
-        return TargetsNode()
+    #def ui_child_targets(self):
+    #    return TargetsNode()
 
-    def ui_child_logs(self):
-        return Logs()
+    #def ui_child_logs(self):
+    #    return LogsNode()
 
     """
     Old Ye Stuffe
@@ -128,98 +171,6 @@ class CliRoot(AutomagicNode):
 
     #def refresh(self):
     #    self.refresh()
-
-    #def ui_getgroup_global(self, key):
-    #    '''
-    #    This is the backend method for getting keys.
-    #    @key key: The key to get the value of.
-    #    @type key: str
-    #    @return: The key's value
-    #    @rtype: arbitrary
-    #    '''
-    #    logger.info("attr=%s", key)
-    #    #return self.rtsnode.get_global(key)
-
-    #def ui_setgroup_global(self, key, value):
-    #    '''
-    #    This is the backend method for setting keys.
-    #    @key key: The key to set the value of.
-    #    @type key: str
-    #    @key value: The key's value
-    #    @type value: arbitrary
-    #    '''
-    #    logger.info("attr=%s val=%s", key, value)
-    #    #self.assert_root()
-    #    #self.rtsnode.set_global(key, value)
-
-    #def ui_getgroup_param(self, param):
-    #    '''
-    #    This is the backend method for getting params.
-    #    @param param: The param to get the value of.
-    #    @type param: str
-    #    @return: The param's value
-    #    @rtype: arbitrary
-    #    '''
-    #    logger.info("attr=%s", param)
-    #    #return self.rtsnode.get_param(param)
-
-    #def ui_setgroup_param(self, param, value):
-    #    '''
-    #    This is the backend method for setting params.
-    #    @param param: The param to set the value of.
-    #    @type param: str
-    #    @param value: The param's value
-    #    @type value: arbitrary
-    #    '''
-    #    logger.info("attr=%s val=%s", param, value)
-    #    #self.assert_root()
-    #    #self.rtsnode.set_param(param, value)
-
-    #def ui_getgroup_attribute(self, attribute):
-    #    '''
-    #    This is the backend method for getting attributes.
-    #    @param attribute: The attribute to get the value of.
-    #    @type attribute: str
-    #    @return: The attribute's value
-    #    @rtype: arbitrary
-    #    '''
-    #    logger.info("attr=%s", attribute)
-    #    #return self.rtsnode.get_attribute(attribute)
-
-    #def ui_setgroup_attribute(self, attribute, value):
-    #    '''
-    #    This is the backend method for setting attributes.
-    #    @param attribute: The attribute to set the value of.
-    #    @type attribute: str
-    #    @param value: The attribute's value
-    #    @type value: arbitrary
-    #    '''
-    #    logger.info("attr=%s val=%s", attribute, value)
-    #    #self.assert_root()
-    #    #self.rtsnode.set_attribute(attribute, value)
-
-    #def ui_getgroup_parameter(self, parameter):
-    #    '''
-    #    This is the backend method for getting parameters.
-    #    @param parameter: The parameter to get the value of.
-    #    @type parameter: str
-    #    @return: The parameter's value
-    #    @rtype: arbitrary
-    #    '''
-    #    logger.info("parameter=%s", parameter)
-    #    #return self.rtsnode.get_parameter(parameter)
-
-    #def ui_setgroup_parameter(self, parameter, value):
-    #    '''
-    #    This is the backend method for setting parameters.
-    #    @param parameter: The parameter to set the value of.
-    #    @type parameter: str
-    #    @param value: The parameter's value
-    #    @type value: arbitrary
-    #    '''
-    #    logger.info("parameter=%s val=%s", parameter, value)
-    #    #self.assert_root()
-    #    #self.rtsnode.set_parameter(parameter, value)
 
 
 """
@@ -254,9 +205,9 @@ class PeerNode(AutomagicNode):
 
     def summary(self):
         if self.obj.is_online:
-            return ('online', True)
+            return ('Online', True)
         else:
-            return ('offline', False)
+            return ('Offline', False)
 
     @property
     def service(self):
@@ -276,7 +227,7 @@ class FloatingIpsNode(AutomagicNode):
     def ui_children_factory_floating_ip(self, name):
         return FloatingIpNode(name)
 
-    def ui_command_create_floating_ip(self, name):
+    def ui_command_create(self, name=None):
         # TODO Create Floating IP wizard
         raise NotImplemented
 
@@ -288,9 +239,9 @@ class FloatingIpNode(AutomagicNode):
 
     def summary(self):
         if self.obj.is_active:
-            return ('active', True)
+            return ('Active', True)
         else:
-            return ('inactive', True)
+            return ('Inactive', False)
 
 
 class ResourcesNode(AutomagicNode):
@@ -299,6 +250,10 @@ class ResourcesNode(AutomagicNode):
 
     def ui_children_factory_resource(self, name):
         return ResourceNode(name)
+
+    def ui_command_create(self, name=None):
+        # TODO Create Floating IP wizard
+        raise NotImplemented
 
 
 class ResourceNode(AutomagicNode):
@@ -322,15 +277,18 @@ class TargetsNode(AutomagicNode):
     def ui_child_iscsi(self):
         return iSCSITargetsNode()
 
+    def ui_child_srp(self):
+        return SRPTargetsNode()
+
 
 class TargetNode(AutomagicNode):
     def summary(self):
         if self.obj.is_target_enabled:
-            return ('active', True)
+            return ('Active', True)
         elif self.obj.is_target_added:
-            return ('added', True)
+            return ('Added', True)
         else:
-            return ('inactive', True)
+            return ('Inactive', False)
 
 
 class iSCSITargetsNode(AutomagicNode):
@@ -340,11 +298,32 @@ class iSCSITargetsNode(AutomagicNode):
     def ui_children_factory_iscsi_target(self, name):
         return iSCSITargetNode(name)
 
+    def ui_command_create(self, wwn=None):
+        raise NotImplemented
+
 
 class iSCSITargetNode(TargetNode):
     def __init__(self, name):
         self.obj = iSCSITarget.objects.get(name=name)
         super(iSCSITargetNode, self).__init__()
+
+
+class SRPTargetsNode(AutomagicNode):
+    def ui_children_factory_srp_target_list(self):
+        #return [tgt.name for tgt in SRPTarget.objects.all()]
+        return []
+
+    def ui_children_factory_srp_target(self, name):
+        return SRPTargetNode(name)
+
+    def ui_command_create(self, wwn=None):
+        raise NotImplemented
+
+
+class SRPTargetNode(TargetNode):
+    def __init__(self, name):
+        #self.obj = SRPTarget.objects.get(name=name)
+        super(SRPTargetNode, self).__init__()
 
 
 """
@@ -664,7 +643,7 @@ class DatasetNode(StorageNode):
     def summary(self):
         # TODO Check disk usage percentage, generic self.obj.errors/warnings
         # interface perhaps?
-        return (self.obj.type, True)
+        return (capfirst(self.obj.type), True)
 
 
 class VolumeNode(DatasetNode):
@@ -673,7 +652,7 @@ class VolumeNode(DatasetNode):
         super(VolumeNode, self).__init__(volume)
 
     def summary(self):
-        return ('%s %s/%s' % (self.obj.type,
+        return ('%s %s/%s' % (capfirst(self.obj.type),
                               str(self.obj.properties['used']),
                               str(self.obj.properties['volsize']),
                               ), True)
@@ -685,7 +664,7 @@ class PoolNode(StorageNode):
         super(PoolNode, self).__init__()
 
     def summary(self):
-        return ('%s %s/%s' % (self.obj.type,
+        return ('%s %s/%s' % (capfirst(self.obj.type),
                               str(self.obj.properties['alloc']),
                               str(self.obj.properties['size']),
                               ), self.obj.is_healthy())
@@ -800,6 +779,12 @@ class Storage(AutomagicNode):
     def ui_child_pools(self):
         return PoolsNode()
 
+    def ui_child_resources(self):
+        return ResourcesNode()
+
+    def ui_child_targets(self):
+        return TargetsNode()
+
     def ui_command_create_pool(self, name):
         '''
         create - Creates a storage Pool
@@ -828,8 +813,49 @@ System
 
 
 class SystemNode(AutomagicNode):
+    def __init__(self, *args, **kwargs):
+        self.define_config_group_param('system', 'hostname', 'string', 'Hostname (short)')
+        self.define_config_group_param('system', 'domain', 'string', 'Domain name')
+        self.define_config_group_param('system', 'gateway', 'string', 'Gateway')
+        self.define_config_group_param('system', 'nameservers', 'string', 'DNS resolvers')
+
+        super(SystemNode, self).__init__(*args, **kwargs)
+
+    def ui_getgroup_system(self, config):
+        '''
+        This is the backend method for getting configs.
+        @param config: The config to get the value of.
+        @type config: str
+        @return: The config's value
+        @rtype: arbitrary
+        '''
+        #return conf.config.get(config)
+        return None
+
+    def ui_setgroup_system(self, config, value):
+        '''
+        This is the backend method for setting configs.
+        @param config: The config to set the value of.
+        @type config: str
+        @param value: The config's value
+        @type value: arbitrary
+        '''
+        #conf.config[config] = value
+        #return conf.config.save()
+        return None
+
     def ui_child_networking(self):
         return NetworkingNode()
+
+    def ui_child_logs(self):
+        return LogsNode()
+
+    def ui_child_alerts(self):
+        return AlertsNode()
+
+    def ui_child_developer(self):
+        if conf.config.get('debug') is True:
+            return Developer()
 
     def ui_command_hostname(self):
         '''
@@ -898,6 +924,17 @@ class SystemNode(AutomagicNode):
 
 
 class NetworkingNode(AutomagicNode):
+    def ui_child_peers(self):
+        return PeersNode()
+
+    def ui_child_floating_ips(self):
+        return FloatingIpsNode()
+
+    def ui_child_interfaces(self):
+        return NetworkInterfaces()
+
+
+class NetworkInterfaces(AutomagicNode):
     def ui_children_factory_interface_list(self):
         # TODO Don't just remove all ifaces with : in it.
         return [iface for iface in Nic.list().keys() if ':' not in iface]
@@ -915,20 +952,62 @@ class InterfaceNode(AutomagicNode):
         self.obj = Nic(name)
         super(InterfaceNode, self).__init__()
 
+        self.define_config_group_param('interface', 'proto', 'string', 'dhcp|static')
+        self.define_config_group_param('interface', 'ipaddr', 'string', 'IP Address')
+        self.define_config_group_param('interface', 'netmask', 'string', 'Network mask')
+
     def summary(self):
         if self.obj.config and self.obj.config.proto:
-            return (self.obj.config.proto, True)
+            return ('proto=%s' % self.obj.config.proto, True)
         elif self.obj.name == 'lo':
             return ('lo', True)
         else:
-            return ('unconfigured', False)
+            return ('Unconfigured', False)
 
-    # TODO Attributes for proto, ip, netmask, etc
+    #def list_config(self):
+    #    pass
+
+    def ui_getgroup_interface(self, config):
+        '''
+        This is the backend method for getting configs.
+        @param config: The config to get the value of.
+        @type config: str
+        @return: The config's value
+        @rtype: arbitrary
+        '''
+        return self.configfunc(config, None)
+
+    def ui_setgroup_interface(self, config, value):
+        '''
+        This is the backend method for setting configs.
+        @param config: The config to set the value of.
+        @type config: str
+        @param value: The config's value
+        @type value: arbitrary
+        '''
+        return self.configfunc(config, value)
+
+    def configfunc(self, k, v):
+        if not k in self.obj.config._fields.keys():
+            raise KeyError
+        if v is None:
+            return getattr(self.obj.config, k)
+        setattr(self.obj.config, k, v)
+        self.obj.config.save()
+        return v
+
+    def ui_command_apply(self, confirm=False):
+        if not confirm:
+            raise SolarSanError("You must specify confirm=True")
+
+        # TODO Write interfaces, then ifdown interface, then ifup it.
+
+        raise NotImplemented
 
 
-class Logs(AutomagicNode):
+class LogsNode(AutomagicNode):
     def __init__(self):
-        super(Logs, self).__init__()
+        super(LogsNode, self).__init__()
 
     def ui_command_tail(self, grep=None):
         '''
@@ -949,6 +1028,10 @@ class Logs(AutomagicNode):
             yield line.rstrip("\n")
 
 
+class AlertsNode(AutomagicNode):
+    pass
+
+
 """
 Main
 """
@@ -966,8 +1049,14 @@ def main():
     # Allow all public attrs, because exposed_ is stupid and should be a
     # fucking decorator.
     t = ThreadedServer(CLIService, port=18863,
-                       registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast, logger=logger),
-                       auto_register=True, logger=logger, protocol_config=conf.rpyc_conn_config)
+                       registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast,
+                                                                       #logger=None,
+                                                                       logger=logger,
+                                                                       ),
+                       auto_register=True,
+                       logger=logger,
+                       #logger=None,
+                       protocol_config=conf.rpyc_conn_config)
     t.start()
 
 

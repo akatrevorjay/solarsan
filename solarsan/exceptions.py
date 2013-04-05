@@ -3,11 +3,21 @@ from solarsan.utils.exceptions import FormattedException
 
 
 """
+Base
+"""
+
+
+class SolarSanError(FormattedException):
+    """Generic SolarSan Error"""
+    pass
+
+
+"""
 Common
 """
 
 
-class UncleanlinessError(FormattedException):
+class UncleanlinessError(SolarSanError):
     """Wash the fuck up!"""
     pass
 
@@ -17,7 +27,7 @@ Service
 """
 
 
-class ConnectionError(FormattedException):
+class ConnectionError(SolarSanError):
     """Generic connection error"""
     pass
 
@@ -36,12 +46,12 @@ Storage
 """
 
 
-class ZfsError(FormattedException):
+class ZfsError(SolarSanError):
     """Generic ZFS error"""
     pass
 
 
-class DeviceHandlerNotFound(FormattedException):
+class DeviceHandlerNotFound(SolarSanError):
     """Handler is not found for Device error"""
     pass
 
@@ -51,6 +61,6 @@ Drbd Resource
 """
 
 
-class DrbdResourceError(FormattedException):
+class DrbdResourceError(SolarSanError):
     """Generic Drbd Resource error"""
     pass

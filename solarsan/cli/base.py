@@ -2,6 +2,7 @@
 from solarsan.cluster.models import Peer
 from solarsan.pretty import pp
 from configshell import ConfigNode
+from functools import partial
 import sys
 import types
 #import errno
@@ -21,6 +22,7 @@ class ServiceConfigNode(ConfigNode):
         self.generate_ui_commands()
         super(ServiceConfigNode, self).__init__(name, parent, shell=shell)
         self.generate_ui_children()
+        self.generate_ui_config_groups()
         self.generate_summary()
 
     def refresh(self):
@@ -86,27 +88,75 @@ class ServiceConfigNode(ConfigNode):
         summary = types.MethodType(summary, self)
         setattr(self, summary.__name__, summary)
 
-    def ui_getgroup_property(self, property):
-        '''
-        This is the backend method for getting propertys.
-        @param property: The property to get the value of.
-        @type property: str
-        @return: The property's value
-        @rtype: arbitrary
-        '''
-        #return self(property)
-        return self.service.ui_getgroup_property(property)
+    def generate_ui_config_groups(self):
+        self._generated_config_groups = {}
+        if not getattr(self.service, 'get_ui_config_groups', None):
+            return
+        for name, service_config in self.service.get_ui_config_groups().iteritems():
+            self.generate_ui_config_group(name, service_config)
 
-    def ui_setgroup_property(self, property, value):
-        '''
-        This is the backend method for setting propertys.
-        @param property: The property to set the value of.
-        @type property: str
-        @param value: The property's value
-        @type value: arbitrary
-        '''
-        #return self(property, value)
-        return self.service.ui_setgroup_property(property, value)
+    def generate_ui_config_group(self, name, service_config):
+        group = self._generated_config_groups[name] = {}
+
+        if service_config.get('get'):
+            group['getter_name'] = 'ui_getgroup_%s' % name
+            #def getter(self, group, name, k):
+            #    return self._base_config_group_getter(group, k)
+            #getter = types.MethodType(getter, self)
+            #getter = partial(getter, group)
+            getter = partial(self._base_config_group_getter, name)
+            setattr(self, group['getter_name'], getter)
+
+        if service_config.get('set'):
+            group['setter_name'] = 'ui_setgroup_%s' % name
+            #def setter(self, group, k, v):
+            #    return self._base_config_group_setter(group, k, v)
+            #setter = types.MethodType(setter, self)
+            #setter = partial(setter, group)
+            setter = partial(self._base_config_group_setter, name)
+            setattr(self, group['setter_name'], setter)
+
+        params = service_config.get('params', {})
+        for k, v in params.iteritems():
+            self.define_config_group_param(name, k, v['type'], v['desc'], v['writable'])
+
+    def _base_config_group_getter(self, group_name, k):
+        group = self._generated_config_groups.get(group_name)
+
+        meth = getattr(self.service, group['getter_name'], None)
+        if not meth:
+            raise KeyError
+        return meth(k)
+
+    def _base_config_group_setter(self, group_name, k, v):
+        group = self._generated_config_groups.get(group_name)
+
+        meth = getattr(self.service, group['setter_name'], None)
+        if not meth:
+            raise ValueError
+        return meth(k, v)
+
+    #def ui_getgroup_property(self, property):
+    #    '''
+    #    This is the backend method for getting propertys.
+    #    @param property: The property to get the value of.
+    #    @type property: str
+    #    @return: The property's value
+    #    @rtype: arbitrary
+    #    '''
+    #    #return self(property)
+    #    return self.service.ui_getgroup_property(property)
+
+    #def ui_setgroup_property(self, property, value):
+    #    '''
+    #    This is the backend method for setting propertys.
+    #    @param property: The property to set the value of.
+    #    @type property: str
+    #    @param value: The property's value
+    #    @type value: arbitrary
+    #    '''
+    #    #return self(property, value)
+    #    return self.service.ui_setgroup_property(property, value)
 
     #def ui_getgroup_statistic(self, statistic):
     #    '''

@@ -132,10 +132,14 @@ def main():
     # Allow all public attrs, because exposed_ is stupid and should be a
     # fucking decorator.
     t = ThreadedServer(StorageService, port=18862,
-                       registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast),
+                       registrar=rpyc.utils.registry.UDPRegistryClient(ip=cluster_iface_bcast,
+                                                                       #logger=None,
+                                                                       logger=logger,
+                                                                       ),
                        auto_register=True,
                        #logger=logger.getChild('rpc.server_storage'),
                        logger=logger,
+                       #logger=None,
                        protocol_config=conf.rpyc_conn_config)
     t.start()
 
