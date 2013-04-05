@@ -178,17 +178,17 @@ Cluster
 """
 
 
-class ClusterNode(AutomagicNode):
-    def ui_child_peers(self):
-        return PeersNode()
-
-    def ui_child_floating_ips(self):
-        return FloatingIpsNode()
-
-    def ui_child_resources(self):
-        return ResourcesNode()
-
-    # TODO Attribute for config settings such as cluster_iface
+#class ClusterNode(AutomagicNode):
+#    def ui_child_peers(self):
+#        return PeersNode()
+#
+#    def ui_child_floating_ips(self):
+#        return FloatingIpsNode()
+#
+#    def ui_child_resources(self):
+#        return ResourcesNode()
+#
+#    # TODO Attribute for config settings such as cluster_iface
 
 
 class PeersNode(AutomagicNode):
@@ -257,7 +257,9 @@ class ResourcesNode(AutomagicNode):
 
 
 class ResourceNode(AutomagicNode):
-    def __init__(self, name):
+    def __init__(self, name, display_name=None):
+        if display_name:
+            self.display_name = display_name
         self.obj = DrbdResource.objects.get(name=name)
         super(ResourceNode, self).__init__()
 
@@ -651,6 +653,20 @@ class VolumeNode(DatasetNode):
         self.obj = Volume(name=volume)
         super(VolumeNode, self).__init__(volume)
 
+    def ui_children_factory_resource_dict(self):
+        ret = {}
+        try:
+            # TODO Look up by device path
+            res = DrbdResource.objects.get(name=self.obj.basename)
+            peer_hostname = res.remote.hostname
+            ret['(replicated resource with %s)' % peer_hostname] = dict(name=self.obj.basename)
+        except DrbdResource.DoesNotExist:
+            pass
+        return ret
+
+    def ui_children_factory_resource(self, name):
+            return ResourceNode(name)
+
     def summary(self):
         return ('%s %s/%s' % (capfirst(self.obj.type),
                               str(self.obj.properties['used']),
@@ -719,6 +735,15 @@ class PoolNode(StorageNode):
         ret = {}
         for vol in self.obj.volumes():
             display_name = vol.basename
+
+            ## TODO Keep track of this shit better, this is stupid.
+            #try:
+            #    res = DrbdResource.objects.get(name=display_name)
+            #    peer_hostname = res.remote.hostname
+            #    display_name = '%s (replicated resource with %s)' % (display_name, peer_hostname)
+            #except DrbdResource.DoesNotExist:
+            #    pass
+
             ret[display_name] = dict(name=vol.name)
         return ret
 
@@ -779,8 +804,8 @@ class Storage(AutomagicNode):
     def ui_child_pools(self):
         return PoolsNode()
 
-    def ui_child_resources(self):
-        return ResourcesNode()
+    #def ui_child_resources(self):
+    #    return ResourcesNode()
 
     def ui_child_targets(self):
         return TargetsNode()
