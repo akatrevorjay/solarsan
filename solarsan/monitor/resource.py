@@ -32,7 +32,8 @@ class ResourceManager(Component):
             self.add_res(res)
 
     def add_res(self, res):
-        if res.name in self.resources:
+        if res.name in self.resources \
+        or None in res.peers:
             return
         logger.info("Monitoring Resource '%s'.", res.name)
         self.resources[res.name] = res
