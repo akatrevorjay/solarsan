@@ -3,7 +3,8 @@ from solarsan.core import logger
 from solarsan import conf
 from solarsan.template import quick_template
 from solarsan.storage.drbd import DrbdResource
-from .models import iSCSITarget
+from solarsan.storage.volume import Volume
+from .models import iSCSITarget, SRPTarget
 import sh
 import random
 
@@ -18,7 +19,12 @@ class Device(object):
     device = None
     t10_dev_id = None
 
-    def __init__(self, volume=None, resource=None):
+    def __init__(self, volume=None, resource=None, backing_storage=None):
+        if backing_storage:
+            if isinstance(backing_storage, DrbdResource):
+                resource = backing_storage
+            elif isinstance(backing_storage, Volume):
+                volume = backing_storage
         if resource:
             self.resource = resource
 

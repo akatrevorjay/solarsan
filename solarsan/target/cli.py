@@ -1,6 +1,7 @@
 
+from solarsan.conf import config
 from solarsan.cli.backend import AutomagicNode
-from .models import iSCSITarget  # , SRPTarget
+from .models import iSCSITarget, SRPTarget
 
 
 """
@@ -9,6 +10,31 @@ Target
 
 
 class TargetsNode(AutomagicNode):
+    def __init__(self, *args, **kwargs):
+        super(TargetsNode, self).__init__(*args, **kwargs)
+
+        if not 'target' in config:
+            config['target'] = {}
+            config.save()
+        #if not 'iscsi_enabled' in config['target']:
+        #    config['target']['iscsi_enabled'] = True
+        #    config.save()
+        #if not 'srp_enabled' in config['target']:
+        #    config['target']['srp_enabled'] = True
+        #    config.save()
+
+        #self.define_config_group_param('config', 'iscsi_enabled', 'bool',
+        #                               'Enable iSCST Target Support')
+        #self.define_config_group_param('config', 'srp_enabled', 'bool',
+        #                               'Enable SRP Target Support')
+
+    def ui_setgroup_config(self, k, v):
+        config['target'][k] = v
+        config.save()
+
+    def ui_getgroup_config(self, k):
+        return config['target'].get(k)
+
     def ui_child_iscsi(self):
         return iSCSITargetsNode()
 
@@ -25,6 +51,17 @@ class TargetNode(AutomagicNode):
         else:
             return ('Inactive', False)
 
+    def ui_command_delete(self):
+        self.obj.delete()
+        #self.refresh()
+        return 'Deleted %s' % self.obj.name
+
+    def ui_command_start(self):
+        return self.obj.start()
+
+    def ui_command_stop(self):
+        return self.obj.stop()
+
 
 class iSCSITargetsNode(AutomagicNode):
     def ui_children_factory_iscsi_target_list(self):
@@ -33,8 +70,10 @@ class iSCSITargetsNode(AutomagicNode):
     def ui_children_factory_iscsi_target(self, name):
         return iSCSITargetNode(name)
 
-    def ui_command_create(self, wwn=None):
-        raise NotImplemented
+    def ui_command_create(self):
+        tgt = iSCSITarget()
+        tgt.save()
+        return 'Created %s' % tgt
 
 
 class iSCSITargetNode(TargetNode):
@@ -45,17 +84,22 @@ class iSCSITargetNode(TargetNode):
 
 class SRPTargetsNode(AutomagicNode):
     def ui_children_factory_srp_target_list(self):
-        #return [tgt.name for tgt in SRPTarget.objects.all()]
-        return []
+        return [tgt.name for tgt in SRPTarget.objects.all()]
 
     def ui_children_factory_srp_target(self, name):
         return SRPTargetNode(name)
 
-    def ui_command_create(self, wwn=None):
-        raise NotImplemented
+    def ui_command_lsports(self):
+        return [1, 2]
+
+    def ui_command_create(self, name, port=1):
+        # TODO port
+        tgt = SRPTarget(name=name)
+        tgt.save()
+        return 'Created %s' % tgt
 
 
 class SRPTargetNode(TargetNode):
     def __init__(self, name):
-        #self.obj = SRPTarget.objects.get(name=name)
+        self.obj = SRPTarget.objects.get(name=name)
         super(SRPTargetNode, self).__init__()
