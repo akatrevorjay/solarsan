@@ -222,6 +222,9 @@ def get_all_local_ipv4_addrs(nics=None, lo=False):
     for name in nics:
         if not lo and name == 'lo':
             continue
-        addrs = netifaces.ifaddresses(name)[netifaces.AF_INET]
+        try:
+            addrs = netifaces.ifaddresses(name)[netifaces.AF_INET]
+        except KeyError:
+            addrs = []
         ret[name] = addrs
     return ret
