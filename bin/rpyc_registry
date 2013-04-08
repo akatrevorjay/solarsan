@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from solarsan.core import logger
-from cluster.models import Peer
+from solarsan.cluster.models import Peer
 #from rpyc_registry import UDPRegistryServer
 from rpyc.utils.registry import UDPRegistryServer
 from setproctitle import setproctitle
