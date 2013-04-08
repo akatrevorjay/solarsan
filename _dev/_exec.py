@@ -34,7 +34,6 @@ c = Cache(d)
 pl = Peer.get_local()
 stor = pl.storage
 
-
 from solarsan.target.models import Target, iSCSITarget, SRPTarget
 #Device, VolumeDevice, ResourceDevice
 import solarsan.target.scst
@@ -44,8 +43,3 @@ import solarsan.target.utils
 from solarsan.ha.models import FloatingIP
 
 import rpyc
-
-san0 = Peer.objects.get(hostname='san0')
-san1 = Peer.objects.get(hostname='san1')
-
-
