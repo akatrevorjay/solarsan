@@ -128,8 +128,8 @@ rpyc_conn_config = {
     'allow_delattr': True,
     #'allow_pickle': False,
     #'exposed_prefix': '',
-    #'include_local_traceback': True,
-    'include_local_traceback': False,
+    'include_local_traceback': True,
+    #'include_local_traceback': False,
 }
 
 

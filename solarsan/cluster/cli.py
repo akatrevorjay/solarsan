@@ -1,4 +1,5 @@
 
+from solarsan import logger
 from solarsan.cli.backend import AutomagicNode
 from .models import Peer
 
@@ -26,12 +27,16 @@ class PeersNode(AutomagicNode):
         return [p.hostname for p in Peer.objects.all()]
 
     def ui_children_factory_peer(self, name):
+        #logger.debug('PeerNode factory name=%s', name)
+        # TODO WHY IS THIS LOWER CASED?
         return PeerNode(name)
 
 
 class PeerNode(AutomagicNode):
     def __init__(self, hostname):
-        self.obj = Peer.objects.get(hostname=hostname)
+        #logger.debug('PeerNode init hostname=%s', hostname)
+        self.obj = Peer.objects.get(hostname__iexact=hostname)
+        super(PeerNode, self).__init__()
 
     def summary(self):
         if self.obj.is_online:
