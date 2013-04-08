@@ -1,7 +1,7 @@
 Django
 IPy
 Jinja2
--e git://github.com/Lokaltog/powerline.git@3c62e060be8b319dd00457cd3800d3cec9267f4b#egg=Powerline-dev
+-e git://github.com/Lokaltog/powerline.git@develop#egg=Powerline-dev
 PyYAML
 Pygments
 #Pyro4
@@ -12,25 +12,25 @@ anyjson
 argparse
 billiard
 bpython
--e git://github.com/smartfile/caulk.git@e87e8bf08e1370dee6e433af31a5a6b7fd12bdc0#egg=caulk-dev
+#-e git://github.com/smartfile/caulk.git#egg=caulk-dev
 celery
--e hg+https://bitbucket.org/prologic/circuits@8a35e76b201e5199fa764a132fd92a946053e252#egg=circuits-dev
+-e hg+https://bitbucket.org/prologic/circuits#egg=circuits-dev
 config
 configobj
 decorator
 distribute
--e git://github.com/mwana/django-app-settings.git@54935e8bcd155206ff4f296d8fa067006ba7bbda#egg=django_app_settings-dev
+-e git://github.com/mwana/django-app-settings.git#egg=django_app_settings-dev
 #django-bootstrap-toolkit
 #django-breadcrumbs
 #django-celery
 #django-crispy-forms
 #django-debug-toolbar
--e git://github.com/hmarr/django-debug-toolbar-mongo.git@931055bd43d6ac6066b32c9862e4017fb22bdde3#egg=django_debug_toolbar_mongo-dev
+-e git://github.com/hmarr/django-debug-toolbar-mongo.git#egg=django_debug_toolbar_mongo-dev
 #django-devserver
 #django-extensions
 #django-jsonify
 #djangorestframework
--e git://fedorapeople.org/home/fedora/dsommers/public_git/python-ethtool.git@0bfcfc18fa81fcbb9c9c3a1c715d013e25cf46ca#egg=ethtool-dev
+-e git://fedorapeople.org/home/fedora/dsommers/public_git/python-ethtool.git#egg=ethtool-dev
 gevent
 greenlet
 httplib2
@@ -39,7 +39,7 @@ ipcalc
 ipdb
 ipython
 #iterpipes
--e git://github.com/davidhalter/jedi.git@23f36c86d7d7c5b890fef9eb9eb46cd1fe553329#egg=jedi-dev
+-e git://github.com/davidhalter/jedi.git#egg=jedi-dev
 kombu
 librabbitmq
 line-profiler
@@ -58,8 +58,8 @@ pyparsing<2.0
 pypercube
 #pystuck
 python-dateutil
--e git://github.com/jedie/python-ping.git@dbd05c9f9fde250e6cc5e29ed37004405c858e53#egg=python_ping-dev
--e git://github.com/umago/python-udisks.git@3c4af837273099035cf08628dedff6c6bdef47ab#egg=python_udisks-dev
+-e git://github.com/jedie/python-ping.git#egg=python_ping-dev
+-e git://github.com/umago/python-udisks.git#egg=python_udisks-dev
 pytz
 pyudev
 #pyzmq
@@ -75,3 +75,4 @@ threadpool
 wsgiref
 #zerorpc
 watchdog
+-e git+git://github.com/agrover/configshell-fb.git#egg=configshell-dev
