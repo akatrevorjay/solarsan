@@ -109,17 +109,6 @@ class ResourceMonitor(Component):
     def get_res(self):
         return get_resource(self.uuid)
 
-    #def get_peer(self, index=None, local=False, remote=False, res=None):
-    #    if not res:
-    #        res = self.get_res()
-    #    if local:
-    #        return res.local
-    #    if remote:
-    #        return res.remote
-    #    if index:
-    #        return res.peers[index]
-    #    return res.peers
-
     _res = None
 
     @property
@@ -135,6 +124,14 @@ class ResourceMonitor(Component):
                 self.unregister()
             self._res = weakref.ref(res)
         return res
+
+    def get_event(self, event):
+        event.args.insert(0, self.uuid)
+        return event
+
+    def fire_this(self, event):
+        event.args.insert(0, self.uuid)
+        return self.fire(event)
 
     peers = None
     peer_uuids = None
@@ -156,17 +153,20 @@ class ResourceMonitor(Component):
 
         self.status()
 
+    #def get_peer(self, index=None, local=False, remote=False, res=None):
+    #    if not res:
+    #        res = self.get_res()
+    #    if local:
+    #        return res.local
+    #    if remote:
+    #        return res.remote
+    #    if index:
+    #        return res.peers[index]
+    #    return res.peers
+
     @property
     def service(self):
         return self.res.local.service
-
-    def get_event(self, event):
-        event.args.insert(0, self.uuid)
-        return event
-
-    def fire_this(self, event):
-        event.args.insert(0, self.uuid)
-        return self.fire(event)
 
     @handler('peer_failover', channel='*')
     def _on_peer_failover(self, peer_uuid):
