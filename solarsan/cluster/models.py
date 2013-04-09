@@ -6,6 +6,7 @@ from solarsan.configure.models import Nic
 from solarsan.exceptions import ConnectionError
 import mongoengine as m
 import rpyc
+import weakref
 
 
 """
@@ -41,7 +42,7 @@ class Peer(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         super(Peer, self).__init__(**kwargs)
         self._is_online = None
         self._lost_count = 0
-        self._services = {}
+        self._services = weakref.WeakValueDictionary()
 
     # TODO Manager
     @classmethod

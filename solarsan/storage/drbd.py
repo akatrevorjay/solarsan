@@ -8,9 +8,11 @@ from solarsan.cluster.models import Peer
 from .volume import Volume
 from .parsers.drbd import drbd_overview_parser
 from random import getrandbits
+from uuid import uuid4
 import mongoengine as m
 import sh
 #import time
+import weakref
 
 
 def drbd_find_free_minor():
@@ -83,13 +85,17 @@ class DrbdPeer(m.EmbeddedDocument):
 
     @property
     def service(self):
-        if not self._service:
+        service = None
+        if self._service:
+            service = self._service()
+        if service is None:
             if self.is_local:
-                self._service = DrbdLocalResource(self.volume)
+                service = DrbdLocalResource(self.volume)
             else:
                 storage = self.peer.get_service('storage')
-                self._service = storage.root.drbd_res_service(self.volume)
-        return self._service
+                service = storage.root.drbd_res_service(self.volume)
+            self._service = weakref.ref(service)
+        return service
 
 
 #class DrbdResourceTargetMapping(m.EmbeddedDocument):
@@ -106,6 +112,7 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     shared_secret = m.StringField(required=True)
     sync_rate = m.StringField()
     size = m.StringField()
+    uuid = m.UUIDField()
 
     # For target
     target_luns = m.ListField(m.DictField())
@@ -132,6 +139,8 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         # already
         if not self.shared_secret:
             self.generate_random_secret()
+        if not self.uuid:
+            self.uuid = uuid4()
         super(DrbdResource, self).save(*args, **kwargs)
 
     @property
