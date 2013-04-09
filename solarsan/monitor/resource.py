@@ -3,6 +3,7 @@ from solarsan.core import logger
 from circuits import Component, Event, Timer, handler
 from solarsan.storage.drbd import DrbdResource
 import random
+import weakref
 
 
 """
@@ -21,7 +22,6 @@ class ResourceManager(Component):
 
     def __init__(self):
         super(ResourceManager, self).__init__()
-        self.resources = {}
         self.monitors = {}
 
         self.do_all_resources()
@@ -32,12 +32,11 @@ class ResourceManager(Component):
             self.add_res(res)
 
     def add_res(self, res):
-        if res.name in self.resources:
-        #or None in res.peers:
+        if res.uuid in self.monitors:
             return
+
         logger.info("Monitoring Resource '%s'.", res.name)
-        self.resources[res.name] = res
-        self.monitors[res.name] = ResourceMonitor(res).register(self)
+        self.monitors[res.uuid] = ResourceMonitor(res.uuid).register(self)
 
 
 """
@@ -95,33 +94,101 @@ class ResourceRemoteRoleChange(Event):
     """Resource Remote Role State Change"""
 
 
+def get_resource(uuid):
+    return DrbdResource.objects.get(uuid=uuid)
+
+
 class ResourceMonitor(Component):
-    def __init__(self, res):
+    uuid = None
+
+    def __init__(self, uuid):
+        self.uuid = uuid
         super(ResourceMonitor, self).__init__()
-        self.res = res
+        self.load_res_info()
+
+    def get_res(self):
+        return get_resource(self.uuid)
+
+    #def get_peer(self, index=None, local=False, remote=False, res=None):
+    #    if not res:
+    #        res = self.get_res()
+    #    if local:
+    #        return res.local
+    #    if remote:
+    #        return res.remote
+    #    if index:
+    #        return res.peers[index]
+    #    return res.peers
+
+    _res = None
+
+    @property
+    def res(self):
+        res = None
+        if self._res:
+            res = self._res()
+        if res is None:
+            try:
+                res = self.get_res()
+            except DrbdResource.DoesNotExist:
+                logger.error('Resource with uuid=%s does not exist anymore', self.uuid)
+                self.unregister()
+            self._res = weakref.ref(res)
+        return res
+
+    peers = None
+    peer_uuids = None
+    peer_local_uuid = None
+
+    @property
+    def peer_local(self):
+        return self.peers.get(self.peer_local_uuid)
+
+    def load_res_info(self):
+        res = self.res
+
+        uuids = self.peer_uuids = []
+        peers = self.peers = {}
+        for peer in res.peers:
+            uuids.append(peer.uuid)
+            peers[peer.uuid] = dict(is_local=peer.is_local, hostname=peer.hostname, pool=peer.pool)
+        self.peer_local_uuid = res.local.uuid
+
         self.status()
 
     @property
     def service(self):
         return self.res.local.service
 
+    def get_event(self, event):
+        event.args.insert(0, self.uuid)
+        return event
+
+    def fire_this(self, event):
+        event.args.insert(0, self.uuid)
+        return self.fire(event)
+
     @handler('peer_failover', channel='*')
-    def _on_peer_failover(self, peer):
-        if peer.uuid != self.res.remote.peer.uuid:
+    def _on_peer_failover(self, peer_uuid):
+        if peer_uuid not in self.peers or peer_uuid == self.peer_local_uuid:
             return
+        res = self.res
 
         # Update status and send out proper events first
         self.status()
 
-        if self.res.role != 'Primary':
+        if res.role != 'Primary':
             logger.error('Failing over Peer "%s" for Resource "%s".',
-                         self.res.remote.hostname, self.res.name)
-            self.fire(ResourcePrimary(self.res))
+                         res.remote.hostname, res.name)
+            self.fire_this(ResourcePrimary())
 
     # TODO What exactly to do upon pool not healthy
     @handler('peer_pool_not_healthy', channel='*')
-    def _on_peer_pool_not_healthy(self, peer, pool):
-        if peer.uuid == self.res.local.peer.uuid and pool == self.res.local.pool:
+    def _on_peer_pool_not_healthy(self, peer_uuid, pool):
+        if peer_uuid not in self.peers or pool != self.peers[peer_uuid]['pool']:
+            return
+
+        if peer_uuid == self.peer_local_uuid:
             #logger.error('Pool "%s" for Resource "%s" is not healthy.',
             #             pool, self.res.name)
             pass
@@ -134,9 +201,9 @@ class ResourceMonitor(Component):
             #   - But what if the targets are used for other resources? Again,
             #   must do a whole target at a time, up or down.
             # TODO Secondary ourselves
-            #self.fire(ResourceSecondary(self.res))
+            #self.fire_this(ResourceSecondary())
 
-        elif peer.uuid == self.res.remote.uuid and pool == self.res.remote.pool:
+        else:
             #logger.error('Pool "%s" on Remote "%s" for Resource "%s" is not healthy.',
             #             pool, self.res.remote.hostname, self.res.name)
             pass
@@ -149,7 +216,7 @@ class ResourceMonitor(Component):
             # nothing here)
             #   - But what if the HA IPs are used for others? HA IPs must be
             #   attached to targets, and only whole targets can go up or down.
-            #self.fire(ResourcePrimary(self.res))
+            #self.fire_this(ResourcePrimary())
 
     """
     Status Tracking
@@ -159,36 +226,37 @@ class ResourceMonitor(Component):
         ret = dict(self.service.status())
         if not ret:
             return ret
-
+        res = self.res
         events = []
-        if ret['connection_state'] != self.res.connection_state:
-            events.append(ResourceConnectionStateChange(self.res, ret['connection_state']))
-        if ret['disk_state'] != self.res.disk_state:
-            events.append(ResourceDiskStateChange(self.res, ret['disk_state']))
-        if ret['role'] != self.res.role:
-            events.append(ResourceRoleChange(self.res, ret['role']))
-        if ret['remote_disk_state'] != self.res.remote_disk_state:
-            events.append(ResourceRemoteDiskStateChange(self.res, ret['remote_disk_state']))
-        if ret['remote_role'] != self.res.remote_role:
-            events.append(ResourceRemoteRoleChange(self.res, ret['remote_role']))
+        if ret['connection_state'] != res.connection_state:
+            events.append(ResourceConnectionStateChange(ret['connection_state']))
+        if ret['disk_state'] != res.disk_state:
+            events.append(ResourceDiskStateChange(ret['disk_state']))
+        if ret['role'] != res.role:
+            events.append(ResourceRoleChange(ret['role']))
+        if ret['remote_disk_state'] != res.remote_disk_state:
+            events.append(ResourceRemoteDiskStateChange(ret['remote_disk_state']))
+        if ret['remote_role'] != res.remote_role:
+            events.append(ResourceRemoteRoleChange(ret['remote_role']))
 
         keys = ['connection_state', 'disk_state', 'role']
         keys += ['remote_' + x for x in keys[1:]]
 
         for k, v in ret.iteritems():
             if k in keys:
-                setattr(self.res, k, v)
-        self.res.save()
+                setattr(res, k, v)
+        res.save()
 
         for event in events:
-            self.fire(event)
+            self.fire_this(event)
 
         return ret
 
-    def resource_connection_state_change(self, res, cstate):
-        if self.res.pk != res.pk:
+    def resource_connection_state_change(self, uuid, cstate):
+        if self.uuid != uuid:
             return
-        logger.error("Resource '%s' is %s!", self.res.name, cstate)
+        res = self.res
+        logger.error("Resource '%s' is %s!", res.name, cstate)
 
         if cstate == 'Connected':
             """Connected. A DRBD connection has been established, data mirroring is now active. This is the
@@ -198,23 +266,23 @@ class ResourceMonitor(Component):
         elif cstate == 'WFConnection':
             """WFConnection. This node is waiting until the peer node becomes visible on the network."""
             pass
-            #if self.res.role != 'Primary':
-            #    self.fire(ResourcePrimary(self.res))
+            #if res.role != 'Primary':
+            #    self.fire_this(ResourcePrimary())
 
         elif cstate == 'StandAlone':
             """StandAlone. No network configuration available. The resource has not yet been connected, or
             has been administratively disconnected (using drbdadm disconnect), or has dropped its connection
             due to failed authentication or split brain."""
             pass
-            #if self.res.role != 'Primary':
-            #    self.fire(ResourcePrimary(self.res))
+            #if res.role != 'Primary':
+            #    self.fire_this(ResourcePrimary())
 
         elif cstate == 'SyncSource':
             """SyncSource. Synchronization is currently running, with the local node being the source of
             synchronization"""
             pass
-            #if self.res.role != 'Primary':
-            #    self.fire(ResourcePrimary(self.res))
+            #if res.role != 'Primary':
+            #    self.fire_this(ResourcePrimary())
 
         elif cstate == 'PausedSyncS':
             """PausedSyncS. The local node is the source of an ongoing synchronization, but synchronization
@@ -246,10 +314,11 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown connection state of "%s"!', cstate)
 
-    def resource_disk_state_change(self, res, dstate):
-        if self.res.pk != res.pk:
+    def resource_disk_state_change(self, uuid, dstate):
+        if self.uuid != uuid:
             return
-        logger.error("Resource '%s' is %s!", self.res.name, dstate)
+        res = self.res
+        logger.error("Resource '%s' is %s!", res.name, dstate)
 
         if dstate == 'UpToDate':
             """UpToDate. Consistent, up-to-date state of the data. This is the normal state."""
@@ -282,10 +351,11 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown disk state of "%s"!', dstate)
 
-    def resource_role_change(self, res, role):
-        if self.res.pk != res.pk:
+    def resource_role_change(self, uuid, role):
+        if self.uuid != uuid:
             return
-        logger.error("Resource '%s' is %s!", self.res.name, role)
+        res = self.res
+        logger.error("Resource '%s' is %s!", res.name, role)
 
         if role == 'Primary':
             """Primary. The resource is currently in the primary role, and may be read from and written to.
@@ -306,77 +376,86 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown role of "%s"!', role)
 
-    def resource_remote_disk_state_change(self, res, dstate):
-        if self.res.pk != res.pk:
-            return
+    #def resource_remote_disk_state_change(self, uuid, dstate):
+    #    if self.uuid != uuid:
+    #        return
+    #    res = self.res
 
-    def resource_remote_role_change(self, res, remote_role):
-        if self.res.pk != res.pk:
-            return
+    #def resource_remote_role_change(self, uuid, remote_role):
+    #    if self.uuid != uuid:
+    #        return
+    #    res = self.res
 
     """
     Health Check
     """
 
     def resource_health_check(self):
+        res = self.res
         self.status()
 
         # If we have two secondary nodes become primary
-        if self.res.role == 'Secondary' and self.res.remote_role == 'Secondary':
+        if res.role == 'Secondary' and res.remote_role == 'Secondary':
             logger.info('Taking over as Primary for Resource "%s" because someone has to. ' +
-                        '(dual secondaries).', self.res.name)
-            self.fire(ResourcePrimary(self.res))
+                        '(dual secondaries).', res.name)
+            self.fire_this(ResourcePrimary())
 
     """
     Role Switching
     """
 
-    def resource_primary(self, res):
-        if res.pk != self.res.pk:
+    def resource_primary(self, uuid):
+        if self.uuid != uuid:
             return
-        logger.warning('Promoting self to Primary for Resource "%s".', self.res.name)
-        self.fire(ResourcePrimaryPre(self.res))
-        self.fire(ResourcePrimaryTry(self.res))
+        res = self.res
 
-    def resource_primary_try(self, res):
-        if res.pk != self.res.pk:
+        logger.warning('Promoting self to Primary for Resource "%s".', res.name)
+        self.fire_this(ResourcePrimaryPre())
+        self.fire_this(ResourcePrimaryTry())
+
+    def resource_primary_try(self, uuid):
+        if self.uuid != uuid:
             return
+        res = self.res
 
         self.status()
-        if self.res.role == 'Primary':
+        if res.role == 'Primary':
             logger.error('Cannot promote self to Primary for Resource "%s", ' +
-                         'as we\'re already Primary.', self.res.name)
+                         'as we\'re already Primary.', res.name)
             return
-        if self.res.disk_state != 'UpToDate':
+        if res.disk_state != 'UpToDate':
             logger.error('Cannot promote self to Primary for Resource "%s", ' +
-                         'as disk state is not UpToDate.', self.res.name)
+                         'as disk state is not UpToDate.', res.name)
             return
 
         try:
             self.service.primary()
             self.status()
-            logger.info('Promoted self to Primary for Resource "%s".', self.res.name)
-            self.fire(ResourcePrimaryPost(self.res))
+            logger.info('Promoted self to Primary for Resource "%s".', res.name)
+            self.fire_this(ResourcePrimaryPost())
         except:
             retry_in = 10.0 + random.randrange(2, 10)
             logger.warning('Could not promote self to Primary for Resource "%s". Retrying in %ds.',
-                           self.res.name, retry_in)
-            self._primary_try_timer = Timer(retry_in, ResourcePrimaryTry(self.res))
+                           res.name, retry_in)
+            self._primary_try_timer = Timer(retry_in, self.get_event(ResourcePrimaryTry()))
 
-    def resource_secondary(self, res, *values):
-        if res.pk != self.res.pk:
+    def resource_secondary(self, uuid, *values):
+        if self.uuid != uuid:
             return
+        res = self.res
 
         self.status()
-        if self.res.role == 'Secondary':
+        if res.role == 'Secondary':
             return
 
-        logger.warning('Demoting self to Secondary for Resource "%s".', self.res.name)
-        self.fire(ResourceSecondaryPre(self.res))
+        logger.warning('Demoting self to Secondary for Resource "%s".', res.name)
+        self.fire_this(ResourceSecondaryPre())
         self.service.secondary()
+
         self.status()
-        logger.warning('Demoted self to Secondary for Resource "%s".', self.res.name)
-        self.fire(ResourceSecondaryPost(self.res))
+
+        logger.warning('Demoted self to Secondary for Resource "%s".', res.name)
+        self.fire_this(ResourceSecondaryPost())
 
     """
     TODO

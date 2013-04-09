@@ -59,6 +59,7 @@ LOGGING = {
     'root': {
         'level': 'DEBUG',
         'handlers': ['console', 'syslog'],
+        #'handlers': ['console'],
         #'level': 'WARNING',
         #'handlers': ['console', 'sentry'],
     },
@@ -116,6 +117,16 @@ LOGGING = {
             #'level': 'DEBUG',
             'level': 'INFO',
         },
+        #'solarsan': {
+        #    'propagate': True,
+        #    'level': 'DEBUG',
+        #    'handlers': ['console', 'syslog'],
+        #    #'handlers': ['syslog'],
+        #},
+        #'rpyc': {
+        #    'propagate': True,
+        #    'level': 'WARNING',
+        #},
     }
 }
 
