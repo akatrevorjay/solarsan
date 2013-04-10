@@ -128,9 +128,15 @@ LOGGING = {
             'handlers': ['syslog'],
             #'handlers': ['syslog'],
         },
-        'rpyc': {
-            'propagate': True,
-            'level': 'WARNING',
+        'solarsan.rpc.server_storage': {
+            'propagate': False,
+            'level': 'DEBUG',
+            'handlers': ['console'],
+        },
+        'solarsan.cli.backend': {
+            'propagate': False,
+            'level': 'DEBUG',
+            'handlers': ['console'],
         },
     }
 }

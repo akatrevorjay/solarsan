@@ -15,6 +15,6 @@ if __name__ == '__main__':
         #host=peer.cluster_addr,
         #pruning_timeout=30,
         #logger=logger,
-        logger=None,
+        #logger=None,
     )
     reg.start()
