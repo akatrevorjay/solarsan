@@ -1,5 +1,6 @@
 
-from solarsan.core import logger
+from solarsan import logging
+logger = logging.getLogger(__name__)
 from circuits import Component
 from solarsan.monitor.udev import UDev
 

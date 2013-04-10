@@ -1,5 +1,6 @@
 
-from solarsan.core import logger
+from solarsan import logging
+logger = logging.getLogger(__name__)
 from solarsan.cluster.models import Peer
 from circuits import Component, Timer, Event
 from datetime import datetime

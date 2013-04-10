@@ -58,16 +58,20 @@ LOGGING = {
     #'disable_existing_loggers': False,
     'root': {
         'level': 'DEBUG',
-        'handlers': ['console', 'syslog'],
-        #'handlers': ['console'],
+        #'handlers': ['console', 'syslog'],
+        'handlers': ['console'],
         #'level': 'WARNING',
         #'handlers': ['console', 'sentry'],
     },
 
     'formatters': {
+        #'standard': {
+        #    'format': '%(asctime)s %(levelname)s %(name)s.%(module)s@%(funcName)s:%(lineno)d %(message)s',
+        #    #'datefmt': '%d/%b/%Y %H:%M:%S',
+        #},
+        #'solarsan_standard': {
         'standard': {
-            'format': '%(asctime)s %(levelname)s %(name)s.%(module)s@%(funcName)s:%(lineno)d %(message)s',
-            #'datefmt': '%d/%b/%Y %H:%M:%S',
+            'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(message)s',
         },
         'verbose': {
             'format': '%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s'
@@ -76,7 +80,8 @@ LOGGING = {
             #'format': '<22>%(asctime)s ' + SERVER_NAME + ' %(name)s[%(process)d]: %(message)s',
             #'format': 'solarsan.%(name)s[%(process)d]: %(levelname)s %(message)s',
             #'format': 'solarsan/%(name)s.%(module)s/%(processName)s[%(process)d]: %(levelname)s %(message)s @%(funcName)s:%(lineno)d',
-            'format': '%(name)s.%(module)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
+            #'format': '%(name)s.%(module)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
+            'format': '%(name)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
             #'celery_format': 'solarsan/%(name)s[%(process)d]: %(levelname)s %(message)s @%(funcName)s:%(lineno)d',
         },
     },
@@ -117,16 +122,16 @@ LOGGING = {
             #'level': 'DEBUG',
             'level': 'INFO',
         },
-        #'solarsan': {
-        #    'propagate': True,
-        #    'level': 'DEBUG',
-        #    'handlers': ['console', 'syslog'],
-        #    #'handlers': ['syslog'],
-        #},
-        #'rpyc': {
-        #    'propagate': True,
-        #    'level': 'WARNING',
-        #},
+        'solarsan': {
+            'propagate': True,
+            'level': 'DEBUG',
+            'handlers': ['syslog'],
+            #'handlers': ['syslog'],
+        },
+        'rpyc': {
+            'propagate': True,
+            'level': 'WARNING',
+        },
     }
 }
 

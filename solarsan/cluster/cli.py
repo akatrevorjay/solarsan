@@ -1,5 +1,6 @@
 
-from solarsan import logger
+from solarsan import logging
+logger = logging.getLogger(__name__)
 from solarsan.cli.backend import AutomagicNode
 from .models import Peer
 

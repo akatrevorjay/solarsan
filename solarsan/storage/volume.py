@@ -1,6 +1,7 @@
 
 from solarsan.exceptions import ZfsError
-from solarsan.core import logger
+from solarsan import logging
+logger = logging.getLogger(__name__)
 import sh
 from .dataset import Dataset
 

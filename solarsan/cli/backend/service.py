@@ -1,5 +1,6 @@
 
-from solarsan.core import logger
+from solarsan import logging
+logger = logging.getLogger(__name__)
 import rpyc
 from . import AutomagicNode
 from .root import CliRoot

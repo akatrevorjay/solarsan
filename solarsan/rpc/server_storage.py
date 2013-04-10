@@ -1,5 +1,6 @@
 
-from solarsan.core import logger
+from solarsan import logging
+logger = logging.getLogger(__name__)
 from solarsan import conf
 #from solarsan.utils.exceptions import LoggedException
 from solarsan.storage.pool import Pool

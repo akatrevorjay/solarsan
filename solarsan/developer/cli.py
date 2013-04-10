@@ -1,5 +1,6 @@
 
-from solarsan.core import logger
+from solarsan import logging
+logger = logging.getLogger(__name__)
 from solarsan.exceptions import ZfsError
 from solarsan.cli.backend import AutomagicNode
 import os

@@ -8,7 +8,8 @@ Main
 
 
 def main():
-    from solarsan.core import logger
+    from solarsan import logging
+    logger = logging.getLogger(__name__)
     from solarsan.cluster.models import Peer
     from solarsan.conf import rpyc_conn_config
     from rpyc.utils.server import ThreadedServer
