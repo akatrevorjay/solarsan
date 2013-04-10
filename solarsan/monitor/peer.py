@@ -40,7 +40,8 @@ class PeerManager(Component):
         Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
         Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
 
-    def peer_discovered(self, peer, created=None):
+    def peer_discovered(self, uuid, created=None):
+        peer = get_peer(uuid)
         self.add_peer(peer)
         return True
 

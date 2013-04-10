@@ -91,5 +91,5 @@ class Discovery(Component):
 
         peer.save()
 
-        self.fire(PeerDiscovered(peer, created=created))
+        self.fire(PeerDiscovered(peer.uuid, created=created))
         return True
