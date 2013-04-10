@@ -16,7 +16,7 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     netmask = m.StringField()
     iface = m.StringField()
     peer = m.ReferenceField(Peer, dbref=False)
-    uuid = m.UUIDField()
+    uuid = m.UUIDField(binary=False)
 
     def save(self, *args, **kwargs):
         if not self.uuid:

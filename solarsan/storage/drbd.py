@@ -113,7 +113,7 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     shared_secret = m.StringField(required=True)
     sync_rate = m.StringField()
     size = m.StringField()
-    uuid = m.UUIDField()
+    uuid = m.UUIDField(binary=False)
 
     # For target
     target_luns = m.ListField(m.DictField())

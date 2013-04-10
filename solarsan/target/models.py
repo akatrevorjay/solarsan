@@ -55,7 +55,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 
     floating_ip = m.ReferenceField(FloatingIP, dbref=False)
 
-    uuid = m.UUIDField()
+    uuid = m.UUIDField(binary=False)
 
     def save(self, *args, **kwargs):
         if not self.uuid:

@@ -16,6 +16,7 @@ Cluster
 
 
 class Peer(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
+    #uuid = m.UUIDField(binary=False)
     uuid = m.StringField(required=True, unique=True)
     hostname = m.StringField(required=True, unique=True)
     #hostname = m.StringField(required=True, unique=True)
