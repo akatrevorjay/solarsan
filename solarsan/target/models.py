@@ -6,6 +6,7 @@ from .utils import generate_wwn, is_valid_wwn
 from . import scstadmin
 #from solarsan.storage.drbd import DrbdResource
 from solarsan.ha.models import FloatingIP
+from uuid import uuid4
 
 
 class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
@@ -53,6 +54,13 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     #initiators = m.ListField()
 
     floating_ip = m.ReferenceField(FloatingIP, dbref=False)
+
+    uuid = m.UUIDField()
+
+    def save(self, *args, **kwargs):
+        if not self.uuid:
+            self.uuid = uuid4()
+        super(Target, self).save(*args, **kwargs)
 
     @property
     def is_target_added(self):

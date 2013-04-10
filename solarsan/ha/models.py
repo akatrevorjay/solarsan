@@ -6,6 +6,7 @@ from solarsan.cluster.models import Peer
 import sh
 from netifaces import interfaces
 from solarsan.utils.pings import ping_once
+from uuid import uuid4
 from .arp import send_arp
 
 
@@ -15,6 +16,12 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     netmask = m.StringField()
     iface = m.StringField()
     peer = m.ReferenceField(Peer, dbref=False)
+    uuid = m.UUIDField()
+
+    def save(self, *args, **kwargs):
+        if not self.uuid:
+            self.uuid = uuid4()
+        super(FloatingIP, self).save(*args, **kwargs)
 
     @property
     def iface_name(self):

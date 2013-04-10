@@ -4,6 +4,9 @@ from circuits import Component, Event, Timer
 from solarsan.target.models import iSCSITarget
 from .resource import ResourceSecondary
 import random
+import weakref
+from .resource import get_resource
+#from .peer import get_peer
 
 
 """
@@ -15,12 +18,15 @@ class TargetManager(Component):
 
     def __init__(self):
         super(TargetManager, self).__init__()
-        #self.targets = {}
         self.monitors = {}
 
         for tgt in iSCSITarget.objects.all():
-            #self.targets[tgt.name] = tgt
-            self.monitors[tgt.name] = TargetMonitor(tgt).register(self)
+            self.add_target(tgt)
+
+    def add_target(self, tgt):
+        if tgt.uuid in self.monitors:
+            return
+        self.monitors[tgt.uuid] = TargetMonitor(tgt.uuid).register(self)
 
 
 class TargetStart(Event):
@@ -43,20 +49,55 @@ class TargetStopped(Event):
     """Stop Target"""
 
 
+def get_target(uuid):
+    return iSCSITarget.objects.get(uuid=uuid)
+
+
 class TargetMonitor(Component):
-    def __init__(self, target):
+    uuid = None
+
+    def __init__(self, uuid):
+        self.uuid = uuid
         super(TargetMonitor, self).__init__()
-        self.target = target
-        logger.info('Monitoring Target "%s".', self.target.name)
+
+        target = self.target
+        logger.info('Monitoring Target "%s".', target.name)
 
         # TODO Check if target is active, check if all resources are primary
         # for target, if not stop ourselves.
-        if self.target.is_target_enabled:
-            logger.warning('Target "%s" is currently active upon startup.', self.target.name)
-            #self.fire(TargetStart(self.target))
-            self.fire(TargetStarted(self.target))
-        elif self.target.is_target_added:
-            logger.warning('Target "%s" currently exists upon startup.', self.target.name)
+        if target.is_target_enabled:
+            logger.warning('Target "%s" is currently active upon startup.', target.name)
+            #self.fire_this(TargetStart())
+            self.fire_this(TargetStarted())
+        elif target.is_target_added:
+            logger.warning('Target "%s" currently exists upon startup.', target.name)
+
+    def get_target(self):
+        return get_target(self.uuid)
+
+    _target = None
+
+    @property
+    def target(self):
+        target = None
+        if self._target:
+            target = self._target()
+        if target is None:
+            try:
+                target = self.get_target()
+            except target.DoesNotExist:
+                logger.error('Target with uuid=%s does not exist anymore', self.uuid)
+                self.unregister()
+            self._target = weakref.ref(target)
+        return target
+
+    def get_event(self, event):
+        event.args.insert(0, self.uuid)
+        return event
+
+    def fire_this(self, event):
+        event.args.insert(0, self.uuid)
+        return self.fire(event)
 
     # When a Peer that we split this target with failsover,
     # become primary for the target.
@@ -69,48 +110,54 @@ class TargetMonitor(Component):
     #            continue
     #
     #        # Makes them fight over it. Hmm.
-    #        self._check_lun_timer = Timer(10.0 + random.randrange(2, 8), TargetStart(self.target)).register(self)
+    #        self._check_lun_timer = Timer(10.0 + random.randrange(2, 8), self.get_event(TargetStart())).register(self)
     #        return True
 
-    def resource_role_change(self, res, role):
-        for dev in self.target.devices:
+    def resource_role_change(self, uuid, role):
+        res = get_resource(uuid)
+        target = self.target
+        for dev in target.devices:
             if dev.pk == res.pk:
                 logger.info('Target "%s": ' + 'Member Resource "%s" has become primary.',
-                            self.target.name, res.name)
+                            target.name, res.name)
                 #if not hasattr(self, '_start_try_timer'):
-                #    self.fire(TargetStart(self.target))
-                self.fire(TargetStart(self.target))
+                #    self.fire_this(TargetStart())
+                self.fire_this(TargetStart())
                 return
 
-    def resource_secondary_pre(self, res):
-        for dev in self.target.devices:
+    def resource_secondary_pre(self, uuid):
+        res = get_resource(uuid)
+        target = self.target
+        for dev in target.devices:
             if dev.pk == res.pk:
                 logger.info('Target "%s": Member Resource "%s" wants to become secondary. Trying to ' +
-                            'deconfigure quickly enough so it can.', self.target.name, res.name)
-                self.fire(TargetStop(self.target))
+                            'deconfigure quickly enough so it can.', target.name, res.name)
+                self.fire_this(TargetStop())
                 #self.log(logger.warning, 'Member Resource "%s" is trying to become secondary while ' +
                 #               'being part of an active target.',
                 #               res.name)
 
-    def target_start(self, target):
-        if target.pk != self.target.pk:
+    def target_start(self, uuid):
+        if uuid != self.uuid:
             return
         if hasattr(self, '_start_try_timer'):
             return
+        target = self.target
         #self.log(logger.info, 'Starting..')
-        #self.fire(TargetStartTry(self.target))
+        #self.fire_this(TargetStartTry())
 
         #if hasattr(self, '_start_try_timer'):
         #    self._start_try_timer.unregister()
         #    delattr(self, '_start_try_timer')
 
         retry_in = 8.0 + random.randrange(2, 8)
-        logger.warning('Target "%s": ' + 'Trying to start in %ds.', self.target.name, retry_in)
-        self._start_try_timer = Timer(retry_in, TargetStartTry(self.target)).register(self)
+        logger.warning('Target "%s": ' + 'Trying to start in %ds.', target.name, retry_in)
+        self._start_try_timer = Timer(retry_in, self.get_event(TargetStartTry())).register(self)
 
-    def target_start_try(self, target, attempt=0):
-        if target.pk != self.target.pk:
+    def target_start_try(self, uuid, attempt=0):
+        if uuid != self.uuid:
             return
+        target = self.target
 
         def remove_start_try_timer():
             if hasattr(self, '_start_try_timer'):
@@ -118,7 +165,7 @@ class TargetMonitor(Component):
                 delattr(self, '_start_try_timer')
 
         missing_devices = []
-        for dev in self.target.devices:
+        for dev in target.devices:
             # Reload device from database as it may of changed since we last
             # retrieved it.
             dev.reload()
@@ -126,48 +173,51 @@ class TargetMonitor(Component):
                 missing_devices.append(dev.name)
             if dev.remote_role == 'Primary':
                 logger.error('Target "%s": ' + 'Cannot start because remote is primary on Resource "%s".',
-                             self.target.name, dev.name)
+                             target.name, dev.name)
 
                 remove_start_try_timer()
                 return
 
         if missing_devices:
             logger.error('Target "%s": ' + 'Cannot start because some luns are not available: "%s".',
-                         self.target.name, missing_devices)
+                         target.name, missing_devices)
 
             # TODO Need to do a random choice between both when they are both
             # detined to be king.
-            if attempt > 1 and len(missing_devices) < len(self.target.devices):
+            if attempt > 1 and len(missing_devices) < len(target.devices):
                 if random.randrange(0, 9999) < 5000:
-                    for dev in self.target.devices:
+                    for dev in target.devices:
                         if dev.role == 'Primary':
                             self.fire(ResourceSecondary(dev))
 
             remove_start_try_timer()
             retry_in = 8.0 + random.randrange(2, 8)
-            logger.warning('Target "%s": ' + 'Retrying to start in %ds.', self.target.name, retry_in)
-            self._start_try_timer = Timer(retry_in, TargetStartTry(self.target, attempt=attempt + 1)).register(self)
+            logger.warning('Target "%s": ' + 'Retrying to start in %ds.', target.name, retry_in)
+            self._start_try_timer = Timer(retry_in, self.get_event(TargetStartTry(attempt=attempt + 1))).register(self)
             return
 
-        logger.info('Target "%s": Can now start!', self.target.name)
+        logger.info('Target "%s": Can now start!', target.name)
         try:
-            self.target.start()
-            logger.info('Target "%s" started.', self.target.name)
+            target.start()
+            logger.info('Target "%s" started.', target.name)
         except Exception, e:
-            logger.error('Target "%s": ' + 'Could not start: %s', self.target.name, e.message)
+            logger.error('Target "%s": ' + 'Could not start: %s', target.name, e.message)
             remove_start_try_timer()
             return False
         remove_start_try_timer()
-        self.fire(TargetStarted(self.target))
+        self.fire_this(TargetStarted())
         return True
 
-    def target_started(self, target):
-        if target.pk != self.target.pk:
+    def target_started(self, uuid):
+        if uuid != self.uuid:
             return
+        target = self.target
 
-    def target_stop(self, target):
-        if target.pk != self.target.pk:
+    def target_stop(self, uuid):
+        if uuid != self.uuid:
             return
-        logger.info('Target "%s": Can now stop!', self.target.name)
-        self.target.stop()
-        self.fire(TargetStopped(self.target))
+        target = self.target
+
+        logger.info('Target "%s": Can now stop!', target.name)
+        target.stop()
+        self.fire_this(TargetStopped())
