@@ -170,7 +170,7 @@ class VolumeNode(DatasetNode):
             # TODO Look up by device path
             res = DrbdResource.objects.get(name=self.obj.basename)
             peer_hostname = res.remote.hostname
-            ret['(replicated resource with %s)' % peer_hostname] = dict(name=self.obj.basename)
+            ret['replicated resource with %s' % peer_hostname] = dict(name=self.obj.basename)
         except DrbdResource.DoesNotExist:
             pass
         return ret
