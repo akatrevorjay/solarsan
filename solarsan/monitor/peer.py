@@ -29,7 +29,7 @@ class PeerPoolHealthCheck(Event):
 
 class PeerManager(Component):
     heartbeat_every = 5.0
-    pool_health_every = 10.0
+    pool_health_every = 300.0
 
     def __init__(self):
         super(PeerManager, self).__init__()

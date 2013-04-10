@@ -19,7 +19,7 @@ class ResourceHealthCheck(Event):
 
 class ResourceManager(Component):
     #res_health_check_every = 10.0 + random.randrange(2, 10)
-    res_health_check_every = 10.0
+    res_health_check_every = 120.0
 
     def __init__(self):
         super(ResourceManager, self).__init__()
