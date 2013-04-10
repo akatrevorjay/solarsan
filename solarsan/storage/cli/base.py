@@ -1,17 +1,17 @@
 
-from solarsan.exceptions import SolarSanError, ZfsError
+from solarsan.exceptions import ZfsError
 from solarsan.storage.utils import clean_name
-from solarsan.storage.drbd import DrbdResource
 from django.template.defaultfilters import capfirst
 import os
-import sh
 
 from solarsan.cli.backend import AutomagicNode
-from solarsan.target.cli import TargetsNode
-from .pool import Pool
+from .drbd import ResourceNode
+
+from ..drbd import DrbdResource
+from ..pool import Pool
 #from .filesystem import Filesystem
-from .volume import Volume
-from .snapshot import Snapshot
+from ..volume import Volume
+from ..snapshot import Snapshot
 
 
 class StorageNode(AutomagicNode):
@@ -133,18 +133,6 @@ class StorageNode(AutomagicNode):
         return None
 
 
-class PoolsNode(AutomagicNode):
-    def ui_children_factory_pool_list(self):
-        return [p for p in Pool.list(ret=dict, ret_obj=False)]
-
-    def ui_children_factory_pool(self, name):
-        return PoolNode(name)
-
-    def ui_command_create_pool(self, name):
-        # TODO Create Pool Wizard
-        raise NotImplemented
-
-
 class DatasetNode(StorageNode):
     def __init__(self, dataset):
         #self.obj = Pool(name=pool)
@@ -157,6 +145,18 @@ class DatasetNode(StorageNode):
         # TODO Check disk usage percentage, generic self.obj.errors/warnings
         # interface perhaps?
         return (capfirst(self.obj.type), True)
+
+
+class PoolsNode(AutomagicNode):
+    def ui_children_factory_pool_list(self):
+        return [p for p in Pool.list(ret=dict, ret_obj=False)]
+
+    def ui_children_factory_pool(self, name):
+        return PoolNode(name)
+
+    def ui_command_create_pool(self, name):
+        # TODO Create Pool Wizard
+        raise NotImplemented
 
 
 class VolumeNode(DatasetNode):
@@ -309,61 +309,3 @@ class PoolNode(StorageNode):
     ## TODO Attribute
     #def ui_command_is_clustered(self):
     #    return self.obj.is_clustered
-
-
-class ResourcesNode(AutomagicNode):
-    def ui_children_factory_resource_list(self):
-        return [res.name for res in DrbdResource.objects.all()]
-
-    def ui_children_factory_resource(self, name):
-        return ResourceNode(name)
-
-    def ui_command_create(self, name=None):
-        # TODO Create Floating IP wizard
-        raise NotImplemented
-
-
-class ResourceNode(AutomagicNode):
-    def __init__(self, name, display_name=None):
-        if display_name:
-            self.display_name = display_name
-        self.obj = DrbdResource.objects.get(name=name)
-        super(ResourceNode, self).__init__()
-
-    def summary(self):
-        return ('%s %s %s' % (self.obj.connection_state,
-                              self.obj.role,
-                              self.obj.disk_state,
-                              ), True)
-
-
-class Storage(AutomagicNode):
-    def ui_child_pools(self):
-        return PoolsNode()
-
-    #def ui_child_resources(self):
-    #    return ResourcesNode()
-
-    def ui_child_targets(self):
-        return TargetsNode()
-
-    def ui_command_create_pool(self, name):
-        '''
-        create - Creates a storage Pool
-        '''
-        raise NotImplemented
-
-    def ui_command_lsscsi(self):
-        '''
-        lsscsi - list SCSI devices (or hosts) and their attributes
-        '''
-        return sh.lsscsi()
-
-    def ui_command_df(self):
-        '''
-        df - report file system disk space usage
-        '''
-        return sh.df('-h')
-
-    def ui_command_lsblk(self):
-        return sh.lsblk()
