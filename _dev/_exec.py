@@ -4,8 +4,8 @@ from solarsan.pretty import pp
 
 import solarsan.mongo
 
-from solarsan import conf
-from solarsan.core import logger
+from solarsan import conf, logging
+logger = logging.getLogger(__name__)
 
 from solarsan.models import Config
 
