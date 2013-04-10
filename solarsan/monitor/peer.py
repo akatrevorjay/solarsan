@@ -109,7 +109,7 @@ class PeerMonitor(Component):
         if peer is None:
             try:
                 peer = self.get_peer()
-            except DrbdResource.DoesNotExist:
+            except Peer.DoesNotExist:
                 logger.error('Peer with uuid=%s does not exist anymore', self.uuid)
                 self.unregister()
             self._peer = weakref.ref(peer)
@@ -181,7 +181,7 @@ class PeerMonitor(Component):
         peer = self.peer
         peer.is_offline = True
         peer.save()
-        self._offline_timer = Timer(60.0, PeerStillOffline(peer), persist=True).register(self)
+        self._offline_timer = Timer(60.0, self.get_event(PeerStillOffline()), persist=True).register(self)
         self.fire_this(PeerFailover())
 
     # nagnagnagnagnagnag
