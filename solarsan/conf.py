@@ -115,6 +115,11 @@ LOGGING = {
             'formatter': 'syslog',
             'address': '/dev/log',
         },
+        #'email': {
+        #    'level': 'ERROR',
+        #    'class': 'logging.handlers.SMTPHandler',
+        #    'formatter': 'standard',
+        #},
     },
     'loggers': {
         'django.db': {
