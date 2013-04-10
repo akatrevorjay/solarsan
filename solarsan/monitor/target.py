@@ -15,14 +15,33 @@ Target Manager
 """
 
 
+class TargetsCheck(Event):
+    """Check for new Targets"""
+
+
 class TargetManager(Component):
+    check_every = 300.0
 
     def __init__(self):
         super(TargetManager, self).__init__()
         self.monitors = {}
 
+        self.targets_check()
+
+        self._check_timer = Timer(self.check_every,
+                                  TargetsCheck(),
+                                  persist=True,
+                                  ).register(self)
+
+    def targets_check(self):
+        uuids = []
         for tgt in iSCSITarget.objects.all():
             self.add_target(tgt)
+            uuids.append(tgt.uuid)
+        for uuid in self.monitors.keys():
+            if uuid not in uuids:
+                self.monitors[uuid].unregister()
+                self.monitors.pop(uuid)
 
     def add_target(self, tgt):
         if tgt.uuid in self.monitors:
@@ -212,7 +231,6 @@ class TargetMonitor(Component):
     def target_started(self, uuid):
         if uuid != self.uuid:
             return
-        target = self.target
 
     def target_stop(self, uuid):
         if uuid != self.uuid:

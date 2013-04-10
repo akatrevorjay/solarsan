@@ -12,25 +12,45 @@ Resource Manager
 """
 
 
+class ResourcesCheck(Event):
+    """Check for new Resources"""
+
+
 class ResourceHealthCheck(Event):
     """Check Resource Health"""
     #complete = True
 
 
 class ResourceManager(Component):
-    #res_health_check_every = 10.0 + random.randrange(2, 10)
-    res_health_check_every = 120.0
+    #health_check_every = 10.0 + random.randrange(2, 10)
+    health_check_every = 120.0
+    check_every = 300.0
 
     def __init__(self):
         super(ResourceManager, self).__init__()
         self.monitors = {}
 
-        self.do_all_resources()
-        self._health_check_timer = Timer(self.res_health_check_every, ResourceHealthCheck(), persist=True).register(self)
+        self.resources_check()
 
-    def do_all_resources(self):
+        self._health_check_timer = Timer(self.health_check_every,
+                                         ResourceHealthCheck(),
+                                         persist=True,
+                                         ).register(self)
+
+        self._check_timer = Timer(self.check_every,
+                                  ResourcesCheck(),
+                                  persist=True,
+                                  ).register(self)
+
+    def resources_check(self):
+        uuids = []
         for res in DrbdResource.objects.all():
             self.add_res(res)
+            uuids.append(res.uuid)
+        for uuid in self.monitors.keys():
+            if uuid not in uuids:
+                self.monitors[uuid].unregister()
+                self.monitors.pop(uuid)
 
     def add_res(self, res):
         if res.uuid in self.monitors:

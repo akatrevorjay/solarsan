@@ -1,7 +1,7 @@
 
 from solarsan import logging
 logger = logging.getLogger(__name__)
-from circuits import Component, Event
+from circuits import Component, Event, Timer
 from solarsan.ha.models import FloatingIP
 import weakref
 from .target import get_target
@@ -12,13 +12,33 @@ Failover IP Manager
 """
 
 
+class FloatingIpsCheck(Event):
+    """Check for new FloatingIPs"""
+
+
 class FloatingIPManager(Component):
+    check_every = 300.0
+
     def __init__(self):
         super(FloatingIPManager, self).__init__()
         self.monitors = {}
 
+        self.floating_ips_check()
+
+        self._check_timer = Timer(self.check_every,
+                                  FloatingIpsCheck(),
+                                  persist=True,
+                                  ).register(self)
+
+    def floating_ips_check(self):
+        uuids = []
         for fip in FloatingIP.objects.all():
             self.add_floating_ip(fip)
+            uuids.append(fip.uuid)
+        for uuid in self.monitors.keys():
+            if uuid not in uuids:
+                self.monitors[uuid].unregister()
+                self.monitors.pop(uuid)
 
     def add_floating_ip(self, fip):
         if fip.uuid in self.monitors:

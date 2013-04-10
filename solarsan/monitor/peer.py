@@ -27,19 +27,38 @@ class PeerPoolHealthCheck(Event):
     """Checks Pool Health"""
 
 
+class PeersCheck(Event):
+    """Checks for new Peers"""
+
+
 class PeerManager(Component):
     heartbeat_every = 5.0
     pool_health_every = 300.0
+    check_every = 300.0
 
     def __init__(self):
         super(PeerManager, self).__init__()
         self.monitors = {}
 
-        for peer in Peer.objects.all():
-            self.add_peer(peer)
+        self.peers_check()
 
         Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
         Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
+
+        self._check_timer = Timer(self.check_every,
+                                  PeersCheck(),
+                                  persist=True,
+                                  ).register(self)
+
+    def peers_check(self):
+        uuids = []
+        for peer in Peer.objects.all():
+            uuids.append(peer.uuid)
+            self.add_peer(peer)
+        for uuid in self.monitors.keys():
+            if uuid not in uuids:
+                self.monitors[uuid].unregister()
+                self.monitors.pop(uuid)
 
     def peer_discovered(self, uuid, created=None):
         peer = get_peer(uuid)
