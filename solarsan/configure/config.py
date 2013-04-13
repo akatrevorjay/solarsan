@@ -12,7 +12,7 @@ import shutil
 def write_network_interfaces_config(confirm=False):
     """Write out network configuration"""
     context = dict(
-        ifaces=[nic.config for nic in Nic.list().values()],
+        ifaces=[nic.config for nic in Nic.list().values() if nic.name != 'lo' and ':' not in nic.name],
         #ifaces=NicConfig.objects.filter(is_enabled=True),
         #netconf=get_network_config(),
         floating_ips=FloatingIP.objects.all(),
