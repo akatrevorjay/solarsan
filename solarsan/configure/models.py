@@ -150,7 +150,7 @@ class AugeasWrap(object):
         raise NotImplementedError
 
 
-class DebianInterfaceConfig(AugeasWrap):
+class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
     _file = '/etc/network/interfaces'
     _attrs = ['family', 'method', 'address', 'netmask', 'gateway', 'mtu']
     _map = {'dns-nameservers': 'nameservers',
@@ -180,13 +180,26 @@ class DebianInterfaceConfig(AugeasWrap):
     def ipaddr(self):
         return self.address
 
-    def __init__(self, name_or_nic):
+    def __init__(self, name_or_nic, replace=False):
         if isinstance(name_or_nic, Nic):
             self._nic = name_or_nic
         else:
             self._nic = Nic(name_or_nic)
         self.name = self._nic.name
+
         super(DebianInterfaceConfig, self).__init__()
+
+        if replace and self.exists():
+            logger.warning('Replacing existing interface config %s due to replace=%s', self, replace)
+            self.remove(self.match())
+            self.load()
+
+        if self.auto is None:
+            self.auto = False
+        if self.family is None:
+            self.family = 'inet'
+        if self.method is None:
+            self.method = 'manual'
 
     def exists_auto(self):
         return bool(self.get(self._match_auto))
@@ -208,7 +221,7 @@ class DebianInterfaceConfig(AugeasWrap):
 
     def save(self):
         if not self.exists():
-            self.set(self.name, '$ifaces/iface[last()+1]')
+            self.set(str(self.name), '$ifaces/iface[last()+1]')
 
         # TODO Validate data, can re-use forms tbh
         #self._node = self.match()
@@ -218,7 +231,7 @@ class DebianInterfaceConfig(AugeasWrap):
             if val in [None, '']:
                 self.remove('/%s' % k)
             else:
-                self.set(str(val), '/%s' % k)
+                self.set(str(val), '$ifaces/iface[last()]/%s' % k)
 
         if not self.auto:
             self.remove('$ifaces/auto[* = "%s"]' % self.name)

@@ -1,8 +1,10 @@
 
-
+from solarsan import logging
+logger = logging.getLogger(__name__)
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from solarsan.cluster.models import Peer
+from solarsan.configure.models import DebianInterfaceConfig
 import sh
 from netifaces import interfaces
 from solarsan.utils.pings import ping_once
@@ -57,3 +59,25 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         if not self.is_active:
             return
         sh.ifdown(self.iface_name)
+
+    @classmethod
+    def post_save(cls, sender, document, **kwargs):
+        logger.debug('Post save: %s', document)
+        logger.info('Creating interface config: %s', document)
+        debif = DebianInterfaceConfig(document.iface_name, replace='created' in kwargs)
+        debif.method = 'static'
+        debif.address = document.ip
+        debif.netmask = document.netmask
+        debif.save()
+
+    @classmethod
+    def pre_delete(cls, sender, document, **kwargs):
+        logger.debug('Pre delete: %s', document)
+        logger.info('Deleting interface config: %s', document)
+        debif = DebianInterfaceConfig(document.iface_name)
+        debif.remove()
+        debif.save()
+
+
+m.signals.post_save.connect(FloatingIP.post_save, sender=FloatingIP)
+m.signals.pre_delete.connect(FloatingIP.pre_delete, sender=FloatingIP)

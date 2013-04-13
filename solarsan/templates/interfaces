@@ -14,13 +14,13 @@ iface lo inet loopback
 
 {%- for iface in ifaces %}
 
-{% if not iface.proto == 'none' %}
+{% if not iface.method == 'none' %}
 ##
 ## {{ iface.name }} / {{ iface.type }}
 ##
 auto {{ iface.name }}
-iface {{ iface.name }} inet {{ iface.proto }}
-    {%- if not iface.proto == 'dhcp' %}
+iface {{ iface.name }} inet {{ iface.method }}
+    {%- if not iface.method == 'dhcp' %}
 
     address {{ iface.ipaddr }}
     netmask {{ iface.netmask }}
@@ -41,7 +41,7 @@ iface {{ iface.name }} inet {{ iface.proto }}
     {%- endif %}
 {%- else %}
 ##
-## {{ iface.name }} / {{ iface.type }} / disabled(proto=none)
+## {{ iface.name }} / {{ iface.type }} / disabled(method=none)
 ##
 {%- endif %}
 
