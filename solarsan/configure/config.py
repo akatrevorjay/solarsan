@@ -8,7 +8,10 @@ from solarsan.ha.models import FloatingIP
 import os
 import shutil
 
-
+##
+## THIS IS NO LONGER NEEDED
+## deprecated.
+##
 def write_network_interfaces_config(confirm=False):
     """Write out network configuration"""
     context = dict(
