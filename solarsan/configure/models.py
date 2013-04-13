@@ -100,10 +100,11 @@ class AugeasWrap(object):
 
     def __init__(self):
         self._aug = Augeas()
-        self.load()
 
     def exists(self):
-        return bool(self._aug.get(self._match))
+        #return bool(self._aug.get(self._match))
+        return bool(self.get())
+        #return bool(self.match())
 
     def _abspath(self, path):
         if not path or not (path.startswith('/augeas') or path.startswith('/files') or path.startswith('$')):
@@ -111,23 +112,23 @@ class AugeasWrap(object):
         return path or ''
 
     def get(self, path=None):
-        #logger.debug('get path=%s', self._abspath(path))
+        logger.debug('get path=%s', self._abspath(path))
         return self._aug.get(self._abspath(path))
 
     def set(self, value, path=None):
-        #logger.debug('set path=%s value=%s', self._abspath(path), value)
+        logger.debug('set path=%s value=%s', self._abspath(path), value)
         return self._aug.set(self._abspath(path), value)
 
     def match(self, path=None):
-        #logger.debug('match path=%s', self._abspath(path))
+        logger.debug('match path=%s', self._abspath(path))
         return self._aug.match(self._abspath(path))
 
     def remove(self, path=None):
-        #logger.debug('remove path=%s', self._abspath(path))
+        logger.debug('remove path=%s', self._abspath(path))
         return self._aug.remove(self._abspath(path))
 
     def insert(self, value, path=None, before=True):
-        #logger.debug('insert path=%s value=%s', self._abspath(path), value)
+        logger.debug('insert path=%s value=%s', self._abspath(path), value)
         return self._aug.insert(self._abspath(path), value, before=before)
 
     def _print(self, path=None):
@@ -143,63 +144,201 @@ class AugeasWrap(object):
     def _all_attrs(self):
         return self._attrs + self._map.keys()
 
-    def load(self):
-        raise NotImplementedError
 
-    def save(self):
-        raise NotImplementedError
+'''
+There is a bug with this that I'm asking about on IRC.
 
+Took me forever to figure out, but it cannot write an iface alias to interfaces.
+It can however, read and mostly edit it.
+
+
+* I manually put it in the file before parsing:
+
+    In [1]: from configure.models import Nic, DebianInterfaceConfig
+
+    In [2]: b = DebianInterfaceConfig('eth1:ha0')
+
+    In [3]: b.address
+    2013-04-13 15:43:03,309 DEBUG configure.models@get:115 get path=$ifaces/iface[. = "eth1:ha0"]/address
+    Out[3]: u'10.90.90.50'
+
+    In [4]: b.save()
+
+    In [5]:
+
+    In [5]:
+
+
+* Failure:
+
+In [1]: from configure.models import Nic, DebianInterfaceConfig
+
+In [2]: b = DebianInterfaceConfig('eth1:ha0')
+b
+In [3]: b.quick_setup(address='10.90.90.50')
+2013-04-13 15:45:02,730 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/family value=inet
+2013-04-13 15:45:02,731 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/method value=static
+2013-04-13 15:45:02,731 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/netmask value=255.255.255.0
+2013-04-13 15:45:02,731 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/address value=10.90.90.50
+
+In [4]: b.save()
+---------------------------------------------------------------------------
+IOError                                   Traceback (most recent call last)
+<ipython-input-4-480966f9e668> in <module>()
+----> 1 b.save()
+
+/opt/solarsan/solarsan/configure/models.pyc in save(self)
+    278
+    279     def save(self):
+--> 280         return self._aug.save()
+    281
+    282     @property
+
+/opt/solarsan/_dev_lib/augeas.pyc in save(self)
+    486         ret = Augeas._libaugeas.aug_save(self.__handle)
+    487         if ret != 0:
+--> 488             raise IOError("Unable to save to file!")
+    489
+    490     def load(self):
+
+IOError: Unable to save to file!
+
+In [5]: b._print('/augeas//error')
+2013-04-13 15:45:09,846 DEBUG configure.models@get:115 get path=/augeas//error
+2013-04-13 15:45:09,853 INFO configure.models@_print:137 [/augeas//error] = 'put_failed'
+2013-04-13 15:45:09,853 DEBUG configure.models@match:123 match path=/augeas//error//*
+2013-04-13 15:45:09,857 INFO configure.models@_print:140 [/augeas/files/etc/network/interfaces/error/path] = '/files/etc/network/interfaces'
+2013-04-13 15:45:09,858 INFO configure.models@_print:140 [/augeas/files/etc/network/interfaces/error/lens] = '/usr/local/share/augeas/lenses/dist/interfaces.aug:101.13-.63:'
+2013-04-13 15:45:09,858 INFO configure.models@_print:140 [/augeas/files/etc/network/interfaces/error/message] = 'Failed to match
+    ({ /#comment/ = /[^\001-\004\t\n\r ][^\001-\004\n]*[^\001-\004\t\n\r ]|[^\001-\004\t\n\r ]/ } | { })*({ /iface/ = /[^\001-\004\t\n \\]+/ } | { /mapping/ = /[^\001-\004\t\n \\]+/ } | ({ /auto/ } | { /allow-aut((o[a-z-]|[a-np-z-])[a-z-]*|)|allow-au([a-su-z-][a-z-]*|)|(allow-a[a-tv-z-]|allow-[b-z-][a-z-])[a-z-]*|allow-a|allow-[b-z-]/ })({ /#comment/ = /[^\001-\004\t\n\r ][^\001-\004\n]*[^\001-\004\t\n\r ]|[^\001-\004\t\n\r ]/ } | { })*)*
+  with tree
+    {  } { "#comment" = "The loopback network iface" } { "auto" } { "iface" = "lo" } { "auto" } { "iface" = "eth1" } { "auto" } { "iface" = "eth0" } { "iface" } { "iface" } { "iface" } { "iface" }'
+
+In [6]:
+
+'''
 
 class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
     _file = '/etc/network/interfaces'
     _attrs = ['family', 'method', 'address', 'netmask', 'gateway', 'mtu']
     _map = {'dns-nameservers': 'nameservers',
             'dns-search': 'search'}
+    _match = None
+    _match_auto = None
 
     name = None
-    #auto = False
-    auto = None
-    family = None
-    #family = 'inet'
-    # manual (disabled), static, dhcp
-    #method = 'dhcp'
-    method = None
-    address = None
-    netmask = None
-    gateway = None
-    nameservers = None
-    search = None
-    #mtu = 1500
-    mtu = None
+
+    def quick_setup(self, family='inet', method='static', netmask='255.255.255.0', **kwargs):
+        if family:
+            self.family = family
+        if method:
+            self.method = method
+        if method in ['static'] and netmask:
+            self.netmask = netmask
+        if kwargs:
+            for k, v in kwargs.iteritems():
+                setattr(self, k, v)
 
     @property
-    def proto(self):
-        return self.method
+    def auto(self):
+        return bool(self.get('$ifaces/auto/*[. = "%s"]' % str(self.name)))
+
+    @auto.setter
+    def auto(self, value):
+        if value is True and not self.auto:
+            self.set(str(self.name), '$ifaces/auto[last()+1]/1')
+        elif value is False and self.auto:
+            self.remove('$ifaces/auto/*[. = "%s"]' % str(self.name))
 
     @property
-    def ipaddr(self):
-        return self.address
+    def family(self):
+        return self.get('%s/family' % self._match)
+
+    @family.setter
+    def family(self, value):
+        return self.set(value, '%s/family' % self._match)
+
+    @property
+    def method(self):
+        return self.get('%s/method' % self._match)
+
+    @method.setter
+    def method(self, value):
+        return self.set(value, '%s/method' % self._match)
+
+    @property
+    def address(self):
+        return self.get('%s/address' % self._match)
+
+    @address.setter
+    def address(self, value):
+        return self.set(value, '%s/address' % self._match)
+
+    @property
+    def netmask(self):
+        return self.get('%s/netmask' % self._match)
+
+    @netmask.setter
+    def netmask(self, value):
+        return self.set(value, '%s/netmask' % self._match)
+
+    @property
+    def gateway(self):
+        return self.get('%s/gateway' % self._match)
+
+    @gateway.setter
+    def gateway(self, value):
+        return self.set(value, '%s/gateway' % self._match)
+
+    @property
+    def nameservers(self):
+        return self.get('%s/nameservers' % self._match)
+
+    @nameservers.setter
+    def nameservers(self, value):
+        return self.set(value, '%s/nameservers' % self._match)
+
+    @property
+    def search(self):
+        return self.get('%s/search' % self._match)
+
+    @search.setter
+    def search(self, value):
+        return self.set(value, '%s/search' % self._match)
+
+    @property
+    def mtu(self):
+        return self.get('%s/mtu' % self._match)
+
+    @mtu.setter
+    def mtu(self, value):
+        return self.set(value, '%s/mtu' % self._match)
+
+    proto = method
+    ipaddr = address
 
     def __init__(self, name_or_nic, replace=False):
         if isinstance(name_or_nic, Nic):
-            self._nic = name_or_nic
+            nic = name_or_nic
         else:
-            self._nic = Nic(name_or_nic)
-        self.name = self._nic.name
+            nic = Nic(name_or_nic)
+        self.name = str(nic.name)
 
         super(DebianInterfaceConfig, self).__init__()
+        self.load()
 
-        if replace and self.exists():
-            logger.warning('Replacing existing interface config %s due to replace=%s', self, replace)
-            self.remove(self.match())
-            self.load()
+        if replace:
+            logger.warning('Replace: removed %s', self.remove())
+        #if replace and self.exists():
+        #    logger.warning('Replacing existing interface config %s due to replace=%s', self, replace)
+        #    self.remove()
 
-        if self.auto is None:
-            self.auto = False
-        if self.family is None:
-            self.family = 'inet'
-        if self.method is None:
-            self.method = 'manual'
+        #if self.auto is None:
+        #    self.auto = False
+        #if self.family is None:
+        #    self.family = 'inet'
+        #if self.method is None:
+        #    self.method = 'static'
 
     def exists_auto(self):
         return bool(self.get(self._match_auto))
@@ -207,38 +346,11 @@ class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
     def load(self):
         self._aug.defvar('ifaces', '/files%s' % self._file)
         self._top_node = '$ifaces'
-        self._match = '$ifaces/*[. = "%s"]' % self.name
-        #self._match_auto = '%s/*[label() = "auto"]/*[. = "%s"]' % (self._top_node, self.name)
+        self._match = '$ifaces/iface[. = "%s"]' % self.name
         self._match_auto = '$ifaces/auto/[* = "%s"]' % self.name
-        #self._node = self.match()
-        if self.exists():
-            for k in self._all_attrs():
-                attr = self._map.get(k, k)
-                value = self.get('/%s' % k)
-                if value:
-                    setattr(self, attr, value)
-            self.auto = self.exists_auto()
 
     def save(self):
-        if not self.exists():
-            self.set(str(self.name), '$ifaces/iface[last()+1]')
-
-        # TODO Validate data, can re-use forms tbh
-        #self._node = self.match()
-        for k in self._all_attrs():
-            attr = self._map.get(k, k)
-            val = getattr(self, attr, None)
-            if val in [None, '']:
-                self.remove('/%s' % k)
-            else:
-                self.set(str(val), '$ifaces/iface[last()]/%s' % k)
-
-        if not self.auto:
-            self.remove('$ifaces/auto[* = "%s"]' % self.name)
-        elif not self.exists_auto():
-            self.set(self.name, '$ifaces/auto[last()+1]/1')
-
-        self._aug.save()
+        return self._aug.save()
 
     @property
     def type(self):

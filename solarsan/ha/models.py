@@ -64,10 +64,17 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     def post_save(cls, sender, document, **kwargs):
         logger.debug('Post save: %s', document)
         logger.info('Creating interface config: %s', document)
-        debif = DebianInterfaceConfig(document.iface_name, replace='created' in kwargs)
+
+        #debif = DebianInterfaceConfig(document.iface_name)
+        #debif.remove()
+        #debif._aug.save()
+        #del debif
+
+        debif = DebianInterfaceConfig(document.iface_name, replace=True)
+        debif.family = 'inet'
         debif.method = 'static'
-        debif.address = document.ip
-        debif.netmask = document.netmask
+        debif.address = str(document.ip)
+        debif.netmask = str(document.netmask)
         debif.save()
 
     @classmethod
@@ -75,8 +82,9 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         logger.debug('Pre delete: %s', document)
         logger.info('Deleting interface config: %s', document)
         debif = DebianInterfaceConfig(document.iface_name)
+        # hackery
         debif.remove()
-        debif.save()
+        debif._aug.save()
 
 
 m.signals.post_save.connect(FloatingIP.post_save, sender=FloatingIP)
