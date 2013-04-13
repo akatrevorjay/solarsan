@@ -24,5 +24,5 @@ class LoggedException(FormattedException):
     """
     def __init__(self, *args, **kwargs):
         if args:
-            logging.error(*args)
+            logging.exception(*args)
         super(LoggedException, self).__init__(*args, **kwargs)

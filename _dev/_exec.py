@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from solarsan.models import Config
 
 from solarsan.cluster.models import Peer
-from solarsan.configure.models import Nic, NicConfig
+from solarsan.configure.models import Nic, DebianInterfaceConfig
 
 from solarsan.storage.pool import Pool
 from solarsan.storage.volume import Volume

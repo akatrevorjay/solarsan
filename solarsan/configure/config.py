@@ -3,7 +3,7 @@
 #from solarsan.core import logger
 #from solarsan import conf
 from solarsan.template import quick_template
-from .models import NicConfig, get_network_config
+from .models import Nic  # , get_network_config
 from solarsan.ha.models import FloatingIP
 import os
 import shutil
@@ -12,8 +12,9 @@ import shutil
 def write_network_interfaces_config(confirm=False):
     """Write out network configuration"""
     context = dict(
-        ifaces=NicConfig.objects.filter(is_enabled=True),
-        netconf=get_network_config(),
+        ifaces=[nic.config for nic in Nic.list().values()],
+        #ifaces=NicConfig.objects.filter(is_enabled=True),
+        #netconf=get_network_config(),
         floating_ips=FloatingIP.objects.all(),
     )
     if confirm:
