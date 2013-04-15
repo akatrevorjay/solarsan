@@ -4,88 +4,82 @@ logger = logging.getLogger(__name__)
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from solarsan.cluster.models import Peer
-from solarsan.configure.models import DebianInterfaceConfig
-import sh
-from netifaces import interfaces
-from solarsan.utils.pings import ping_once
+from solarsan.configure.models import Nic, get_configured_ifaces
+#from solarsan.utils.pings import ping_once
 from uuid import uuid4
-from .arp import send_arp
 
 
 class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     name = m.StringField(unique=True)
-    ip = m.StringField()
-    netmask = m.StringField()
-    iface = m.StringField()
     peer = m.ReferenceField(Peer, dbref=False)
     uuid = m.UUIDField(binary=False)
 
     def save(self, *args, **kwargs):
         if not self.uuid:
             self.uuid = uuid4()
+        if getattr(self, 'iface', None) and not self.interfaces:
+            self.interfaces = [self.iface]
+            self.iface = None
         super(FloatingIP, self).save(*args, **kwargs)
 
     @property
-    def iface_name(self):
-        return '%s:%s' % (self.iface, self.name)
+    def interfaces(self):
+        for iface in get_configured_ifaces():
+            if not iface.endswith(':%s' % self.name):
+                continue
+            yield iface
 
-    #def __init__(self, *args, **kwargs):
-    #    super(FloatingIP, self).__init__(*args, **kwargs)
-    #    self.is_active = self.check_status()
+    @property
+    def nics(self):
+        for name in self.interfaces:
+            yield Nic(name)
+
+    def clean_iface_name(self, name):
+        return '%s:%s' % (name.split(':', 1)[0], self.name)
+
+    def add_interface(self, name, address):
+        name = self.clean_iface_name(name)
+        if name in self.interfaces:
+            raise KeyError('%s already has an interface on %s' % (self, name))
+        logger.info('Adding interface %s with address=%s to %s', name, address, self)
+        nic = Nic(name)
+        nic.config.address = address
+        nic.config.save()
+        return True
+
+    def remove_interface(self, name):
+        name = self.clean_iface_name(name)
+        if name not in self.interfaces:
+            raise KeyError('%s does not have an interface on %s' % (self, name))
+        logger.info('Removing interface %s from %s', name, self)
+        nic = Nic(name)
+        nic.config.remove()
+        nic.config.save()
+        return True
 
     @property
     def is_active(self):
-        return self.iface_name in interfaces()
+        for nic in self.nics:
+            if nic.is_ifup():
+                return True
+        return False
 
-    def _ping_ip(self):
-        return ping_once(self.ip)
+    #def _ping_ip(self):
+    #    return ping_once(self.ip)
 
     def is_peer_active(self):
         storage = self.peer.get_service('storage', default=None)
-        if not storage:
-            if self._ping_ip():
-                return True
-            else:
-                return False
+        #if not storage:
+        #    if self._ping_ip():
+        #        return True
+        #    else:
+        #        return False
         return storage.root.floating_ip_is_active(self.name)
 
     def ifup(self):
-        if self.is_active:
-            return
-        sh.ifup(self.iface_name)
-        send_arp(self.iface, self.ip)
+        for nic in self.nics:
+            nic.ifup(send_arp=True)
 
     def ifdown(self):
-        if not self.is_active:
-            return
-        sh.ifdown(self.iface_name)
-
-    @classmethod
-    def post_save(cls, sender, document, **kwargs):
-        logger.debug('Post save: %s', document)
-        logger.info('Creating interface config: %s', document)
-
-        #debif = DebianInterfaceConfig(document.iface_name)
-        #debif.remove()
-        #debif._aug.save()
-        #del debif
-
-        debif = DebianInterfaceConfig(document.iface_name, replace=True)
-        debif.family = 'inet'
-        debif.method = 'static'
-        debif.address = str(document.ip)
-        debif.netmask = str(document.netmask)
-        debif.save()
-
-    @classmethod
-    def pre_delete(cls, sender, document, **kwargs):
-        logger.debug('Pre delete: %s', document)
-        logger.info('Deleting interface config: %s', document)
-        debif = DebianInterfaceConfig(document.iface_name)
-        # hackery
-        debif.remove()
-        debif._aug.save()
-
-
-m.signals.post_save.connect(FloatingIP.post_save, sender=FloatingIP)
-m.signals.pre_delete.connect(FloatingIP.pre_delete, sender=FloatingIP)
+        for nic in self.nics:
+            nic.ifdown()

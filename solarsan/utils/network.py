@@ -50,11 +50,11 @@ def toggle(cidr_or_netmask):
 
 
 def cidr_to_netmask(cidr):
-    return CIDR_LOOKUP[cidr]
+    return CIDR_LOOKUP[int(cidr)]
 
 
 def netmask_to_cidr(netmask):
-    return NETMASK_LOOKUP[netmask]
+    return NETMASK_LOOKUP[str(netmask)]
 
 
 def is_netmask(arg):

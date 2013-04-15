@@ -1,8 +1,7 @@
 
-from solarsan.exceptions import SolarSanError
+#from solarsan.exceptions import SolarSanError
 from solarsan.cli.backend import AutomagicNode
 from solarsan.cluster.cli import PeersNode
-from solarsan.ha.cli import FloatingIpsNode
 
 from .models import Nic
 
@@ -32,9 +31,12 @@ class InterfaceNode(AutomagicNode):
         super(InterfaceNode, self).__init__()
 
         self.define_config_group_param('interface', 'proto', 'string', 'dhcp|static')
-        self.define_config_group_param('interface', 'ipaddr', 'string', 'IP Address')
-        self.define_config_group_param('interface', 'netmask', 'string', 'Network mask')
-        self.define_config_group_param('interface', 'cidr', 'string', 'CIDR mask')
+
+        self.define_config_group_param('interface', 'address', 'string', 'IP Address/Mask')
+        #self.define_config_group_param('interface', 'ip', 'string', 'IP Address')
+        #self.define_config_group_param('interface', 'netmask', 'string', 'Network mask')
+        #self.define_config_group_param('interface', 'cidr', 'string', 'CIDR mask')
+
         self.define_config_group_param('interface', 'gateway', 'string', 'Gateway')
         self.define_config_group_param('interface', 'nameservers', 'string', 'DNS nameservers,; space separated')
         self.define_config_group_param('interface', 'search', 'string', 'DNS search domains; space separated')
@@ -54,15 +56,6 @@ class InterfaceNode(AutomagicNode):
         else:
             return ('Unconfigured', False)
 
-    def configfunc(self, k, v):
-        if not k in self.obj.config._fields.keys():
-            raise KeyError
-        if v is None:
-            return getattr(self.obj.config, k)
-        setattr(self.obj.config, k, v)
-        self.obj.config.save()
-        return v
-
     def ui_getgroup_interface(self, config):
         '''
         This is the backend method for getting configs.
@@ -71,7 +64,7 @@ class InterfaceNode(AutomagicNode):
         @return: The config's value
         @rtype: arbitrary
         '''
-        return self.configfunc(config, None)
+        return getattr(self.obj.config, config)
 
     def ui_setgroup_interface(self, config, value):
         '''
@@ -81,8 +74,17 @@ class InterfaceNode(AutomagicNode):
         @param value: The config's value
         @type value: arbitrary
         '''
-        return self.configfunc(config, value)
+        setattr(self.obj.config, config, value)
 
-    def ui_command_apply(self):
-        self.obj.save()
+    def ui_command_save(self, apply=False):
+        self.obj.config.save(apply=apply)
         return True
+
+    def ui_command_down(self, reset=False):
+        return self.obj.ifdown(reset=reset)
+
+    def ui_command_up(self):
+        return self.obj.ifup()
+
+
+from solarsan.ha.cli import FloatingIpsNode

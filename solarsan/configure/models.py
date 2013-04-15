@@ -7,13 +7,15 @@ from solarsan.utils.network import cidr_to_netmask, netmask_to_cidr, is_cidr, is
 #from solarsan.template import quick_template
 #import mongoengine as m
 from augeas import Augeas
+from solarsan.ha.arp import send_arp as garp
 
 import ipcalc
 #import IPy
 import netifaces
 import pynetlinux
 import os
-import weakref
+#import weakref
+import sh
 
 
 """
@@ -21,8 +23,37 @@ Network
 """
 
 
-def get_interface(name):
+def get_iface(name):
     return pynetlinux.ifconfig.Interface(name)
+
+
+def get_ifup_ifaces():
+    with open('/run/network/ifstate', 'rb') as f:
+        for line in f.readlines():
+            line = line.rstrip('\n')
+            if not line:
+                continue
+            yield line.split('=', 1)[0]
+
+
+def get_configured_ifaces():
+    aug = Augeas(flags=Augeas.NO_MODL_AUTOLOAD)
+    aug.add_transform('interfaces', '/etc/network/interfaces')
+    aug.load()
+    base = '/files/etc/network/interfaces'
+    for m in aug.match('%s/iface' % base):
+        yield aug.get(m)
+    aug.close()
+
+
+def is_iface_ifup(name):
+    match_name = '%s=%s' % (name, name)
+    with open('/run/network/ifstate', 'rb') as f:
+        for line in f.readlines():
+            line = line.rstrip('\n')
+            if line == match_name:
+                return True
+    return False
 
 
 class AugeasWrap(object):
@@ -42,7 +73,7 @@ class AugeasWrap(object):
             self.__aug.load()
         return self.__aug
 
-    _debug = False
+    _debug = True
 
     def exists(self):
         return bool(self.get())
@@ -53,9 +84,10 @@ class AugeasWrap(object):
         return path or ''
 
     def get(self, path=None):
+        ret = self._aug.get(self._abspath(path))
         if self._debug:
-            logger.debug('get path=%s', self._abspath(path))
-        return self._aug.get(self._abspath(path))
+            logger.debug('get path=%s value=%s', self._abspath(path), ret)
+        return ret
 
     def set(self, value, path=None):
         value = str(value)
@@ -163,18 +195,27 @@ class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
 
     @property
     def address(self):
+        if self.ip is None and self.cidr is None:
+            return None
         return '%s/%s' % (self.ipaddr, self.cidr)
 
     @address.setter
     def address(self, value):
-        ipaddr = None
+        if not self.family:
+            self.family = 'inet'
+        ip = None
         mask = None
         if '/' in value:
-            ipaddr, mask = value.split('/', 1)
+            ip, mask = value.split('/', 1)
         else:
-            ipaddr = value
-        if ipaddr:
-            self.ipaddr = ipaddr
+            ip = value
+        if not self.method:
+            if ip or mask:
+                self.method = 'static'
+            else:
+                self.method = 'manual'
+        if ip:
+            self.ip = ip
         if mask:
             if is_netmask(mask):
                 self.netmask = mask
@@ -263,7 +304,7 @@ class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
         super(DebianInterfaceConfig, self).__init__()
         self.load()
 
-        if replace and self.exists():
+        if replace and self._exists:
             logger.warning('Replacing existing interface config %s due to replace=%s', self, replace)
             logger.warning('Removed %s entires', self.remove())
 
@@ -276,20 +317,38 @@ class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
         self._match = '$ifaces/iface[. = "%s"]' % self.name
         self._match_auto = '$ifaces/auto/[* = "%s"]' % self.name
 
-    def save(self):
+        self._exists = self.exists()
+
+        if not self._exists:
+            self.set(self.name, None)
+
+    #def set(self, value, path=None):
+    #    if not self._exists:
+    #        super(DebianInterfaceConfig, self).set(self.name)
+    #    return super(DebianInterfaceConfig, self).set(value, path=path)
+
+    def update(self, **kwargs):
+        if not kwargs:
+            return
+        all_attrs = self._all_attrs()
+        for k, v in kwargs.iteritems():
+            if k in all_attrs:
+                setattr(self, k, v)
+
+    def save(self, apply=False):
         if self.gateway and not is_ip_in_network(self.address, self.gateway):
             raise ValueError('Gateway %s is not valid (not in %s)' % (self.gateway, self.address))
 
-        if self.auto is None:
-            self.auto = False
-        if self.family is None:
-            self.family = 'inet'
-        if self.method is None:
-            self.method = 'static'
+        if apply:
+            self.ifdown()
 
-        if not self.exists():
-            self.set(self.name)
-        return self._aug.save()
+        ret = self._aug.save()
+        self._exists = self.exists()
+
+        if apply and ret:
+            self.ifup()
+
+        return ret
 
     @property
     def type(self):
@@ -300,6 +359,39 @@ class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
         elif self.name.startswith('lo'):
             return 'local'
 
+    def ifdown(self, reset=False):
+        logger.info('Bringing down interface %s', self.name)
+        ret = True
+        try:
+            logger.warning('Error Bringing down interface %s', self.name)
+            sh.ifdown(self.name)
+        except:
+            ret = False
+
+        if reset:
+            logger.warning('Resetting interface %s', self.name)
+            for i in ['0.0.0.0/0', 'down']:
+                try:
+                    sh.ifconfig(self.name, i)
+                except:
+                    pass
+
+        return ret
+
+    def ifup(self, send_arp=True):
+        logger.info('Bringing up interface %s', self.name)
+        try:
+            sh.ifup(self.name)
+            if send_arp:
+                garp(self.name, self.ip)
+            return True
+        except:
+            logger.error('Error Bringing up interface %s', self.name)
+            return False
+
+    def is_ifup(self):
+        return is_iface_ifup(self.name)
+
 
 class Nic(ReprMixIn):
     name = None
@@ -307,18 +399,33 @@ class Nic(ReprMixIn):
     def __init__(self, name):
         self.name = name
         # This has to be a basestring
-        self._obj = get_interface(str(name))
+        self._obj = get_iface(str(name))
+
+    _config = None
 
     @property
     def config(self):
-        config = None
-        if hasattr(self, '_config'):
-            config = self._config()
-        if config is None:
-            #self._config, created = NicConfig.objects.get_or_create(name=self.name)
-            config = DebianInterfaceConfig(self)
-            self._config = weakref.ref(config)
-        return config
+        if not self._config:
+            self._config = DebianInterfaceConfig(self)
+        return self._config
+
+        #config = None
+        #if hasattr(self, '_config'):
+        #    config = self._config()
+        #if config is None:
+        #    #self._config, created = NicConfig.objects.get_or_create(name=self.name)
+        #    config = DebianInterfaceConfig(self)
+        #    self._config = weakref.ref(config)
+        #return config
+
+    def ifdown(self):
+        return self.config.ifdown()
+
+    def ifup(self):
+        return self.config.ifup()
+
+    def is_ifup(self):
+        return self.config.is_ifup()
 
     @property
     def broadcast(self):
