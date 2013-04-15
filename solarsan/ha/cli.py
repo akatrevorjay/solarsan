@@ -53,7 +53,3 @@ class FloatingIpInterfaceNode(InterfaceNode):
     def __init__(self, fip, name):
         self.fip = fip
         super(FloatingIpInterfaceNode, self).__init__(name)
-
-        ## TODO this could be better, should really be a whitelist.
-        #for k in ['gateway', 'nameservers', 'search']:
-        #    self._config_group_params['interface'].pop(k)

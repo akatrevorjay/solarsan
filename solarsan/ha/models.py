@@ -42,9 +42,12 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         if name in self.interfaces:
             raise KeyError('%s already has an interface on %s' % (self, name))
         logger.info('Adding interface %s with address=%s to %s', name, address, self)
+        is_active = self.is_active
         nic = Nic(name)
         nic.config.address = address
         nic.config.save()
+        if is_active:
+            nic.ifup()
         return True
 
     def remove_interface(self, name):
@@ -52,7 +55,10 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         if name not in self.interfaces:
             raise KeyError('%s does not have an interface on %s' % (self, name))
         logger.info('Removing interface %s from %s', name, self)
+        is_active = self.is_active
         nic = Nic(name)
+        if is_active:
+            nic.ifdown()
         nic.config.remove()
         nic.config.save()
         return True
