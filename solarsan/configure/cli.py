@@ -51,8 +51,6 @@ class InterfaceNode(AutomagicNode):
             if txt:
                 txt = txt[:-2]
             return (txt, True)
-        elif self.obj.name == 'lo':
-            return ('lo', True)
         else:
             return ('Unconfigured', False)
 
