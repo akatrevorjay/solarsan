@@ -5,7 +5,6 @@ from solarsan.cluster.cli import PeersNode
 from solarsan.ha.cli import FloatingIpsNode
 
 from .models import Nic
-from .config import write_network_interfaces_config
 
 
 class NetworkingNode(AutomagicNode):
@@ -21,15 +20,10 @@ class NetworkingNode(AutomagicNode):
 
 class NetworkInterfaces(AutomagicNode):
     def ui_children_factory_interface_list(self):
-        # TODO Don't just remove all ifaces with : in it.
         return [iface for iface in Nic.list().keys() if ':' not in iface]
 
     def ui_children_factory_interface(self, name):
         return InterfaceNode(name)
-
-    def ui_command_write_interfaces(self):
-        write_network_interfaces_config(confirm=True)
-        return True
 
 
 class InterfaceNode(AutomagicNode):
@@ -40,17 +34,36 @@ class InterfaceNode(AutomagicNode):
         self.define_config_group_param('interface', 'proto', 'string', 'dhcp|static')
         self.define_config_group_param('interface', 'ipaddr', 'string', 'IP Address')
         self.define_config_group_param('interface', 'netmask', 'string', 'Network mask')
+        self.define_config_group_param('interface', 'cidr', 'string', 'CIDR mask')
+        self.define_config_group_param('interface', 'gateway', 'string', 'Gateway')
+        self.define_config_group_param('interface', 'nameservers', 'string', 'DNS nameservers,; space separated')
+        self.define_config_group_param('interface', 'search', 'string', 'DNS search domains; space separated')
 
     def summary(self):
-        if self.obj.config and self.obj.config.proto:
-            return ('proto=%s' % self.obj.config.proto, True)
+        if self.obj.config:
+            txt = ''
+            for k in ['proto', 'address']:
+                v = getattr(self.obj.config, k, None)
+                if v in [None, 'None', 'None/None']:
+                    continue
+                if v:
+                    txt += '%s=%s; ' % (k, v)
+            if txt:
+                txt = txt[:-2]
+            return (txt, True)
         elif self.obj.name == 'lo':
             return ('lo', True)
         else:
             return ('Unconfigured', False)
 
-    #def list_config(self):
-    #    pass
+    def configfunc(self, k, v):
+        if not k in self.obj.config._fields.keys():
+            raise KeyError
+        if v is None:
+            return getattr(self.obj.config, k)
+        setattr(self.obj.config, k, v)
+        self.obj.config.save()
+        return v
 
     def ui_getgroup_interface(self, config):
         '''
@@ -72,19 +85,6 @@ class InterfaceNode(AutomagicNode):
         '''
         return self.configfunc(config, value)
 
-    def configfunc(self, k, v):
-        if not k in self.obj.config._fields.keys():
-            raise KeyError
-        if v is None:
-            return getattr(self.obj.config, k)
-        setattr(self.obj.config, k, v)
-        self.obj.config.save()
-        return v
-
-    def ui_command_apply(self, confirm=False):
-        if not confirm:
-            raise SolarSanError("You must specify confirm=True")
-
-        # TODO Write interfaces, then ifdown interface, then ifup it.
-
-        raise NotImplemented
+    def ui_command_apply(self):
+        self.obj.save()
+        return True
