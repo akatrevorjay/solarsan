@@ -145,6 +145,10 @@ class Dataset(Base):
     def _init(self, name, **kwargs):
         self.properties = DatasetProperties(self)
 
+    def get_pool(self):
+        from .pool import Pool
+        return Pool(self.pool_name)
+
     #@property
     #def pool(self):
     #    """ Returns the matching Pool for this Dataset """

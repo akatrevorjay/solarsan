@@ -12,26 +12,102 @@ from ..pool import Pool
 #from .filesystem import Filesystem
 from ..volume import Volume
 from ..snapshot import Snapshot
-from ..device import Device, Devices
 
 
-class StorageNode(AutomagicNode):
-    """
-    Getters
-    """
+class DatasetPropsMixIn:
+    def _get_dataset(self):
+        if self.obj.type == 'pool':
+            return self.obj.get_filesystem()
+        else:
+            return self.obj
 
+    def __init__(self):
+        self.define_config_group_param('dataset', 'compression', 'string', 'Enable compression')
+        self.define_config_group_param('dataset', 'dedup', 'string', 'Enable dedupe')
+        self.define_config_group_param('dataset', 'atime', 'string', 'Keep file access times up to date')
+        self.define_config_group_param('dataset', 'quota', 'string', 'Quota for dataset')
+
+        self.define_config_group_param('dataset', 'compressratio', 'string', 'Compresstion ratio', writable=False)
+        self.define_config_group_param('dataset', 'used', 'string', 'Used space', writable=False)
+        self.define_config_group_param('dataset', 'usedbysnapshots', 'string', 'Used space by snapshots', writable=False)
+        self.define_config_group_param('dataset', 'usedbydataset', 'string', 'Used space by dataset', writable=False)
+        self.define_config_group_param('dataset', 'usedbychildren', 'string', 'Used space by children', writable=False)
+        self.define_config_group_param('dataset', 'usedbyrefreservation', 'string', 'Used space by referenced reservation', writable=False)
+        self.define_config_group_param('dataset', 'referenced', 'string', 'Referenced space', writable=False)
+        self.define_config_group_param('dataset', 'available', 'string', 'Available space', writable=False)
+
+        self.define_config_group_param('dataset', 'creation', 'string', 'Creation date', writable=False)
+        self.define_config_group_param('dataset', 'mounted', 'bool', 'Currently mounted', writable=False)
+
+    def ui_getgroup_dataset(self, key):
+        '''
+        This is the backend method for getting keys.
+        @param key: The key to get the value of.
+        @type key: str
+        @return: The key's value
+        @rtype: arbitrary
+        '''
+        obj = self._get_dataset()
+        return str(obj.properties.get(key))
+
+    def ui_setgroup_dataset(self, key, value):
+        '''
+        This is the backend method for setting keys.
+        @param key: The key to set the value of.
+        @type key: str
+        @param value: The key's value
+        @type value: arbitrary
+        '''
+        obj = self._get_dataset()
+        obj.properties[key] = value
+
+
+class PoolPropsMixIn:
     def _get_pool(self):
         if self.obj.type == 'pool':
             return self.obj
         else:
-            return self.obj.pool
+            return self.obj.get_pool()
 
-    def _get_filesystem(self):
-        if self.obj.type == 'pool':
-            return self.obj.get_filesystem()
-        elif self.obj.type == 'filesystem':
-            return self.obj
+    def __init__(self):
+        self.define_config_group_param('pool', 'comment', 'string', 'Comment')
+        self.define_config_group_param('pool', 'dedupditto', 'string', 'Number of copies of each deduplicated block to save')
+        self.define_config_group_param('pool', 'autoexpand', 'string', 'Automatically expand pool if drives increase in size')
+        self.define_config_group_param('pool', 'autoreplace', 'string', 'Automatically replace failed drives with any specified hot spare(s)')
 
+        self.define_config_group_param('pool', 'name', 'string', 'Pool Name', writable=False)
+        self.define_config_group_param('pool', 'health', 'string', 'Health', writable=False)
+        self.define_config_group_param('pool', 'dedupratio', 'string', 'Dedupe ratio', writable=False)
+
+        self.define_config_group_param('pool', 'capacity', 'string', 'Percentage filled', writable=False)
+        self.define_config_group_param('pool', 'allocated', 'string', 'Allocated space', writable=False)
+        self.define_config_group_param('pool', 'free', 'string', 'Free space', writable=False)
+        self.define_config_group_param('pool', 'size', 'string', 'Total space', writable=False)
+
+    def ui_getgroup_pool(self, key):
+        '''
+        This is the backend method for getting keys.
+        @param key: The key to get the value of.
+        @type key: str
+        @return: The key's value
+        @rtype: arbitrary
+        '''
+        obj = self._get_pool()
+        return obj.properties.get(key)
+
+    def ui_setgroup_pool(self, key, value):
+        '''
+        This is the backend method for setting keys.
+        @param key: The key to set the value of.
+        @type key: str
+        @param value: The key's value
+        @type value: arbitrary
+        '''
+        obj = self._get_pool()
+        return obj.properties.set(key, value)
+
+
+class StorageNode(AutomagicNode):
     """
     Child Creationism (Teach it to 'em young)
     """
@@ -71,81 +147,21 @@ class StorageNode(AutomagicNode):
         obj.rename(new)
         return True
 
-    """
-    Properties
-    """
 
-    POOL_PROPERTIES = []
-
-    def ui_getgroup_property(self, property):
-        '''
-        This is the backend method for getting propertys.
-        @param property: The property to get the value of.
-        @type property: str
-        @return: The property's value
-        @rtype: arbitrary
-        '''
-        if property in self.POOL_PROPERTIES:
-            obj = self._get_pool()
-        else:
-            obj = self._get_filesystem()
-        return str(obj.properties[property])
-
-    def ui_setgroup_property(self, property, value):
-        '''
-        This is the backend method for setting propertys.
-        @param property: The property to set the value of.
-        @type property: str
-        @param value: The property's value
-        @type value: arbitrary
-        '''
-        if property in self.POOL_PROPERTIES:
-            obj = self._get_pool()
-        else:
-            obj = self._get_filesystem()
-        obj.properties[property] = value
-
-    POOL_STATISTICS = ['dedupratio']
-
-    def ui_getgroup_statistic(self, statistic):
-        '''
-        This is the backend method for getting statistics.
-        @param statistic: The statistic to get the value of.
-        @type statistic: str
-        @return: The statistic's value
-        @rtype: arbitrary
-        '''
-        if statistic in self.POOL_STATISTICS:
-            obj = self._get_pool()
-        else:
-            obj = self._get_filesystem()
-
-        return str(obj.properties[statistic])
-
-    def ui_setgroup_statistic(self, statistic, value):
-        '''
-        This is the backend method for setting statistics.
-        @param statistic: The statistic to set the value of.
-        @type statistic: str
-        @param value: The statistic's value
-        @type value: arbitrary
-        '''
-        #self.obj.properties[statistic] = value
-        return None
-
-
-class DatasetNode(StorageNode):
+class DatasetNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
     def __init__(self, dataset):
         #self.obj = Pool(name=pool)
         super(DatasetNode, self).__init__()
-
-    #def ui_type_blah(self):
-    #    pass
+        PoolPropsMixIn.__init__(self)
+        DatasetPropsMixIn.__init__(self)
 
     def summary(self):
         # TODO Check disk usage percentage, generic self.obj.errors/warnings
         # interface perhaps?
         return (capfirst(self.obj.type), True)
+
+
+from ..device import Device, Devices
 
 
 class RwDevices(Devices):
@@ -192,112 +208,27 @@ class VolumeNode(DatasetNode):
             return ResourceNode(name)
 
     def summary(self):
-        return ('%s %s/%s' % (capfirst(self.obj.type),
-                              str(self.obj.properties['used']),
-                              str(self.obj.properties['volsize']),
-                              ), True)
+        return ('%s %s/%s' % (
+            capfirst(self.obj.type),
+            str(self.obj.properties['used']),
+            str(self.obj.properties['volsize']),
+        ), True)
 
 
-class PoolNode(StorageNode):
+class PoolNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
     def summary(self):
-        return ('%s %s/%s' % (capfirst(self.obj.type),
-                              str(self.obj.properties['alloc']),
-                              str(self.obj.properties['size']),
-                              ), self.obj.is_healthy())
+        return ('%s usage=%s/%s; health=%s' % (
+            capfirst(self.obj.type),
+            str(self.obj.properties['alloc']),
+            str(self.obj.properties['size']),
+            str(self.obj.properties['health']),
+        ), self.obj.is_healthy())
 
     def __init__(self, pool):
         self.obj = Pool(name=pool)
-        super(PoolNode, self).__init__()
-
-        self.define_config_group_param('pool', 'name', 'string', 'Pool Name', writable=False)
-        self.define_config_group_param('pool', 'comment', 'string', 'Comment')
-        self.define_config_group_param('pool', 'dedupditto', 'string', 'Number of copies of each deduplicated block to save')
-        self.define_config_group_param('pool', 'dedupratio', 'string', 'Dedupe ratio', writable=False)
-        self.define_config_group_param('pool', 'allocated', 'string', 'Allocated space', writable=False)
-        self.define_config_group_param('pool', 'free', 'string', 'Free space', writable=False)
-        self.define_config_group_param('pool', 'size', 'string', 'Total space', writable=False)
-        self.define_config_group_param('pool', 'capacity', 'string', 'Percentage filled', writable=False)
-        self.define_config_group_param('pool', 'health', 'string', 'Health', writable=False)
-        self.define_config_group_param('pool', 'autoexpand', 'string', 'Automatically expand pool if drives increase in size')
-        self.define_config_group_param('pool', 'autoreplace', 'string', 'Automatically replace failed drives with any specified hot spare(s)')
-
-        self.define_config_group_param('dataset', 'compression', 'string', 'Enable compression')
-        self.define_config_group_param('dataset', 'dedup', 'string', 'Enable dedupe')
-        self.define_config_group_param('dataset', 'atime', 'string', 'Keep file access times up to date')
-        self.define_config_group_param('dataset', 'quota', 'string', 'Quota for dataset')
-
-        self.define_config_group_param('dataset', 'compressratio', 'string', 'Compresstion ratio', writable=False)
-        self.define_config_group_param('dataset', 'used', 'string', 'Used space', writable=False)
-        self.define_config_group_param('dataset', 'usedbysnapshots', 'string', 'Used space by snapshots', writable=False)
-        self.define_config_group_param('dataset', 'usedbydataset', 'string', 'Used space by dataset', writable=False)
-        self.define_config_group_param('dataset', 'usedbychildren', 'string', 'Used space by children', writable=False)
-        self.define_config_group_param('dataset', 'usedbyrefreservation', 'string', 'Used space by referenced reservation', writable=False)
-        self.define_config_group_param('dataset', 'referenced', 'string', 'Referenced space', writable=False)
-        self.define_config_group_param('dataset', 'available', 'string', 'Available space', writable=False)
-        self.define_config_group_param('dataset', 'creation', 'string', 'Creation date', writable=False)
-        self.define_config_group_param('dataset', 'mounted', 'bool', 'Currently mounted', writable=False)
-
-    def _get_pool(self):
-        if self.obj.type == 'pool':
-            return self.obj
-        else:
-            return self.obj.pool
-
-    def _get_filesystem(self):
-        if self.obj.type == 'pool':
-            return self.obj.get_filesystem()
-        elif self.obj.type == 'filesystem':
-            return self.obj
-
-    """
-    Properties
-    """
-
-    def ui_getgroup_pool(self, key):
-        '''
-        This is the backend method for getting keys.
-        @param key: The key to get the value of.
-        @type key: str
-        @return: The key's value
-        @rtype: arbitrary
-        '''
-        return self.obj.properties.get(key)
-
-    def ui_setgroup_pool(self, key, value):
-        '''
-        This is the backend method for setting keys.
-        @param key: The key to set the value of.
-        @type key: str
-        @param value: The key's value
-        @type value: arbitrary
-        '''
-        return self.obj.properties.set(key, value)
-
-    def ui_getgroup_dataset(self, key):
-        '''
-        This is the backend method for getting keys.
-        @param key: The key to get the value of.
-        @type key: str
-        @return: The key's value
-        @rtype: arbitrary
-        '''
-        obj = self._get_filesystem()
-        return str(obj.properties.get(key))
-
-    def ui_setgroup_dataset(self, key, value):
-        '''
-        This is the backend method for setting keys.
-        @param key: The key to set the value of.
-        @type key: str
-        @param value: The key's value
-        @type value: arbitrary
-        '''
-        obj = self._get_filesystem()
-        obj.properties[key] = value
-
-    """
-    Crap
-    """
+        StorageNode.__init__(self)
+        PoolPropsMixIn.__init__(self)
+        DatasetPropsMixIn.__init__(self)
 
     def ui_command_usage(self):
         obj = self.obj
