@@ -12,6 +12,7 @@ from ..pool import Pool
 #from .filesystem import Filesystem
 from ..volume import Volume
 from ..snapshot import Snapshot
+from ..device import Device, Devices
 
 
 class StorageNode(AutomagicNode):
@@ -147,6 +148,14 @@ class DatasetNode(StorageNode):
         return (capfirst(self.obj.type), True)
 
 
+class RwDevices(Devices):
+    _base_filter = {
+        'is_readonly': False,
+        'is_mounted': False,
+        'path__notlambda': lambda v: v.startswith('zd') or v.startswith('drbd') or v.startswith('zram'),
+    }
+
+
 class PoolsNode(AutomagicNode):
     def ui_children_factory_pool_list(self):
         return [p for p in Pool.list(ret=dict, ret_obj=False)]
@@ -154,9 +163,13 @@ class PoolsNode(AutomagicNode):
     def ui_children_factory_pool(self, name):
         return PoolNode(name)
 
-    def ui_command_create_pool(self, name):
-        # TODO Create Pool Wizard
-        raise NotImplemented
+    def ui_command_ls_available_devices(self):
+        # TODO This won't work.
+        devices = RwDevices()
+        return list(devices)
+
+    def ui_command_create(self, name):
+        raise NotImplementedError
 
 
 class VolumeNode(DatasetNode):
@@ -186,15 +199,105 @@ class VolumeNode(DatasetNode):
 
 
 class PoolNode(StorageNode):
-    def __init__(self, pool):
-        self.obj = Pool(name=pool)
-        super(PoolNode, self).__init__()
-
     def summary(self):
         return ('%s %s/%s' % (capfirst(self.obj.type),
                               str(self.obj.properties['alloc']),
                               str(self.obj.properties['size']),
                               ), self.obj.is_healthy())
+
+    def __init__(self, pool):
+        self.obj = Pool(name=pool)
+        super(PoolNode, self).__init__()
+
+        self.define_config_group_param('pool', 'name', 'string', 'Pool Name', writable=False)
+        self.define_config_group_param('pool', 'comment', 'string', 'Comment')
+        self.define_config_group_param('pool', 'dedupditto', 'string', 'Number of copies of each deduplicated block to save')
+        self.define_config_group_param('pool', 'dedupratio', 'string', 'Dedupe ratio', writable=False)
+        self.define_config_group_param('pool', 'allocated', 'string', 'Allocated space', writable=False)
+        self.define_config_group_param('pool', 'free', 'string', 'Free space', writable=False)
+        self.define_config_group_param('pool', 'size', 'string', 'Total space', writable=False)
+        self.define_config_group_param('pool', 'capacity', 'string', 'Percentage filled', writable=False)
+        self.define_config_group_param('pool', 'health', 'string', 'Health', writable=False)
+        self.define_config_group_param('pool', 'autoexpand', 'string', 'Automatically expand pool if drives increase in size')
+        self.define_config_group_param('pool', 'autoreplace', 'string', 'Automatically replace failed drives with any specified hot spare(s)')
+
+        self.define_config_group_param('dataset', 'compression', 'string', 'Enable compression')
+        self.define_config_group_param('dataset', 'dedup', 'string', 'Enable dedupe')
+        self.define_config_group_param('dataset', 'atime', 'string', 'Keep file access times up to date')
+        self.define_config_group_param('dataset', 'quota', 'string', 'Quota for dataset')
+
+        self.define_config_group_param('dataset', 'compressratio', 'string', 'Compresstion ratio', writable=False)
+        self.define_config_group_param('dataset', 'used', 'string', 'Used space', writable=False)
+        self.define_config_group_param('dataset', 'usedbysnapshots', 'string', 'Used space by snapshots', writable=False)
+        self.define_config_group_param('dataset', 'usedbydataset', 'string', 'Used space by dataset', writable=False)
+        self.define_config_group_param('dataset', 'usedbychildren', 'string', 'Used space by children', writable=False)
+        self.define_config_group_param('dataset', 'usedbyrefreservation', 'string', 'Used space by referenced reservation', writable=False)
+        self.define_config_group_param('dataset', 'referenced', 'string', 'Referenced space', writable=False)
+        self.define_config_group_param('dataset', 'available', 'string', 'Available space', writable=False)
+        self.define_config_group_param('dataset', 'creation', 'string', 'Creation date', writable=False)
+        self.define_config_group_param('dataset', 'mounted', 'bool', 'Currently mounted', writable=False)
+
+    def _get_pool(self):
+        if self.obj.type == 'pool':
+            return self.obj
+        else:
+            return self.obj.pool
+
+    def _get_filesystem(self):
+        if self.obj.type == 'pool':
+            return self.obj.get_filesystem()
+        elif self.obj.type == 'filesystem':
+            return self.obj
+
+    """
+    Properties
+    """
+
+    def ui_getgroup_pool(self, key):
+        '''
+        This is the backend method for getting keys.
+        @param key: The key to get the value of.
+        @type key: str
+        @return: The key's value
+        @rtype: arbitrary
+        '''
+        return self.obj.properties.get(key)
+
+    def ui_setgroup_pool(self, key, value):
+        '''
+        This is the backend method for setting keys.
+        @param key: The key to set the value of.
+        @type key: str
+        @param value: The key's value
+        @type value: arbitrary
+        '''
+        return self.obj.properties.set(key, value)
+
+    def ui_getgroup_dataset(self, key):
+        '''
+        This is the backend method for getting keys.
+        @param key: The key to get the value of.
+        @type key: str
+        @return: The key's value
+        @rtype: arbitrary
+        '''
+        obj = self._get_filesystem()
+        return str(obj.properties.get(key))
+
+    def ui_setgroup_dataset(self, key, value):
+        '''
+        This is the backend method for setting keys.
+        @param key: The key to set the value of.
+        @type key: str
+        @param value: The key's value
+        @type value: arbitrary
+        '''
+        obj = self._get_filesystem()
+        obj.properties[key] = value
+
+    """
+    Crap
+    """
 
     def ui_command_usage(self):
         obj = self.obj
