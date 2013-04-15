@@ -145,79 +145,6 @@ class AugeasWrap(object):
         return self._attrs + self._map.keys()
 
 
-'''
-There is a bug with this that I'm asking about on IRC.
-
-Took me forever to figure out, but it cannot write an iface alias to interfaces.
-It can however, read and mostly edit it.
-
-
-* I manually put it in the file before parsing:
-
-    In [1]: from configure.models import Nic, DebianInterfaceConfig
-
-    In [2]: b = DebianInterfaceConfig('eth1:ha0')
-
-    In [3]: b.address
-    2013-04-13 15:43:03,309 DEBUG configure.models@get:115 get path=$ifaces/iface[. = "eth1:ha0"]/address
-    Out[3]: u'10.90.90.50'
-
-    In [4]: b.save()
-
-    In [5]:
-
-    In [5]:
-
-
-* Failure:
-
-In [1]: from configure.models import Nic, DebianInterfaceConfig
-
-In [2]: b = DebianInterfaceConfig('eth1:ha0')
-b
-In [3]: b.quick_setup(address='10.90.90.50')
-2013-04-13 15:45:02,730 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/family value=inet
-2013-04-13 15:45:02,731 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/method value=static
-2013-04-13 15:45:02,731 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/netmask value=255.255.255.0
-2013-04-13 15:45:02,731 DEBUG configure.models@set:119 set path=$ifaces/iface[. = "eth1:ha0"]/address value=10.90.90.50
-
-In [4]: b.save()
----------------------------------------------------------------------------
-IOError                                   Traceback (most recent call last)
-<ipython-input-4-480966f9e668> in <module>()
-----> 1 b.save()
-
-/opt/solarsan/solarsan/configure/models.pyc in save(self)
-    278
-    279     def save(self):
---> 280         return self._aug.save()
-    281
-    282     @property
-
-/opt/solarsan/_dev_lib/augeas.pyc in save(self)
-    486         ret = Augeas._libaugeas.aug_save(self.__handle)
-    487         if ret != 0:
---> 488             raise IOError("Unable to save to file!")
-    489
-    490     def load(self):
-
-IOError: Unable to save to file!
-
-In [5]: b._print('/augeas//error')
-2013-04-13 15:45:09,846 DEBUG configure.models@get:115 get path=/augeas//error
-2013-04-13 15:45:09,853 INFO configure.models@_print:137 [/augeas//error] = 'put_failed'
-2013-04-13 15:45:09,853 DEBUG configure.models@match:123 match path=/augeas//error//*
-2013-04-13 15:45:09,857 INFO configure.models@_print:140 [/augeas/files/etc/network/interfaces/error/path] = '/files/etc/network/interfaces'
-2013-04-13 15:45:09,858 INFO configure.models@_print:140 [/augeas/files/etc/network/interfaces/error/lens] = '/usr/local/share/augeas/lenses/dist/interfaces.aug:101.13-.63:'
-2013-04-13 15:45:09,858 INFO configure.models@_print:140 [/augeas/files/etc/network/interfaces/error/message] = 'Failed to match
-    ({ /#comment/ = /[^\001-\004\t\n\r ][^\001-\004\n]*[^\001-\004\t\n\r ]|[^\001-\004\t\n\r ]/ } | { })*({ /iface/ = /[^\001-\004\t\n \\]+/ } | { /mapping/ = /[^\001-\004\t\n \\]+/ } | ({ /auto/ } | { /allow-aut((o[a-z-]|[a-np-z-])[a-z-]*|)|allow-au([a-su-z-][a-z-]*|)|(allow-a[a-tv-z-]|allow-[b-z-][a-z-])[a-z-]*|allow-a|allow-[b-z-]/ })({ /#comment/ = /[^\001-\004\t\n\r ][^\001-\004\n]*[^\001-\004\t\n\r ]|[^\001-\004\t\n\r ]/ } | { })*)*
-  with tree
-    {  } { "#comment" = "The loopback network iface" } { "auto" } { "iface" = "lo" } { "auto" } { "iface" = "eth1" } { "auto" } { "iface" = "eth0" } { "iface" } { "iface" } { "iface" } { "iface" }'
-
-In [6]:
-
-'''
-
 class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
     _file = '/etc/network/interfaces'
     _attrs = ['family', 'method', 'address', 'netmask', 'gateway', 'mtu']
@@ -229,6 +156,9 @@ class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
     name = None
 
     def quick_setup(self, family='inet', method='static', netmask='255.255.255.0', **kwargs):
+        if not self.auto:
+            self.set(str(self.name), '$ifaces/iface[. = "%s"]' % str(self.name))
+
         if family:
             self.family = family
         if method:
