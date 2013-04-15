@@ -82,9 +82,9 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         #        return False
         return storage.root.floating_ip_is_active(self.name)
 
-    def ifup(self):
+    def ifup(self, send_arp=True):
         for nic in self.nics:
-            nic.ifup(send_arp=True)
+            nic.ifup(send_arp=send_arp)
 
     def ifdown(self):
         for nic in self.nics:

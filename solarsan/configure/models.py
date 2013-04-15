@@ -421,8 +421,8 @@ class Nic(ReprMixIn):
     def ifdown(self):
         return self.config.ifdown()
 
-    def ifup(self):
-        return self.config.ifup()
+    def ifup(self, send_arp=None):
+        return self.config.ifup(send_arp=send_arp)
 
     def is_ifup(self):
         return self.config.is_ifup()

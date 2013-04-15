@@ -71,15 +71,15 @@ class FloatingIPMonitor(Component):
         super(FloatingIPMonitor, self).__init__()
 
         fip = self.fip
-        logger.info('Monitoring Floating IP "%s".', fip.iface_name)
+        logger.info('Monitoring Floating IP "%s".', fip)
 
         if fip.is_active:
-            #logger.warn('Floating IP "%s" is currently active upon startup.', fip.iface_name)
+            #logger.warn('Floating IP "%s" is currently active upon startup.', fip)
             # May want to just disable on startup..
-            logger.warn('Floating IP "%s" is currently active upon startup. Deactivating..', fip.iface_name)
+            logger.warn('Floating IP "%s" is currently active upon startup. Deactivating..', fip)
             fip.ifdown()
             #if ip.is_peer_active():
-            #    logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', fip.iface_name)
+            #    logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', fip)
             #    """ TODO See which host has the assoc target running too. If one is running it, they win. """
             #    fip.ifdown()
 
@@ -141,12 +141,12 @@ class FloatingIPMonitor(Component):
         if uuid != self.uuid:
             return
         fip = self.fip
-        logger.info('Floating IP "%s" is being brought up.', fip.iface_name)
+        logger.info('Floating IP "%s" is being brought up.', fip)
         fip.ifup()
 
     def floating_ip_stop(self, uuid):
         if uuid != self.uuid:
             return
         fip = self.fip
-        logger.info('Floating IP "%s" is being brought down.', fip.iface_name)
+        logger.info('Floating IP "%s" is being brought down.', fip)
         fip.ifdown()
