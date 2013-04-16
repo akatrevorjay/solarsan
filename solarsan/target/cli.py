@@ -1,8 +1,8 @@
 
 from solarsan.conf import config
 from solarsan.cli.backend import AutomagicNode
+from solarsan.ha.models import FloatingIP
 from .models import iSCSITarget, SRPTarget
-
 
 """
 Target
@@ -43,6 +43,49 @@ class TargetsNode(AutomagicNode):
 
 
 class TargetNode(AutomagicNode):
+    def __init__(self):
+        super(TargetNode, self).__init__()
+
+        self.define_config_group_param('target', 'name', 'string', 'Name', writable=False)
+        self.define_config_group_param('target', 'uuid', 'string', 'UUID', writable=False)
+        self.define_config_group_param('target', 'is_added', 'bool', 'Is currently added to target subsystem', writable=False)
+        self.define_config_group_param('target', 'is_enabled', 'bool', 'Is currently enabled in target subsystem', writable=False)
+
+        self.define_config_group_param('target', 'floating_ip', 'string', 'Floating IP associated with this Target')
+
+    def ui_getgroup_target(self, key):
+        '''
+        This is the backend method for getting keys.
+        @param key: The key to get the value of.
+        @type key: str
+        @return: The key's value
+        @rtype: arbitrary
+        '''
+        if key == 'floating_ip':
+            fip = getattr(self.obj, key, None)
+            if fip:
+                return fip.name
+        else:
+            return getattr(self.obj, key, None)
+
+    def ui_setgroup_target(self, key, value):
+        '''
+        This is the backend method for setting keys.
+        @param key: The key to set the value of.
+        @type key: str
+        @param value: The key's value
+        @type value: arbitrary
+        '''
+        if key == 'floating_ip':
+            fip = FloatingIP.objects.get(name=value)
+            self.obj.floating_ip = fip
+        else:
+            return setattr(self.obj, key, value)
+
+    def ui_command_save(self):
+        self.obj.save()
+        return True
+
     def summary(self):
         if self.obj.is_target_enabled:
             return ('Active', True)

@@ -89,3 +89,6 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     def ifdown(self):
         for nic in self.nics:
             nic.ifdown()
+
+    def __unicode__(self):
+        return self.name
