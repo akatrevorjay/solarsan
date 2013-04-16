@@ -19,6 +19,8 @@ from solarsan.storage.drbd import DrbdPeer, DrbdResource
 
 from solarsan.storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partition, Partitions
 
+from solarsan.logs.models import Syslog
+
 devs = Devices()
 pl = Peer.get_local()
 stor = pl.storage

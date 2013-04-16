@@ -9,7 +9,8 @@ SERVER_ID = conf.hostname
 import mongoengine
 MONGODB_DATABASES = {
     'default': {
-        'name': "%s_%s" % (PROJECT_NAME, SERVER_ID),
+        #'name': "%s_%s" % (PROJECT_NAME, SERVER_ID),
+        'name': "%s" % PROJECT_NAME,
     },
     'syslog': {
         'name': "syslog",

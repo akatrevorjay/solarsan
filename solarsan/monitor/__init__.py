@@ -7,7 +7,8 @@ from .resource import ResourceManager
 from .target import TargetManager
 from .device import DeviceManager
 from .ha import FloatingIPManager
-from .auto_snapshot import AutoSnapshotManager
+#from .auto_snapshot import AutoSnapshotManager
+from .logs import LogManager
 from .base import set_proc_status
 
 
@@ -35,14 +36,11 @@ class Monitor(Component):
         #AutoSnapshotManager().register(self)
         # TODO Finish this
         #BackupManager().register(self)
+        LogManager().register(self)
 
     def started(self, *args):
         set_proc_status('Started')
         return True
-
-    #@handler('monitor_status_update', channel='*')
-    #def status_update(self, append=None):
-    #    set_proc_status(append=append)
 
 
 def main():
