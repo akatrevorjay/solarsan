@@ -54,13 +54,11 @@ class TargetNode(AutomagicNode):
 
         self.define_config_group_param('target', 'floating_ip', 'string', 'Floating IP associated with this Target')
 
-        self.define_config_group_param('luns', '0', 'string', 'Lun 0 device')
-        self.define_config_group_param('luns', '1', 'string', 'Lun 1 device')
-        self.define_config_group_param('luns', '2', 'string', 'Lun 2 device')
-        self.define_config_group_param('luns', '3', 'string', 'Lun 3 device')
-        self.define_config_group_param('luns', '3', 'string', 'Lun 3 device')
-        self.define_config_group_param('luns', '4', 'string', 'Lun 4 device')
-        self.define_config_group_param('luns', '5', 'string', 'Lun 5 device')
+        for i in xrange(10):
+            self.define_config_group_param('luns', '%s' % i, 'string', 'Lun %s device' % i)
+
+        self.define_config_group_param('acl', 'allowed_initiators', 'string', 'Allowed initiators; space separated list')
+        self.define_config_group_param('acl', 'denied_initiators', 'string', 'Denied initiators; space separated list')
 
     def ui_getgroup_target(self, key):
         '''
@@ -117,6 +115,12 @@ class TargetNode(AutomagicNode):
         else:
             raise ValueError('Could not find replicated resource or Volume named "%s"' % value)
 
+    def ui_getgroup_acl(self, key):
+        pass
+
+    def ui_setgroup_acl(self, key, value):
+        pass
+
     def ui_command_save(self):
         self.obj.save()
         return True
@@ -159,6 +163,14 @@ class iSCSITargetNode(TargetNode):
         self.obj = iSCSITarget.objects.get(name=name)
         super(iSCSITargetNode, self).__init__()
 
+        self.define_config_group_param('portal', 'address', 'string', 'Address:Port for iSCSI portal')
+
+    def ui_getgroup_portal(self, key):
+        pass
+
+    def ui_setgroup_portal(self, key, value):
+        pass
+
 
 class SRPTargetsNode(AutomagicNode):
     def ui_children_factory_srp_target_list(self):
@@ -175,6 +187,12 @@ class SRPTargetsNode(AutomagicNode):
         tgt = SRPTarget(name=name)
         tgt.save()
         return 'Created %s' % tgt
+
+    def ui_getgroup_srpt(self, key):
+        pass
+
+    def ui_setgroup_srpt(self, key, value):
+        pass
 
 
 class SRPTargetNode(TargetNode):
