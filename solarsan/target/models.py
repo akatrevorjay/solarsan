@@ -7,6 +7,7 @@ from . import scstadmin
 #from solarsan.storage.drbd import DrbdResource
 from solarsan.ha.models import FloatingIP
 from uuid import uuid4
+from blinker import signal
 
 
 class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
@@ -35,6 +36,18 @@ class VolumeDevice(Device):
     @property
     def device(self):
         return '/dev/zvol/%s/%s' % (self.pool, self.volume)
+
+
+class Group(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
+    meta = dict(abstract=True)
+
+
+class PortalGroup(Group):
+    pass
+
+
+class DeviceGroup(Group):
+    pass
 
 
 #class ResourceDevice(Device):
@@ -115,15 +128,22 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         self._add_devices()
         self.enable_target()
 
+        global target_started
+        target_started.send(self)
+
     def stop(self):
         self.disable_target()
         self._remove_devices()
         self._remove_target()
 
+        global target_stopped
+        target_stopped.send(self)
+
 
 class iSCSITarget(Target):
     #meta = {'allow_inheritance': True}
     driver = 'iscsi'
+    #portal_port = m.IntField()
 
     def generate_wwn(self, serial=None):
         self.name = generate_wwn('iqn')
@@ -142,3 +162,27 @@ class iSCSITarget(Target):
 class SRPTarget(Target):
     #meta = {'allow_inheritance': True}
     driver = 'srpt'
+
+
+#from mongoengine.signals import post_save
+#post_save.connect(FloatingIP.on_target_post_save, sender=iSCSITarget)
+#post_save.connect(FloatingIP.on_target_post_save, sender=SRPTarget)
+
+target_started = signal('target_started')
+target_stopped = signal('target_stopped')
+
+
+def _fip_up_on_target_started(self):
+    # TODO What if the floating IP is part of many targets?
+    if self.floating_ip and not self.floating_ip.is_active:
+        self.floating_ip.ifup()
+
+target_started.connect(_fip_up_on_target_started)
+
+
+def _fip_down_on_target_stopped(self):
+    # TODO What if the floating IP is part of many targets?
+    if self.floating_ip and self.floating_ip.is_active:
+        self.floating_ip.ifdown()
+
+target_stopped.connect(_fip_down_on_target_stopped)

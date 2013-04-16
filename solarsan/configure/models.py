@@ -73,7 +73,7 @@ class AugeasWrap(object):
             self.__aug.load()
         return self.__aug
 
-    _debug = True
+    _debug = False
 
     def exists(self):
         return bool(self.get())
@@ -363,9 +363,9 @@ class DebianInterfaceConfig(ReprMixIn, AugeasWrap):
         logger.info('Bringing down interface %s', self.name)
         ret = True
         try:
-            logger.warning('Error Bringing down interface %s', self.name)
             sh.ifdown(self.name)
         except:
+            logger.warning('Error Bringing down interface %s', self.name)
             ret = False
 
         if reset:

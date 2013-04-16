@@ -7,6 +7,7 @@ from solarsan.cluster.models import Peer
 from solarsan.configure.models import Nic, get_configured_ifaces
 #from solarsan.utils.pings import ping_once
 from uuid import uuid4
+from blinker import signal
 
 
 class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
@@ -83,12 +84,28 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         return storage.root.floating_ip_is_active(self.name)
 
     def ifup(self, send_arp=True):
+        logger.debug('Floating IP "%s" is being brought up.', self)
         for nic in self.nics:
             nic.ifup(send_arp=send_arp)
 
+        global floating_ip_up
+        floating_ip_up.send(self)
+
     def ifdown(self):
+        logger.debug('Floating IP "%s" is being brought down.', self)
         for nic in self.nics:
             nic.ifdown()
 
+        global floating_ip_down
+        floating_ip_down.send(self)
+
     def __unicode__(self):
         return self.name
+
+    #@classmethod
+    #def on_target_started(cls, target):
+    #    pass
+
+
+floating_ip_up = signal('floating_ip_up')
+floating_ip_down = signal('floating_ip_down')

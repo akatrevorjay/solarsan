@@ -48,8 +48,7 @@ class TargetNode(AutomagicNode):
 
         self.define_config_group_param('target', 'name', 'string', 'Name', writable=False)
         self.define_config_group_param('target', 'uuid', 'string', 'UUID', writable=False)
-        self.define_config_group_param('target', 'is_added', 'bool', 'Is currently added to target subsystem', writable=False)
-        self.define_config_group_param('target', 'is_enabled', 'bool', 'Is currently enabled in target subsystem', writable=False)
+        self.define_config_group_param('target', 'is_enabled', 'bool', 'Enabled in target subsystem', writable=False)
 
         self.define_config_group_param('target', 'floating_ip', 'string', 'Floating IP associated with this Target')
 
