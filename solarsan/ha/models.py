@@ -1,5 +1,5 @@
 
-from solarsan import logging
+from solarsan import logging, signals
 logger = logging.getLogger(__name__)
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
@@ -7,10 +7,15 @@ from solarsan.cluster.models import Peer
 from solarsan.configure.models import Nic, get_configured_ifaces
 #from solarsan.utils.pings import ping_once
 from uuid import uuid4
-from blinker import signal
 
 
 class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
+    class signals:
+        pre_start = signals.pre_start
+        post_start = signals.post_start
+        pre_stop = signals.pre_stop
+        post_stop = signals.post_stop
+
     name = m.StringField(unique=True)
     peer = m.ReferenceField(Peer, dbref=False)
     uuid = m.UUIDField(binary=False)
@@ -84,28 +89,34 @@ class FloatingIP(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         return storage.root.floating_ip_is_active(self.name)
 
     def ifup(self, send_arp=True):
-        logger.debug('Floating IP "%s" is being brought up.', self)
+        logger.info('Floating IP "%s" is being brought up.', self)
+        self.signals.pre_start.send(self)
+
         for nic in self.nics:
             nic.ifup(send_arp=send_arp)
 
-        global floating_ip_up
-        floating_ip_up.send(self)
+        self.signals.post_start.send(self)
 
     def ifdown(self):
-        logger.debug('Floating IP "%s" is being brought down.', self)
+        logger.warning('Floating IP "%s" is being brought down.', self)
+        self.signals.pre_stop.send(self)
+
         for nic in self.nics:
             nic.ifdown()
 
-        global floating_ip_down
-        floating_ip_down.send(self)
+        self.signals.post_stop.send(self)
 
     def __unicode__(self):
         return self.name
 
-    #@classmethod
-    #def on_target_started(cls, target):
-    #    pass
+
+#@signals.post_start.connect
+#def _on_post_start(self):
+#    if issubclass(self.__class__, FloatingIP):
+#        logger.debug('self=%s', self)
 
 
-floating_ip_up = signal('floating_ip_up')
-floating_ip_down = signal('floating_ip_down')
+#@signals.post_stop.connect
+#def _on_post_stop(self):
+#    if issubclass(self.__class__, FloatingIP):
+#        logger.debug('self=%s', self)

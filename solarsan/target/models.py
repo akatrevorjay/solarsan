@@ -1,13 +1,15 @@
 
-#from solarsan.core import logger
+from solarsan import logging, signals
+logger = logging.getLogger(__name__)
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
+from solarsan.ha.models import FloatingIP
 from .utils import generate_wwn, is_valid_wwn
 from . import scstadmin
-#from solarsan.storage.drbd import DrbdResource
-from solarsan.ha.models import FloatingIP
 from uuid import uuid4
-from blinker import signal
+
+#from solarsan.storage.drbd import DrbdResource
+#from solarsan.storage.volume import Volume
 
 
 class Device(ReprMixIn, m.Document, CreatedModifiedDocMixIn):
@@ -60,7 +62,13 @@ class DeviceGroup(Group):
 
 
 class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
-    meta = {'abstract': True}
+    meta = dict(abstract=True)
+
+    class signals:
+        pre_start = signals.pre_start
+        post_start = signals.post_start
+        pre_stop = signals.pre_stop
+        post_stop = signals.post_stop
 
     name = m.StringField()
     devices = m.ListField(m.GenericReferenceField())
@@ -124,20 +132,38 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
             self._close_device(device.name)
 
     def start(self):
+        self.signals.pre_start.send(self)
+
         self._add_target()
         self._add_devices()
         self.enable_target()
 
-        global target_started
-        target_started.send(self)
+        self.signals.post_start.send(self)
 
     def stop(self):
+        self.signals.pre_stop.send(self)
+
         self.disable_target()
         self._remove_devices()
         self._remove_target()
 
-        global target_stopped
-        target_stopped.send(self)
+        self.signals.post_stop.send(self)
+
+
+@signals.post_start.connect
+def _on_post_start(self):
+    if issubclass(self.__class__, Target):
+        # TODO What if the floating IP is part of many targets?
+        if self.floating_ip:  # and not self.floating_ip.is_active:
+            self.floating_ip.ifup()
+
+
+@signals.pre_stop.connect
+def _on_pre_stop(self):
+    if issubclass(self.__class__, Target):
+        # TODO What if the floating IP is part of many targets?
+        if self.floating_ip:  # and self.floating_ip.is_active:
+            self.floating_ip.ifdown()
 
 
 class iSCSITarget(Target):
@@ -162,27 +188,3 @@ class iSCSITarget(Target):
 class SRPTarget(Target):
     #meta = {'allow_inheritance': True}
     driver = 'srpt'
-
-
-#from mongoengine.signals import post_save
-#post_save.connect(FloatingIP.on_target_post_save, sender=iSCSITarget)
-#post_save.connect(FloatingIP.on_target_post_save, sender=SRPTarget)
-
-target_started = signal('target_started')
-target_stopped = signal('target_stopped')
-
-
-def _fip_up_on_target_started(self):
-    # TODO What if the floating IP is part of many targets?
-    if self.floating_ip and not self.floating_ip.is_active:
-        self.floating_ip.ifup()
-
-target_started.connect(_fip_up_on_target_started)
-
-
-def _fip_down_on_target_stopped(self):
-    # TODO What if the floating IP is part of many targets?
-    if self.floating_ip and self.floating_ip.is_active:
-        self.floating_ip.ifdown()
-
-target_stopped.connect(_fip_down_on_target_stopped)

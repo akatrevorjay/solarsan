@@ -4,7 +4,7 @@ logger = logging.getLogger(__name__)
 from circuits import Component, Event, Timer
 from solarsan.ha.models import FloatingIP
 import weakref
-from .target import get_target
+#from .target import get_target
 
 
 """
@@ -29,6 +29,9 @@ class FloatingIPManager(Component):
                                   FloatingIpsCheck(),
                                   persist=True,
                                   ).register(self)
+
+        #""" TODO Timer to scan for dual active floating IPs every so often """
+        #Timer(30.0, DualFloatingCheck(), persist=True).register(self)
 
     def floating_ips_check(self):
         uuids = []
@@ -74,17 +77,14 @@ class FloatingIPMonitor(Component):
         logger.info('Monitoring Floating IP "%s".', fip)
 
         if fip.is_active:
-            #logger.warn('Floating IP "%s" is currently active upon startup.', fip)
-            # May want to just disable on startup..
-            logger.warn('Floating IP "%s" is currently active upon startup. Deactivating..', fip)
-            fip.ifdown()
-            #if ip.is_peer_active():
-            #    logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', fip)
-            #    """ TODO See which host has the assoc target running too. If one is running it, they win. """
-            #    fip.ifdown()
-
-            #""" TODO Timer to scan for dual active floating IPs every so often """
-            #Timer(30.0, DualFloatingCheck(), persist=True).register(self)
+            ## May want to just disable on startup..
+            #logger.warn('Floating IP "%s" is currently active upon startup. Deactivating to verify.', fip)
+            #fip.ifdown()
+            ##if ip.is_peer_active():
+            ##    logger.error('Floating IP "%s" appears to be up in both locations?! Deactivating..', fip)
+            ##    """ TODO See which host has the assoc target running too. If one is running it, they win. """
+            ##    fip.ifdown()
+            logger.warn('Floating IP "%s" is currently active upon startup.', fip)
 
     def get_fip(self):
         return get_fip(self.uuid)
@@ -113,16 +113,42 @@ class FloatingIPMonitor(Component):
         event.args.insert(0, self.uuid)
         return self.fire(event)
 
-    ## peer_offline hits faster, but we want the IP comeup to be the very last
-    ## thing to be done throughout a failover.
-    #@handler('peer_failover', channel='*')
-    #def _on_peer_failover(self, peer):
-    #    if peer.uuid != self.ip.peer.uuid:
-    #        return
-    #    logger.error('Failing over floating IP "%s" for offline Peer "%s".',
-    #                 self.ip.iface_name, self.ip.peer.hostname)
-    #    self.fire(FloatingIpStart(self.ip))
+    """
+    Events
+    """
 
+    def floating_ip_start(self, uuid):
+        if uuid != self.uuid:
+            return
+        fip = self.fip
+        fip.ifup()
+
+    def floating_ip_stop(self, uuid):
+        if uuid != self.uuid:
+            return
+        fip = self.fip
+        fip.ifdown()
+
+    """
+    Peer Events
+    """
+    '''
+    # peer_offline hits faster, but we want the IP comeup to be the very last
+    # thing to be done throughout a failover.
+    @handler('peer_failover', channel='*')
+    def _on_peer_failover(self, peer):
+        if peer.uuid != self.ip.peer.uuid:
+            return
+        logger.error('Failing over floating IP "%s" for offline Peer "%s".',
+                     self.ip.iface_name, self.ip.peer.hostname)
+        self.fire(FloatingIpStart(self.ip))
+    '''
+
+    """
+    Target event hooks.
+    These aren't needed anymore due to signals.
+    """
+    '''
     def target_started(self, uuid):
         """When a Target assoc with this floating IP has been started, start her up"""
         target = get_target(uuid)
@@ -136,17 +162,4 @@ class FloatingIPMonitor(Component):
         if target.floating_ip.uuid != self.uuid:
             return
         self.fire_this(FloatingIpStop())
-
-    def floating_ip_start(self, uuid):
-        if uuid != self.uuid:
-            return
-        fip = self.fip
-        logger.info('Floating IP "%s" is being brought up.', fip)
-        fip.ifup()
-
-    def floating_ip_stop(self, uuid):
-        if uuid != self.uuid:
-            return
-        fip = self.fip
-        logger.info('Floating IP "%s" is being brought down.', fip)
-        fip.ifdown()
+    '''

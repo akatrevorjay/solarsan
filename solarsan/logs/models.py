@@ -3,23 +3,27 @@ from solarsan import logging
 logger = logging.getLogger(__name__)
 from solarsan.models import ReprMixIn
 import mongoengine as m
+import iso8601
 
 
 class Syslog(ReprMixIn, m.DynamicDocument):
-    _repr_vars = ['DATE', 'MESSAGE']
+    _repr_vars = ['date', 'host', 'program', 'pid', 'priority']
     meta = {'collection': 'syslog',
             'max_size': 1024 * 1024 * 256,
-            'ordering': ['-DATE'],
-            'indexes': ['-DATE', 'PRIORITY'],
+            'ordering': ['-date'],
+            'indexes': ['-date', 'priority'],
             'allow_inheritance': False,
             }
 
-    #def __getattribute__(self, key):
-    #    if key.isupper():
-    #        key = key.lower()
-    #    return super(Syslog, self).__getattribute__(key)
+    def __str__(self):
+        return '%s %s %s[%s]: [%s] %s' % (self.date, self.host, self.program,
+                                          self.pid, self.priority, self.message)
 
-    #def __setattribute__(self, key, value):
-    #    if key.isupper():
-    #        key = key.lower()
-    #    return super(Syslog, self).__setattribute__(key, value)
+    def __unicode__(self):
+        return unicode(self.__str__())
+
+    @property
+    def date(self):
+        if not getattr(self, 'isodate', None):
+            return
+        return iso8601.parse_date(object.__getattribute__(self, 'isodate'))
