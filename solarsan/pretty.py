@@ -10,5 +10,5 @@ def pp(arg):
     """Pretty prints with coloring for 256-color terms.
     Works in iPython, but not bpython as it does not write directly to term
     and decodes it instead."""
-    print highlight(pformat(arg), PythonLexer(), Terminal256Formatter())
+    print highlight(pformat(arg), PythonLexer(), Terminal256Formatter(style='monokai'))
     #print highlight(pformat(arg), JSONLexer(), Terminal256Formatter())

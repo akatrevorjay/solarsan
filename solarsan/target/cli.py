@@ -44,7 +44,63 @@ class TargetsNode(AutomagicNode):
         return SRPTargetsNode()
 
 
+class LunsNode(AutomagicNode):
+    def ui_children_factory_lun_list(self):
+        #return self.obj.devices
+        return []
+
+    def ui_children_factory_lun(self, device):
+        return LunNode()
+
+    def ui_command_attach(self, lun, device):
+        pass
+
+    def ui_command_detach(self, lun):
+        pass
+
+    def ui_command_lsvolumes(self):
+        pass
+
+    def ui_command_lsresources(self):
+        pass
+
+
+class PortalGroupNode(AutomagicNode):
+    def ui_child_luns(self):
+        return LunsNode()
+
+    def ui_child_acl(self):
+        return AclNode()
+
+
+class LunNode(AutomagicNode):
+    pass
+
+
+class AclNode(AutomagicNode):
+    def ui_command_allow(self, initiator):
+        pass
+
+    def ui_command_deny(self, initiator):
+        pass
+
+    def ui_command_lsrecent(self):
+        pass
+
+
 class TargetNode(AutomagicNode):
+    def ui_children_factory_portal_group_list(self):
+        return ['portal0']
+
+    def ui_children_factory_portal_group(self, name):
+        return PortalGroupNode()
+
+    def ui_command_add_portal_group(self, name):
+        pass
+
+    def ui_command_lssessions(self):
+        pass
+
     def __init__(self):
         super(TargetNode, self).__init__()
 
@@ -59,6 +115,9 @@ class TargetNode(AutomagicNode):
 
         self.define_config_group_param('acl', 'allowed_initiators', 'string', 'Allowed initiators; space separated list')
         self.define_config_group_param('acl', 'denied_initiators', 'string', 'Denied initiators; space separated list')
+
+        for i in xrange(10):
+            self.define_config_group_param('acl', 'recent_initiator_%s' % i, 'string', 'Recent initiator %s' % i)
 
     def ui_getgroup_target(self, key):
         '''

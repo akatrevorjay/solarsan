@@ -15,12 +15,6 @@ from ..snapshot import Snapshot
 
 
 class DatasetPropsMixIn:
-    def _get_dataset(self):
-        if self.obj.type == 'pool':
-            return self.obj.get_filesystem()
-        else:
-            return self.obj
-
     def __init__(self):
         self.define_config_group_param('dataset', 'compression', 'string', 'Enable compression')
         self.define_config_group_param('dataset', 'dedup', 'string', 'Enable dedupe')
@@ -36,7 +30,7 @@ class DatasetPropsMixIn:
         self.define_config_group_param('dataset', 'referenced', 'string', 'Referenced space', writable=False)
         self.define_config_group_param('dataset', 'available', 'string', 'Available space', writable=False)
 
-        self.define_config_group_param('dataset', 'creation', 'string', 'Creation date', writable=False)
+        #self.define_config_group_param('dataset', 'creation', 'string', 'Creation date', writable=False)
         self.define_config_group_param('dataset', 'mounted', 'bool', 'Currently mounted', writable=False)
 
     def ui_getgroup_dataset(self, key):
@@ -63,12 +57,6 @@ class DatasetPropsMixIn:
 
 
 class PoolPropsMixIn:
-    def _get_pool(self):
-        if self.obj.type == 'pool':
-            return self.obj
-        else:
-            return self.obj.get_pool()
-
     def __init__(self):
         self.define_config_group_param('pool', 'comment', 'string', 'Comment')
         self.define_config_group_param('pool', 'dedupditto', 'string', 'Number of copies of each deduplicated block to save')
@@ -149,6 +137,12 @@ class StorageNode(AutomagicNode):
 
 
 class DatasetNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
+    def _get_pool(self):
+        return self.obj.get_pool()
+
+    def _get_dataset(self):
+        return self.obj
+
     def __init__(self, dataset):
         #self.obj = Pool(name=pool)
         super(DatasetNode, self).__init__()
@@ -223,6 +217,12 @@ class PoolNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
             str(self.obj.properties['size']),
             str(self.obj.properties['health']),
         ), self.obj.is_healthy())
+
+    def _get_dataset(self):
+        return self.obj.get_filesystem()
+
+    def _get_pool(self):
+        return self.obj
 
     def __init__(self, pool):
         self.obj = Pool(name=pool)
