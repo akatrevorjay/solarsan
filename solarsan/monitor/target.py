@@ -85,11 +85,11 @@ class TargetMonitor(Component):
 
         # TODO Check if target is active, check if all resources are primary
         # for target, if not stop ourselves.
-        if target.is_target_enabled:
+        if target.enabled:
             logger.warning('Target "%s" is currently active upon startup.', target.name)
             #self.fire_this(TargetStart())
             self.fire_this(TargetStarted())
-        elif target.is_target_added:
+        elif target.added:
             logger.warning('Target "%s" currently exists upon startup.', target.name)
 
     def get_target(self):

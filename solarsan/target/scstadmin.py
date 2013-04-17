@@ -40,8 +40,16 @@ def does_device_group_exist(group):
     return os.path.isdir('%s/device_groups/%s' % (SCST_SYS_PATH, group))
 
 
-def does_target_lun_exist(target, driver, lun):
-    return os.path.isdir('%s/targets/%s/%s/luns/%d' % (SCST_SYS_PATH, driver, target, lun))
+def does_target_lun_exist(target, driver, lun, group=None):
+    if group:
+        group = 'ini_groups/%s/' % group
+    else:
+        group = ''
+    return os.path.isdir('%s/targets/%s/%s/%sluns/%d' % (SCST_SYS_PATH, driver, target, group, lun))
+
+
+def does_target_ini_group_exist(target, driver, group):
+    return os.path.isdir('%s/targets/%s/%s/ini_groups/%s' % (SCST_SYS_PATH, driver, target, group))
 
 
 def config(config_file, force=False):

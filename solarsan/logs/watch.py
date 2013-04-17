@@ -2,7 +2,7 @@
 from solarsan import logging, signals
 logger = logging.getLogger(__name__)
 from .models import Syslog
-
+from . import policies
 from time import time
 
 
@@ -21,7 +21,8 @@ class MongoLogWatcher(object):
         count = logs.count()
         if count == 0:
             return
-        logger.debug('Found %s monlogs to eat.', count)
+        if self._debug:
+            logger.debug('Found %s monlogs to eat.', count)
         for log in logs:
             if self._debug:
                 logger.debug('Checking monlog: %s', log)
@@ -34,7 +35,7 @@ class MongoLogWatcher(object):
 
     def _check(self, log):
         try:
-            signals.check_log_entry.send(self, log=log)
+            signals.check_log_entry.send(None, log=log)
             return True
         except Exception as e:
             logger.exception('Exception occurred while checking log entry "%s": %s', log, e.message)
