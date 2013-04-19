@@ -1,23 +1,5 @@
 #!/usr/bin/env python
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileMovedEvent, FileModifiedEvent
-from subprocess import Popen, PIPE
-from argparse import ArgumentParser, REMAINDER
-from time import time, sleep
-import re
-
-try:
-    import colorama
-    colorama.init()
-except ImportError:
-    colorama = None
-
-try:
-    from termcolor import colored
-except ImportError:
-    colored = None
-
-parser = ArgumentParser(description='''
+"""Reloader
 Allows to start a program, and to monitor changes in a folder, when changes are
 detected in the folder, the command is restarted.
 
@@ -25,27 +7,24 @@ This can be useful to test a software you are developping and having immediate
 feedback.
 Or to restart a daemon when configuration or data changes.
 Or any other use, the sky is the limit :)
-''')
-parser.add_argument('-p', '--path', type=str, default='.',
-                    help='set the path to monitor for changes')
-parser.add_argument('-a', '--action', type=str, default='restart',
-                    help='what action to perform when changes are detected')
-parser.add_argument('-i', '--ignorelist', type=str, default='', nargs='*',
-                    help='files to ignore')
-parser.add_argument('-f', '--focus', type=int, default=0,
-                    help='save focus and restore it for the next n'
-                    'seconds after restarting application, require'
-                    'xdotool (linux only)')
-parser.add_argument('-s', '--sleep', type=int, default=0,
-                    help='ignore events for n seconds after the last restart')
-parser.add_argument('command', type=str, nargs=REMAINDER)
 
+Usage: reloader.py [-p <path>] [-a <action] [-a <ignorelist>] [-s <sleep>] <command>
 
-def log(color, string):
-    if colored:
-        print colored(string, color)
-    else:
-        print string
+    -p <path> --path=<path>                     Path to monitor for changes. [default: current directory]
+    -a <action> --action=<action>               Action to perform when changes are detected. [default: restart]
+    -i <ignorelist> --ignorelist=<ignorelist>   Files to ignore.
+    -s <sleep> --sleep=<sleep>                  Ignore events for this many seconds after the last restart [default: 10]
+    <command>                                   Command to run and restart
+
+"""
+import logging
+log = logging.getLogger(__name__)
+from docopt import docopt
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileMovedEvent, FileModifiedEvent
+from subprocess import Popen
+from time import time, sleep
+import re
 
 
 class RestartHandler(FileSystemEventHandler):
@@ -59,44 +38,13 @@ class RestartHandler(FileSystemEventHandler):
 
     def stop(self):
         self._process.terminate()
-        log('red', 'TERMINATED')
+        log.error('Terminated process')
 
-    def start(self, geometry=None):
+    def start(self):
         self._last_restart = time()
-        #if self.focus:
-        #    t = time()
-        #    wid = int(Popen(['/usr/bin/env', 'xdotool', 'getwindowfocus'],
-        #                    stdout=PIPE).communicate()[0])
 
         self._process = Popen(self.command)
-        log('green', 'STARTED %s' % self._process)
-
-        #self.swid = int(Popen(['/usr/bin/env', 'xdotool', 'getwindowfocus'],
-        #                      stdout=PIPE).communicate()[0])
-        #if self.focus:
-        #    while time() < t + self.focus:
-        #        # try to detect a window appeared by tracking focus
-        #        # change, NOT 100% safe!
-        #        swid = int(Popen(['/usr/bin/env', 'xdotool', 'getwindowfocus'],
-        #                         stdout=PIPE).communicate()[0])
-        #        if swid != wid:
-        #            print "got swid", swid
-        #            self.swid = swid
-        #            if geometry:
-        #                self.replace(geometry)
-
-        #        Popen(['/usr/bin/env', 'xdotool', 'windowfocus', str(wid)])
-        #        sleep(.01)
-
-        #if geometry:
-        #    self.replace(geometry)
-
-    #def replace(self, geometry):
-    #    print geometry
-    #    x, y = geometry.split('\n')[1].strip().split(' ')[1].split(',')
-    #    w, h = geometry.split('\n')[2].strip().split(' ')[1].split('x')
-    #    Popen(['/usr/bin/env', 'xdotool', 'windowsize', str(self.swid), w, h])
-    #    Popen(['/usr/bin/env', 'xdotool', 'windowmove', str(self.swid), x, y])
+        log.info('Started %s' % self._process)
 
     def on_any_event(self, event):
         #if not isinstance(event, (FileMovedEvent, FileModifiedEvent)):
@@ -113,18 +61,13 @@ class RestartHandler(FileSystemEventHandler):
             if isinstance(event, FileMovedEvent) and r.match(event.dest_path):
                 return
 
-        log('blue', '%s RESTARTING' % event)
+        log.warning('Restarting due to %s', event)
 
-        geometry = None
-        #if self.swid:
-        #    geometry = Popen(['/usr/bin/env', 'xdotool', 'getwindowgeometry',
-        #                      str(self.swid)],
-        #                     stdout=PIPE).communicate()[0]
         self.stop()
-        self.start(geometry)
+        self.start()
 
 
-def monitor(command, path, action, focus, sleeptime, ignorelist=None):
+def main(command, path, action, focus, sleeptime, ignorelist=None):
         if action == 'restart':
             ev = RestartHandler(command, path=path, focus=focus,
                                 sleeptime=sleeptime,
@@ -142,8 +85,16 @@ def monitor(command, path, action, focus, sleeptime, ignorelist=None):
             ob.stop()
         ob.join()
 
+
 if __name__ == '__main__':
-    args = parser.parse_args()
-    log('blue', str(args))
-    monitor(args.command, args.path, args.action, args.focus, args.sleep,
-            args.ignorelist)
+    arguments = docopt(__doc__, version='Reloader 0.1')
+    kwargs = {}
+    for k, v in arguments.iteritems():
+
+        k = k.replace('--', '')
+        kwargs[k] = v
+
+    print(arguments)
+
+    #main(args.command, args.path, args.action, args.focus, args.sleep,
+    #     args.ignorelist)
