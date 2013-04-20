@@ -22,7 +22,6 @@ class DeviceRemove(Event):
 
 
 class UDev(Component):
-
     channel = "udev"
 
     def __init__(self, channel=channel):

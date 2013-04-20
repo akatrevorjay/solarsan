@@ -17,23 +17,19 @@ class FloatingIpsCheck(Event):
 
 
 class FloatingIPManager(Component):
-    check_every = 300.0
+    channel = 'floating_ip'
 
     def __init__(self):
         super(FloatingIPManager, self).__init__()
         self.monitors = {}
 
-        self.floating_ips_check()
-
-        self._check_timer = Timer(self.check_every,
-                                  FloatingIpsCheck(),
-                                  persist=True,
-                                  ).register(self)
-
         #""" TODO Timer to scan for dual active floating IPs every so often """
-        #Timer(30.0, DualFloatingCheck(), persist=True).register(self)
+        #Timer(30.0, DualFloatingCheck(), self.channel, persist=True).register(self)
 
-    def floating_ips_check(self):
+    #def started(self, component):
+    #    self.fire(FloatingIpsCheck())
+
+    def managers_check(self):
         uuids = []
         for fip in FloatingIP.objects.all():
             self.add_floating_ip(fip)
@@ -46,6 +42,7 @@ class FloatingIPManager(Component):
     def add_floating_ip(self, fip):
         if fip.uuid in self.monitors:
             return
+        #self.monitors[fip.uuid] = FloatingIPMonitor(fip.uuid, channel='floating_ip-%s' % fip.uuid).register(self)
         self.monitors[fip.uuid] = FloatingIPMonitor(fip.uuid).register(self)
 
 
@@ -67,11 +64,12 @@ def get_fip(uuid):
 
 
 class FloatingIPMonitor(Component):
+    channel = 'floating_ip'
     uuid = None
 
-    def __init__(self, uuid):
+    def __init__(self, uuid, channel=channel):
         self.uuid = uuid
-        super(FloatingIPMonitor, self).__init__()
+        super(FloatingIPMonitor, self).__init__(channel=channel)
 
         fip = self.fip
         logger.info('Monitoring Floating IP "%s".', fip)

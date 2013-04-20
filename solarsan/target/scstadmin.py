@@ -3,6 +3,7 @@ from solarsan.utils.files import fread
 import os
 import sh
 
+#from .scst import scst
 
 SCST_SYS_PATH = "/sys/kernel/scst_tgt"
 

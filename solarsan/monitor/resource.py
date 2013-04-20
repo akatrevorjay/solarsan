@@ -12,37 +12,34 @@ Resource Manager
 """
 
 
-class ResourcesCheck(Event):
-    """Check for new Resources"""
-
-
 class ResourceHealthCheck(Event):
     """Check Resource Health"""
     #complete = True
 
 
 class ResourceManager(Component):
+    channel = 'resource'
     #health_check_every = 10.0 + random.randrange(2, 10)
-    health_check_every = 120.0
-    check_every = 300.0
+    #health_check_every = 120.0
+    health_check_every = 10.0
 
     def __init__(self):
         super(ResourceManager, self).__init__()
         self.monitors = {}
 
-        self.resources_check()
-
         self._health_check_timer = Timer(self.health_check_every,
                                          ResourceHealthCheck(),
+                                         self.channel,
                                          persist=True,
                                          ).register(self)
 
-        self._check_timer = Timer(self.check_every,
-                                  ResourcesCheck(),
-                                  persist=True,
-                                  ).register(self)
+    def started(self, *args, **kwargs):
+        #self.fire(ResourcesCheck())
+        #yield None
+        self.fire(ResourceHealthCheck())
 
-    def resources_check(self):
+    #@handler('managers_check', channel='*')
+    def managers_check(self):
         uuids = []
         for res in DrbdResource.objects.all():
             self.add_res(res)
@@ -57,6 +54,7 @@ class ResourceManager(Component):
             return
 
         logger.info("Monitoring Resource '%s'.", res.name)
+        #self.monitors[res.uuid] = ResourceMonitor(res.uuid, channel='resource-%s' % res.uuid).register(self)
         self.monitors[res.uuid] = ResourceMonitor(res.uuid).register(self)
 
 
@@ -120,11 +118,13 @@ def get_resource(uuid):
 
 
 class ResourceMonitor(Component):
+    channel = 'resource'
     uuid = None
 
-    def __init__(self, uuid):
+    def __init__(self, uuid, channel=channel):
         self.uuid = uuid
-        super(ResourceMonitor, self).__init__()
+        super(ResourceMonitor, self).__init__(channel=channel)
+
         self.load_res_info()
 
     def get_res(self):
@@ -134,25 +134,38 @@ class ResourceMonitor(Component):
 
     @property
     def res(self):
-        res = None
         if self._res:
-            res = self._res()
-        if res is None:
+            self._res.reload()
+        else:
             try:
-                res = self.get_res()
+                self._res = self.get_res()
             except DrbdResource.DoesNotExist:
                 logger.error('Resource with uuid=%s does not exist anymore', self.uuid)
                 self.unregister()
-            self._res = weakref.ref(res)
-        return res
+        return self._res
+
+    #@property
+    #def res(self):
+    #    res = None
+    #    if self._res:
+    #        res = self._res()
+    #    if res is not None:
+    #        res.reload()
+    #    else:
+    #        try:
+    #            res = self.get_res()
+    #        except DrbdResource.DoesNotExist:
+    #            logger.error('Resource with uuid=%s does not exist anymore', self.uuid)
+    #            self.unregister()
+    #        self._res = weakref.ref(res)
+    #    return res
 
     def get_event(self, event):
         event.args.insert(0, self.uuid)
         return event
 
     def fire_this(self, event):
-        event.args.insert(0, self.uuid)
-        return self.fire(event)
+        return self.fire(self.get_event(event), self.channel)
 
     peers = None
     peer_uuids = None
@@ -189,7 +202,7 @@ class ResourceMonitor(Component):
     def service(self):
         return self.res.local.service
 
-    @handler('peer_failover', channel='*')
+    @handler('peer_failover', channel='peer')
     def _on_peer_failover(self, peer_uuid):
         if peer_uuid not in self.peers or peer_uuid == self.peer_local_uuid:
             return
@@ -204,7 +217,7 @@ class ResourceMonitor(Component):
             self.fire_this(ResourcePrimary())
 
     # TODO What exactly to do upon pool not healthy
-    @handler('peer_pool_not_healthy', channel='*')
+    @handler('peer_pool_not_healthy', channel='peer')
     def _on_peer_pool_not_healthy(self, peer_uuid, pool):
         if peer_uuid not in self.peers or pool != self.peers[peer_uuid]['pool']:
             return
@@ -245,8 +258,9 @@ class ResourceMonitor(Component):
 
     def status(self):
         ret = dict(self.service.status())
+        ret = None
         if not ret:
-            return ret
+            yield ret
         res = self.res
         events = []
         if ret['connection_state'] != res.connection_state:
@@ -260,18 +274,28 @@ class ResourceMonitor(Component):
         if ret['remote_role'] != res.remote_role:
             events.append(ResourceRemoteRoleChange(ret['remote_role']))
 
-        keys = ['connection_state', 'disk_state', 'role']
-        keys += ['remote_' + x for x in keys[1:]]
+        #keys = ['connection_state', 'disk_state', 'role']
+        #keys += ['remote_' + x for x in keys[1:]]
 
-        for k, v in ret.iteritems():
-            if k in keys:
-                setattr(res, k, v)
-        res.save()
+        #for k, v in ret.iteritems():
+        #    if k in keys:
+        #        setattr(res, k, v)
+
+        #old_status = res.status.copy()
+        #logger.info('old_status=%s', old_status)
+
+        res.update_status(**ret)
+
+        #new_status = res.status.copy()
+        #for k, v in new_status.iteritems():
+        #    if old_status[k] != v:
+        #        logger.info('new status changed: %s = %s (orig=%s)', k, v, old_status[k])
 
         for event in events:
             self.fire_this(event)
+        yield None
 
-        return ret
+        yield ret
 
     def resource_connection_state_change(self, uuid, cstate):
         if self.uuid != uuid:
@@ -458,7 +482,7 @@ class ResourceMonitor(Component):
             retry_in = 10.0 + random.randrange(2, 10)
             logger.warning('Could not promote self to Primary for Resource "%s". Retrying in %ds.',
                            res.name, retry_in)
-            self._primary_try_timer = Timer(retry_in, self.get_event(ResourcePrimaryTry()))
+            self._primary_try_timer = Timer(retry_in, self.get_event(ResourcePrimaryTry()), self.channel)
 
     def resource_secondary(self, uuid, *values):
         if self.uuid != uuid:

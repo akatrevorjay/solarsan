@@ -71,10 +71,17 @@ LOGGING = {
         #},
         #'solarsan_standard': {
         'standard': {
-            'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(message)s',
+            #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(message)s',
+            #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(processName)s[%(process)d] {%(thread)d} %(message)s',
+            #'format': '%(asctime)s %(levelname)8s %(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d} %(message)s',
+            #'format': '>> %(asctime)s %(levelname)8s %(name)20s@%(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d}\n%(message)s\n',
+            'format': '%(asctime)s %(name)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
+            #'format': '%(asctime)s %(name)s[%(process)d] {%(thread)d}: %(message)s @%(funcName)s:%(lineno)d',
         },
         'verbose': {
-            'format': '%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s'
+            #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(processName)s[%(process)d] {%(thread)d} %(message)s',
+            #'format': '%(asctime)s %(name)s/%(processName)s[%(process)d]: %(message)s {%(thread)d} @%(funcName)s:%(lineno)d',
+            'format': '%(asctime)s %(name)s[%(process)d] {%(thread)d}: %(message)s @%(funcName)s:%(lineno)d',
         },
         'syslog': {
             #'format': '<22>%(asctime)s ' + SERVER_NAME + ' %(name)s[%(process)d]: %(message)s',

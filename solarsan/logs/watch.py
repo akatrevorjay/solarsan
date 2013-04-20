@@ -4,6 +4,7 @@ logger = logging.getLogger(__name__)
 from .models import Syslog
 from . import policies
 from time import time
+import mongoengine as m
 
 
 class MongoLogWatcher(object):
@@ -29,7 +30,12 @@ class MongoLogWatcher(object):
             self._check(log)
 
     def _next(self):
-        logs = Syslog.objects.filter(unixtime__gt=str(self._last_ts))
+        try:
+            logs = Syslog.objects.filter(unixtime__gt=str(self._last_ts))
+        except m.document.InvalidCollectionError as e:
+            logger.error("Monlog collection is invalid, ie is not capped. Dropping existing collection to re-initialize as such: %s", e)
+            Syslog.drop_collection()
+            logs = Syslog.objects.filter(unixtime__gt=str(self._last_ts))
         self._last_ts = time()
         return logs
 

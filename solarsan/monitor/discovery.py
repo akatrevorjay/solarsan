@@ -26,13 +26,17 @@ class PeerDiscovered(Event):
 
 
 class Discovery(Component):
+    channel = 'discovery'
+
     discover_every = 60.0
 
     def __init__(self):
         super(Discovery, self).__init__()
 
+        Timer(self.discover_every, DiscoverPeers(), self.channel, persist=True).register(self)
+
+    def started(self, component):
         self.fire(DiscoverPeers())
-        Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
 
     """
     Discovery
@@ -43,8 +47,8 @@ class Discovery(Component):
         try:
             for host, port in rpyc.discover('storage'):
                 self.fire(ProbePeer(host))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error('Got error while discovering nearby peers: %s', e)
 
     def probe_peer(self, host):
         """Probes a discovered node for info"""

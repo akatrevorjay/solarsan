@@ -7,7 +7,7 @@ from solarsan.ha.models import FloatingIP
 from .utils import generate_wwn, is_valid_wwn
 from . import scstadmin
 from solarsan.storage.volume import Volume
-#from solarsan.storage.drbd import DrbdResource
+from solarsan.storage.drbd import DrbdResource
 from uuid import uuid4
 import os
 
@@ -68,9 +68,13 @@ class Backstore(ReprMixIn, m.Document):
             self.name = self.get_default_name()
         super(Backstore, self).save(*args, **kwargs)
 
+    @property
+    def device(self):
+        raise NotImplementedError
+
 
 class VolumeBackstore(Backstore):
-    _repr_vars = ['name', 'volume_name']
+    _repr_vars = ['name', 'volume_name', 'device']
     volume_name = m.StringField()
 
     def get_default_name(self):
@@ -103,9 +107,13 @@ class VolumeBackstore(Backstore):
     def device(self):
         return '/dev/zvol/%s' % self.volume_name
 
+    def is_available(self):
+        # TODO Should really check if it's RW if not self.is_active I suppose
+        return os.path.exists(self.device)
+
 
 class DrbdResourceBackstore(Backstore):
-    _repr_vars = ['name', 'resource']
+    _repr_vars = ['name', 'resource', 'device']
     #resource = m.ReferenceField(DrbdResource)
     resource = m.GenericReferenceField()
 
@@ -120,6 +128,11 @@ class DrbdResourceBackstore(Backstore):
     @property
     def device(self):
         return self.resource.device
+
+    def is_available(self):
+        # TODO Is this needed?
+        self.resource.reload()
+        return self.resource.role == 'Primary'
 
 
 """
@@ -268,13 +281,47 @@ Targets
 
 
 class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
-    meta = dict(abstract=True)
+    meta = dict(allow_inheritance=True)
 
     class signals:
+        start = signals.start
         pre_start = signals.pre_start
         post_start = signals.post_start
+
+        stop = signals.stop
         pre_stop = signals.pre_stop
         post_stop = signals.post_stop
+
+    def __init__(self, *args, **kwargs):
+        super(Target, self).__init__(*args, **kwargs)
+
+        #DrbdResource.signals.status_change.connect(self.on_drbd_status_change)
+
+    def get_all_luns(self):
+        for group in self.groups:
+            for lun in group.luns:
+                yield lun
+
+    def get_all_lun_devices(self):
+        devices = []
+        for lun in self.get_all_luns():
+            dev = lun.device
+            if dev not in devices:
+                devices.append(dev)
+                yield dev
+
+    def get_all_unavailable_luns(self):
+        for lun in self.get_all_luns():
+            if not lun.is_available():
+                yield lun
+
+    # TODO Temp hack
+    @property
+    def devices(self):
+        for lun in self.get_all_luns():
+            # TODO what about volume backstores?
+            dev = lun.resource
+            yield dev
 
     name = m.StringField()
     floating_ip = m.ReferenceField(FloatingIP, dbref=False)
@@ -373,6 +420,18 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         return self.__repr__()
 
 
+@signals.start.connect
+def _on_start(self, **kwargs):
+    if issubclass(self.__class__, Target):
+        return self.start()
+
+
+@signals.stop.connect
+def _on_stop(self, **kwargs):
+    if issubclass(self.__class__, Target):
+        return self.stop()
+
+
 @signals.post_start.connect
 def _on_post_start(self):
     if issubclass(self.__class__, Target):
@@ -390,7 +449,6 @@ def _on_pre_stop(self):
 
 
 class iSCSITarget(Target):
-    #meta = {'allow_inheritance': True}
     driver = 'iscsi'
     #portal_port = m.IntField()
 
@@ -409,5 +467,4 @@ class iSCSITarget(Target):
 
 
 class SRPTarget(Target):
-    #meta = {'allow_inheritance': True}
     driver = 'srpt'

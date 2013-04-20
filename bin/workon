@@ -1,0 +1,3 @@
+#!/bin/bash
+workon solarsan
+export PATH="/opt/solarsan/bin:$PATH"
