@@ -18,12 +18,12 @@ Monitor
 """
 
 
-class MonitorStatusUpdate(Event):
-    """Monitor Status Update"""
-
-
 class ManagersCheck(Event):
     """Manager check"""
+
+
+class MonitorStarted(Event):
+    """Monitor started"""
 
 
 class Monitor(Component):
@@ -58,7 +58,9 @@ class Monitor(Component):
     def started(self, *args):
         set_proc_status('Starting')
         self.fire(ManagersCheck())
-        yield None
+        self.fire(MonitorStarted())
+
+    def monitor_started(self):
         set_proc_status()
 
 

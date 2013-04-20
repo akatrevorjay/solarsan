@@ -33,11 +33,6 @@ class ResourceManager(Component):
                                          persist=True,
                                          ).register(self)
 
-    def started(self, *args, **kwargs):
-        #self.fire(ResourcesCheck())
-        #yield None
-        self.fire(ResourceHealthCheck())
-
     #@handler('managers_check', channel='*')
     def managers_check(self):
         uuids = []
@@ -48,12 +43,12 @@ class ResourceManager(Component):
             if uuid not in uuids:
                 self.monitors[uuid].unregister()
                 self.monitors.pop(uuid)
+        self.fire(ResourceHealthCheck())
 
     def add_res(self, res):
         if res.uuid in self.monitors:
             return
 
-        logger.info("Monitoring Resource '%s'.", res.name)
         #self.monitors[res.uuid] = ResourceMonitor(res.uuid, channel='resource-%s' % res.uuid).register(self)
         self.monitors[res.uuid] = ResourceMonitor(res.uuid).register(self)
 
@@ -125,58 +120,8 @@ class ResourceMonitor(Component):
         self.uuid = uuid
         super(ResourceMonitor, self).__init__(channel=channel)
 
-        self.load_res_info()
-
-    def get_res(self):
-        return get_resource(self.uuid)
-
-    _res = None
-
-    @property
-    def res(self):
-        if self._res:
-            self._res.reload()
-        else:
-            try:
-                self._res = self.get_res()
-            except DrbdResource.DoesNotExist:
-                logger.error('Resource with uuid=%s does not exist anymore', self.uuid)
-                self.unregister()
-        return self._res
-
-    #@property
-    #def res(self):
-    #    res = None
-    #    if self._res:
-    #        res = self._res()
-    #    if res is not None:
-    #        res.reload()
-    #    else:
-    #        try:
-    #            res = self.get_res()
-    #        except DrbdResource.DoesNotExist:
-    #            logger.error('Resource with uuid=%s does not exist anymore', self.uuid)
-    #            self.unregister()
-    #        self._res = weakref.ref(res)
-    #    return res
-
-    def get_event(self, event):
-        event.args.insert(0, self.uuid)
-        return event
-
-    def fire_this(self, event):
-        return self.fire(self.get_event(event), self.channel)
-
-    peers = None
-    peer_uuids = None
-    peer_local_uuid = None
-
-    @property
-    def peer_local(self):
-        return self.peers.get(self.peer_local_uuid)
-
-    def load_res_info(self):
         res = self.res
+        logger.info("Monitoring Resource '%s'.", res.name)
 
         uuids = self.peer_uuids = []
         peers = self.peers = {}
@@ -185,7 +130,57 @@ class ResourceMonitor(Component):
             peers[peer.uuid] = dict(is_local=peer.is_local, hostname=peer.hostname, pool=peer.pool)
         self.peer_local_uuid = res.local.uuid
 
-        self.status()
+        self.update_status()
+
+    def get_res(self):
+        return get_resource(self.uuid)
+
+    _res = None
+
+    #@property
+    #def res(self):
+    #    if self._res:
+    #        self._res.reload()
+    #    else:
+    #        try:
+    #            self._res = self.get_res()
+    #        except DrbdResource.DoesNotExist:
+    #            logger.error('Resource with uuid=%s does not exist anymore', self.uuid)
+    #            self.unregister()
+    #    return self._res
+
+    @property
+    def res(self):
+        res = None
+        if self._res:
+            res = self._res()
+        if res is not None:
+            res.reload()
+        else:
+            try:
+                res = self.get_res()
+            except DrbdResource.DoesNotExist:
+                logger.error('Resource with uuid=%s does not exist anymore', self.uuid)
+                self.unregister()
+            self._res = weakref.ref(res)
+        return res
+
+    def get_event(self, event):
+        event.args.insert(0, self.uuid)
+        return event
+
+    def fire_this(self, event):
+        #return self.fire(self.get_event(event), self.channel)
+        #return self.fire(self.get_event(event), self)
+        return self.fire(self.get_event(event))
+
+    peers = None
+    peer_uuids = None
+    peer_local_uuid = None
+
+    @property
+    def peer_local(self):
+        return self.peers.get(self.peer_local_uuid)
 
     #def get_peer(self, index=None, local=False, remote=False, res=None):
     #    if not res:
@@ -206,10 +201,11 @@ class ResourceMonitor(Component):
     def _on_peer_failover(self, peer_uuid):
         if peer_uuid not in self.peers or peer_uuid == self.peer_local_uuid:
             return
-        res = self.res
 
         # Update status and send out proper events first
-        self.status()
+        self.update_status()
+
+        res = self.res
 
         if res.role != 'Primary':
             logger.error('Failing over Peer "%s" for Resource "%s".',
@@ -256,46 +252,33 @@ class ResourceMonitor(Component):
     Status Tracking
     """
 
-    def status(self):
+    def update_status(self):
+        #if self.uuid != uuid:
+        #    return
+
         ret = dict(self.service.status())
-        ret = None
+        #logger.info('update_status ret=%s', ret)
         if not ret:
-            yield ret
+            return
+
         res = self.res
-        events = []
-        if ret['connection_state'] != res.connection_state:
-            events.append(ResourceConnectionStateChange(ret['connection_state']))
-        if ret['disk_state'] != res.disk_state:
-            events.append(ResourceDiskStateChange(ret['disk_state']))
-        if ret['role'] != res.role:
-            events.append(ResourceRoleChange(ret['role']))
-        if ret['remote_disk_state'] != res.remote_disk_state:
-            events.append(ResourceRemoteDiskStateChange(ret['remote_disk_state']))
-        if ret['remote_role'] != res.remote_role:
-            events.append(ResourceRemoteRoleChange(ret['remote_role']))
 
-        #keys = ['connection_state', 'disk_state', 'role']
-        #keys += ['remote_' + x for x in keys[1:]]
+        event_map = {
+            'connection_state': ResourceConnectionStateChange,
+            'disk_state': ResourceDiskStateChange,
+            'role': ResourceRoleChange,
+            'remote_disk_state': ResourceRemoteDiskStateChange,
+            'remote_role': ResourceRemoteRoleChange,
+        }
 
-        #for k, v in ret.iteritems():
-        #    if k in keys:
-        #        setattr(res, k, v)
-
-        #old_status = res.status.copy()
-        #logger.info('old_status=%s', old_status)
-
-        res.update_status(**ret)
-
-        #new_status = res.status.copy()
-        #for k, v in new_status.iteritems():
-        #    if old_status[k] != v:
-        #        logger.info('new status changed: %s = %s (orig=%s)', k, v, old_status[k])
-
-        for event in events:
-            self.fire_this(event)
-        yield None
-
-        yield ret
+        changed_kwargs = res.update_status(**ret)
+        if changed_kwargs:
+            logger.debug('update_status changed=%s', changed_kwargs)
+            res.reload()
+            for k, v in changed_kwargs.iteritems():
+                if k in event_map:
+                    self.fire_this(event_map[k](ret[k]))
+            return changed_kwargs
 
     def resource_connection_state_change(self, uuid, cstate):
         if self.uuid != uuid:
@@ -436,8 +419,12 @@ class ResourceMonitor(Component):
     """
 
     def resource_health_check(self):
+        if self.update_status():
+            yield None
+
         res = self.res
-        self.status()
+        #logger.debug("Resource '%s' health check", res.name)
+        #logger.debug("Resource '%s' status=%s", res.name, res.status)
 
         # If we have two secondary nodes become primary
         if res.role == 'Secondary' and res.remote_role == 'Secondary':
@@ -456,14 +443,19 @@ class ResourceMonitor(Component):
 
         logger.warning('Promoting self to Primary for Resource "%s".', res.name)
         self.fire_this(ResourcePrimaryPre())
+        yield None
         self.fire_this(ResourcePrimaryTry())
 
     def resource_primary_try(self, uuid):
         if self.uuid != uuid:
             return
+
+        if self.update_status():
+            yield None
+
         res = self.res
 
-        self.status()
+        #self.status()
         if res.role == 'Primary':
             logger.error('Cannot promote self to Primary for Resource "%s", ' +
                          'as we\'re already Primary.', res.name)
@@ -475,8 +467,12 @@ class ResourceMonitor(Component):
 
         try:
             self.service.primary()
-            self.status()
+
+            if self.update_status():
+                yield None
+
             logger.info('Promoted self to Primary for Resource "%s".', res.name)
+
             self.fire_this(ResourcePrimaryPost())
         except:
             retry_in = 10.0 + random.randrange(2, 10)
@@ -487,9 +483,12 @@ class ResourceMonitor(Component):
     def resource_secondary(self, uuid, *values):
         if self.uuid != uuid:
             return
+
+        if self.update_status():
+            yield None
+
         res = self.res
 
-        self.status()
         if res.role == 'Secondary':
             return
 
@@ -497,7 +496,10 @@ class ResourceMonitor(Component):
         self.fire_this(ResourceSecondaryPre())
         self.service.secondary()
 
-        self.status()
+        if self.update_status():
+            yield None
+        #del res
+        res = self.res
 
         logger.warning('Demoted self to Secondary for Resource "%s".', res.name)
         self.fire_this(ResourceSecondaryPost())

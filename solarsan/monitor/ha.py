@@ -89,6 +89,18 @@ class FloatingIPMonitor(Component):
 
     _fip = None
 
+    #@property
+    #def fip(self):
+    #    if self._fip:
+    #        self._fip.reload()
+    #    else:
+    #        try:
+    #            self._fip = self.get_fip()
+    #        except FloatingIP.DoesNotExist:
+    #            logger.error('FloatingIP with uuid=%s does not exist anymore', self.uuid)
+    #            self.unregister()
+    #    return self._fip
+
     @property
     def fip(self):
         fip = None
@@ -108,8 +120,7 @@ class FloatingIPMonitor(Component):
         return event
 
     def fire_this(self, event):
-        event.args.insert(0, self.uuid)
-        return self.fire(event)
+        return self.fire(self.get_event(event), self.channel)
 
     """
     Events

@@ -74,9 +74,6 @@ class TargetMonitor(Component):
         target = self.target
         logger.info('Monitoring Target %s.', target)
 
-    def started(self, component):
-        target = self.target
-
         # TODO Check if target is active, check if all resources are primary
         # for target, if not stop ourselves.
         if target.enabled:
@@ -96,40 +93,40 @@ class TargetMonitor(Component):
 
     _target = None
 
-    @property
-    def target(self):
-        if self._target:
-            self._target.reload()
-        else:
-            try:
-                self._target = self.get_target()
-            except iSCSITarget.DoesNotExist:
-                logger.error('Target with uuid=%s does not exist anymore', self.uuid)
-                self.unregister()
-        return self._target
-
     #@property
     #def target(self):
-    #    target = None
     #    if self._target:
-    #        target = self._target()
-    #    if target is not None:
-    #        target.reload()
+    #        self._target.reload()
     #    else:
     #        try:
-    #            target = self.get_target()
-    #        except target.DoesNotExist:
+    #            self._target = self.get_target()
+    #        except iSCSITarget.DoesNotExist:
     #            logger.error('Target with uuid=%s does not exist anymore', self.uuid)
     #            self.unregister()
-    #        self._target = weakref.ref(target)
-    #    return target
+    #    return self._target
+
+    @property
+    def target(self):
+        target = None
+        if self._target:
+            target = self._target()
+        if target is not None:
+            target.reload()
+        else:
+            try:
+                target = self.get_target()
+            except target.DoesNotExist:
+                logger.error('Target with uuid=%s does not exist anymore', self.uuid)
+                self.unregister()
+            self._target = weakref.ref(target)
+        return target
 
     def get_event(self, event):
         event.args.insert(0, self.uuid)
         return event
 
     def fire_this(self, event):
-        return self.fire(self.get_event(event), self.channel)
+        return self.fire(self.get_event(event))
 
     @property
     def log_prepend(self):

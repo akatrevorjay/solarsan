@@ -43,18 +43,17 @@ class PeerManager(Component):
         Timer(self.heartbeat_every, PeerHeartbeat(), self.channel, persist=True).register(self)
         #Timer(self.pool_health_every, PeerPoolHealthCheck(), self.channel, persist=True).register(self)
 
-    def started(self, component):
-        self.fire(PeerPoolHealthCheck())
-
     def managers_check(self):
-        #uuids = []
+        uuids = []
         for peer in Peer.objects.all():
-            #uuids.append(peer.uuid)
+            uuids.append(peer.uuid)
             self.add_peer(peer)
-        #for uuid in self.monitors.keys():
-        #    if uuid not in uuids:
-        #        self.monitors[uuid].unregister()
-        #        self.monitors.pop(uuid)
+        for uuid in self.monitors.keys():
+            if uuid not in uuids:
+                self.monitors[uuid].unregister()
+                self.monitors.pop(uuid)
+
+        self.fire(PeerPoolHealthCheck())
 
     @handler('peer_discovered', channel='discovery')
     def _on_peer_discovered(self, uuid, created=None, **kwargs):
@@ -66,7 +65,6 @@ class PeerManager(Component):
     def add_peer(self, peer):
         if peer.uuid in self.monitors:
             return
-        logger.info("Monitoring Peer '%s'.", peer.hostname)
         #self.monitors[peer.uuid] = PeerMonitor(peer.uuid, channel='peer-%s' % peer.uuid).register(self)
         self.monitors[peer.uuid] = PeerMonitor(peer.uuid).register(self)
 
@@ -113,6 +111,8 @@ class PeerMonitor(Component):
         self._heartbeat_timeout_count = None
 
         peer = self.peer
+        logger.info("Monitoring Peer '%s'.", peer.hostname)
+
         if peer.is_offline:
             logger.warning('Peer "%s" is already marked as offline. Marking online to ensure this is ' +
                            'still true.', peer.hostname)
@@ -123,31 +123,32 @@ class PeerMonitor(Component):
 
     _peer = None
 
-    @property
-    def peer(self):
-        if self._peer:
-            self._peer.reload()
-        else:
-            try:
-                self._peer = self.get_peer()
-            except Peer.DoesNotExist:
-                logger.error('Peer with uuid=%s does not exist anymore', self.uuid)
-                self.unregister()
-        return self._peer
-
     #@property
     #def peer(self):
-    #    peer = None
     #    if self._peer:
-    #        peer = self._peer()
-    #    if peer is None:
+    #        #self._peer.reload()
+    #        pass
+    #    else:
     #        try:
-    #            peer = self.get_peer()
+    #            self._peer = self.get_peer()
     #        except Peer.DoesNotExist:
     #            logger.error('Peer with uuid=%s does not exist anymore', self.uuid)
     #            self.unregister()
-    #        self._peer = weakref.ref(peer)
-    #    return peer
+    #    return self._peer
+
+    @property
+    def peer(self):
+        peer = None
+        if self._peer:
+            peer = self._peer()
+        if peer is None:
+            try:
+                peer = self.get_peer()
+            except Peer.DoesNotExist:
+                logger.error('Peer with uuid=%s does not exist anymore', self.uuid)
+                self.unregister()
+            self._peer = weakref.ref(peer)
+        return peer
 
     def get_event(self, event):
         event.args.insert(0, self.uuid)

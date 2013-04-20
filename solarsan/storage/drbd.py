@@ -131,63 +131,73 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 
     def update_status(self, **kwargs):
         changed_kwargs = {}
-        orig_values = {}
+        #orig_values = {}
+        mongo_update = {}
         for k, v in kwargs.iteritems():
             orig_value = self.get_status(k)
             if orig_value != v:
-                self.update(**{'set__status__%s' % k: v})
+                #self.update(**{'set__status__%s' % k: v})
                 # TODO is this needed? shouldn't be.
                 #self.status[key] = v
                 changed_kwargs[k] = v
-                orig_values[k] = orig_value
-        if changed_kwargs:
-            # doesn't seem to help for some reason?
-            self.reload()
-            self.signals.status_update.send(self, **changed_kwargs)
-            for k, v in changed_kwargs.iteritems():
-                signal = getattr(self.signals, k, None)
-                if signal:
-                    signal.send(self, value=v, orig_value=orig_values[k])
+                mongo_update['set__status__%s' % k] = v
+                #orig_values[k] = orig_value
+
+        if mongo_update:
+            self.update(**mongo_update)
+        return changed_kwargs
+
+        #self.update(**{'set__status': changed_kwargs})
+        #if changed_kwargs:
+        #    # doesn't seem to help for some reason?
+        #    self.reload()
+        #    self.signals.status_update.send(self, **changed_kwargs)
+        #    for k, v in changed_kwargs.iteritems():
+        #        signal = getattr(self.signals, k, None)
+        #        if signal:
+        #            signal.send(self, value=v, orig_value=orig_values[k])
+        #return changed_kwargs
+        #self.update(**{'set__status': kwargs})
 
     @property
     def connection_state(self):
         return self.get_status('connection_state')
 
-    @connection_state.setter
-    def connection_state(self, value):
-        return self.update_status(connection_state=value)
+    #@connection_state.setter
+    #def connection_state(self, value):
+    #    return self.update_status(connection_state=value)
 
     @property
     def disk_state(self):
         return self.get_status('disk_state')
 
-    @disk_state.setter
-    def disk_state(self, value):
-        return self.update_status(disk_state=value)
+    #@disk_state.setter
+    #def disk_state(self, value):
+    #    return self.update_status(disk_state=value)
 
     @property
     def role(self):
         return self.get_status('role')
 
-    @role.setter
-    def role(self, value):
-        return self.update_status(role=value)
+    #@role.setter
+    #def role(self, value):
+    #    return self.update_status(role=value)
 
     @property
     def remote_disk_state(self):
         return self.get_status('remote_disk_state')
 
-    @remote_disk_state.setter
-    def remote_disk_state(self, value):
-        return self.update_status(remote_disk_state=value)
+    #@remote_disk_state.setter
+    #def remote_disk_state(self, value):
+    #    return self.update_status(remote_disk_state=value)
 
     @property
     def remote_role(self):
         return self.get_status('remote_role')
 
-    @remote_role.setter
-    def remote_role(self, value):
-        return self.update_status(remote_role=value)
+    #@remote_role.setter
+    #def remote_role(self, value):
+    #    return self.update_status(remote_role=value)
 
     """
     Avoid possums

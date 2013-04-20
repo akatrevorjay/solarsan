@@ -35,7 +35,7 @@ class Discovery(Component):
 
         Timer(self.discover_every, DiscoverPeers(), self.channel, persist=True).register(self)
 
-    def started(self, component):
+    def managers_check(self):
         self.fire(DiscoverPeers())
 
     """
