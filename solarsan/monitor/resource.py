@@ -130,7 +130,7 @@ class ResourceMonitor(Component):
             peers[peer.uuid] = dict(is_local=peer.is_local, hostname=peer.hostname, pool=peer.pool)
         self.peer_local_uuid = res.local.uuid
 
-        self.update_status()
+        self.update_status(send_events=False)
 
     def get_res(self):
         return get_resource(self.uuid)
@@ -252,7 +252,15 @@ class ResourceMonitor(Component):
     Status Tracking
     """
 
-    def update_status(self):
+    _update_status_event_map = {
+        'connection_state': ResourceConnectionStateChange,
+        'disk_state': ResourceDiskStateChange,
+        'role': ResourceRoleChange,
+        'remote_disk_state': ResourceRemoteDiskStateChange,
+        'remote_role': ResourceRemoteRoleChange,
+    }
+
+    def update_status(self, send_events=True):
         #if self.uuid != uuid:
         #    return
 
@@ -262,23 +270,17 @@ class ResourceMonitor(Component):
             return
 
         res = self.res
-
-        event_map = {
-            'connection_state': ResourceConnectionStateChange,
-            'disk_state': ResourceDiskStateChange,
-            'role': ResourceRoleChange,
-            'remote_disk_state': ResourceRemoteDiskStateChange,
-            'remote_role': ResourceRemoteRoleChange,
-        }
-
         changed_kwargs = res.update_status(**ret)
-        if changed_kwargs:
+        #res.reload()
+
+        if send_events and changed_kwargs:
             logger.debug('update_status changed=%s', changed_kwargs)
-            res.reload()
             for k, v in changed_kwargs.iteritems():
-                if k in event_map:
-                    self.fire_this(event_map[k](ret[k]))
-            return changed_kwargs
+                event_cls = self._update_status_event_map.get(k)
+                if event_cls:
+                    self.fire_this(event_cls(v))
+
+        return changed_kwargs
 
     def resource_connection_state_change(self, uuid, cstate):
         if self.uuid != uuid:

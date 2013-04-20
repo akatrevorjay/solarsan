@@ -173,9 +173,10 @@ class Acl(ReprMixIn, m.EmbeddedDocument):
 
     def stop(self, target=None, group=None):
         logger.debug('Stopping Acl %s for Group %s for Target %s', self, group, target)
-        #for initiator in self.allow:
-        #    scstadmin.rem_init(initiator, target.driver, target.name, group.name)
-        scstadmin.clear_inits(target.driver, target.name, group.name)
+        if scstadmin.does_target_ini_group_exist(target.name, target.driver, group.name):
+            #for initiator in self.allow:
+            #    scstadmin.rem_init(initiator, target.driver, target.name, group.name)
+            scstadmin.clear_inits(target.driver, target.name, group.name)
 
     def __unicode__(self):
         return self.__repr__()
@@ -203,6 +204,11 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
     def _target(self):
         return self._instance
 
+    def is_active(self, target=None):
+        if not target:
+            target = self._target
+        return scstadmin.does_target_ini_group_exist(target.name, target.driver, self.name)
+
     def start(self, target=None):
         if not target:
             target = self._target
@@ -215,7 +221,7 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
         return True
 
     def _add_group(self, target=None):
-        if not scstadmin.does_target_ini_group_exist(target.name, target.driver, self.name):
+        if not self.is_active(target=target):
             logger.debug('Adding group %s for Target %s', self, target)
             scstadmin.add_group(self.name, target.driver, target.name)
         return True
@@ -260,16 +266,18 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
                 logger.debug('Stopping backstore %s for Group %s Target %s', backstore, self, target)
                 backstore.stop(target=target, group=self)
 
-        # Clear out luns for group, to be safe
-        scstadmin.clear_luns(target.driver, target.name, self.name)
+        if self.is_active(target=target):
+            # Clear out luns for group, to be safe
+            scstadmin.clear_luns(target.driver, target.name, self.name)
 
     def _rem_acl(self, target=None):
         logger.debug('Removing Acl %s for Group %s for Target %s', self.acl, self, target)
         return self.acl.stop(target=target, group=self)
 
     def _rem_group(self, target=None):
-        logger.debug('Removing Group %s for Target %s', self, target)
-        return scstadmin.del_group(self.name, target.driver, target.name)
+        if self.is_active(target=target):
+            logger.debug('Removing Group %s for Target %s', self, target)
+            return scstadmin.del_group(self.name, target.driver, target.name)
 
     def __unicode__(self):
         return self.__repr__()

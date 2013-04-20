@@ -41,13 +41,13 @@ class Monitor(Component):
         Discovery().register(self)
         DeviceManager().register(self)
         FloatingIPManager().register(self)
-        TargetManager().register(self)
         ResourceManager().register(self)
+        TargetManager().register(self)
         # TODO Finish this
         #AutoSnapshotManager().register(self)
         # TODO Finish this
         #BackupManager().register(self)
-        LogWatchManager().register(self)
+        #LogWatchManager().register(self)
 
         self._check_timer = Timer(self.check_every,
                                   ManagersCheck(),

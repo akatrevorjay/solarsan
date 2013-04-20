@@ -29,13 +29,15 @@ class MongoLogWatcher(object):
                 logger.debug('Checking monlog: %s', log)
             self._check(log)
 
-    def _next(self):
+    def _next(self, _retry=False):
+        logs = None
         try:
             logs = Syslog.objects.filter(unixtime__gt=str(self._last_ts))
         except m.document.InvalidCollectionError as e:
             logger.error("Monlog collection is invalid, ie is not capped. Dropping existing collection to re-initialize as such: %s", e)
             Syslog.drop_collection()
-            logs = Syslog.objects.filter(unixtime__gt=str(self._last_ts))
+            if not _retry:
+                return self._next(_retry=True)
         self._last_ts = time()
         return logs
 
