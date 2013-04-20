@@ -2,7 +2,7 @@
 *.pyo
 *.ipynb
 
-#*.swp
+*.swp
 #*.swo
 
 .installed
