@@ -7,7 +7,7 @@ from solarsan.ha.models import FloatingIP
 from .utils import generate_wwn, is_valid_wwn
 from . import scstadmin
 from solarsan.storage.volume import Volume
-from solarsan.storage.drbd import DrbdResource
+#from solarsan.storage.drbd import DrbdResource
 from uuid import uuid4
 import os
 
@@ -72,6 +72,12 @@ class Backstore(ReprMixIn, m.Document):
     def device(self):
         raise NotImplementedError
 
+    def detach(self):
+        pass
+
+    def attach(self):
+        pass
+
 
 class VolumeBackstore(Backstore):
     _repr_vars = ['name', 'volume_name', 'device']
@@ -133,6 +139,16 @@ class DrbdResourceBackstore(Backstore):
         # TODO Is this needed?
         self.resource.reload()
         return self.resource.role == 'Primary'
+
+    def detach(self):
+        self.resource.reload()
+        if self.resource.role == 'Primary':
+            self.resource.local.service.secondary()
+
+    def attach(self):
+        self.resource.reload()
+        if self.resource.role == 'Secondary':
+            self.resource.local.service.primary()
 
 
 """

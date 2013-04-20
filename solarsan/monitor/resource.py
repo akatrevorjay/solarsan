@@ -70,8 +70,8 @@ class ResourcePrimaryTry(Event):
     """Promote to Primary Try"""
 
 
-class ResourcePrimaryPost(Event):
-    """Promote to Primary"""
+#class ResourcePrimaryPost(Event):
+#    """Promote to Primary"""
 
 
 class ResourceSecondaryPre(Event):
@@ -82,8 +82,8 @@ class ResourceSecondary(Event):
     """Demote to Secondary"""
 
 
-class ResourceSecondaryPost(Event):
-    """Demote to Secondary"""
+#class ResourceSecondaryPost(Event):
+#    """Demote to Secondary"""
 
 
 class ResourceConnectionStateChange(Event):
@@ -270,19 +270,20 @@ class ResourceMonitor(Component):
             return
 
         res = self.res
+        old_status = res.status.copy()
         changed_kwargs = res.update_status(**ret)
         #res.reload()
 
         if send_events and changed_kwargs:
-            logger.debug('update_status changed=%s', changed_kwargs)
+            #logger.debug('update_status changed=%s', changed_kwargs)
             for k, v in changed_kwargs.iteritems():
                 event_cls = self._update_status_event_map.get(k)
                 if event_cls:
-                    self.fire_this(event_cls(v))
+                    self.fire_this(event_cls(v, old=old_status.get(k)))
 
         return changed_kwargs
 
-    def resource_connection_state_change(self, uuid, cstate):
+    def resource_connection_state_change(self, uuid, cstate, old=None):
         if self.uuid != uuid:
             return
         res = self.res
@@ -344,7 +345,7 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown connection state of "%s"!', cstate)
 
-    def resource_disk_state_change(self, uuid, dstate):
+    def resource_disk_state_change(self, uuid, dstate, old=None):
         if self.uuid != uuid:
             return
         res = self.res
@@ -381,7 +382,7 @@ class ResourceMonitor(Component):
         else:
             raise Exception('Resource "%s" has an unknown disk state of "%s"!', dstate)
 
-    def resource_role_change(self, uuid, role):
+    def resource_role_change(self, uuid, role, old=None):
         if self.uuid != uuid:
             return
         res = self.res
@@ -475,7 +476,7 @@ class ResourceMonitor(Component):
 
             logger.info('Promoted self to Primary for Resource "%s".', res.name)
 
-            self.fire_this(ResourcePrimaryPost())
+            #self.fire_this(ResourcePrimaryPost())
         except:
             retry_in = 10.0 + random.randrange(2, 10)
             logger.warning('Could not promote self to Primary for Resource "%s". Retrying in %ds.',
@@ -504,7 +505,7 @@ class ResourceMonitor(Component):
         res = self.res
 
         logger.warning('Demoted self to Secondary for Resource "%s".', res.name)
-        self.fire_this(ResourceSecondaryPost())
+        #self.fire_this(ResourceSecondaryPost())
 
     """
     TODO
