@@ -59,7 +59,7 @@ class Monitor(Component):
         set_proc_status('Starting')
         self.fire(ManagersCheck())
         yield None
-        set_proc_status('Monitoring')
+        set_proc_status()
 
 
 def main():
