@@ -4,7 +4,8 @@ logger = logging.getLogger(__name__)
 from circuits import Component, Event, Timer
 import pickle
 # Temp hack
-from _dev.zmq.clonecli import SUBTREE, Clone
+from _dev.zmq.clonecli import Clone
+from solarsan.pretty import pp
 
 
 """
@@ -26,7 +27,7 @@ class DkvShow(Event):
 
 def get_dkv_client():
     clone = Clone()
-    clone.subtree = SUBTREE
+    #clone.subtree = '/client/'
     clone.connect("tcp://localhost", 5556)
     clone.connect("tcp://localhost", 5566)
     return clone
@@ -38,6 +39,12 @@ class DkvManager(Component):
     def __init__(self, channel=channel):
         super(DkvManager, self).__init__(channel=channel)
         self.clone = get_dkv_client()
+        self.clone.on_sub.connect(self._on_dkv_get)
+
+    def _on_dkv_get(self, sender=None, key=None, value=None):
+        #pp('%s=%s' % (key, value))
+        logger.debug('Got kv: %s=%s', key, value)
+        #self.fire(DkvShow(key, value))
 
     def dkv_get(self, key):
         return self.clone.get(key)
@@ -48,7 +55,10 @@ class DkvManager(Component):
     def dkv_set(self, key, value, ttl=0):
         return self.clone.set(key, value, ttl=ttl)
 
-    def started(self, *args, **kwargs):
+    def started(self, component):
+        self.test()
+
+    def test(self):
         self.fire(DkvSet('/test/trevorj', 'woot'))
 
         clone = self.clone

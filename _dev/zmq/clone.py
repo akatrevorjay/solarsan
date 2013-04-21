@@ -8,6 +8,7 @@ from solarsan import logging
 logger = logging.getLogger(__name__)
 import threading
 import time
+from blinker import signal
 
 import zmq
 
@@ -15,7 +16,7 @@ from zhelpers import zpipe
 from kvmsg import KVMsg
 
 from solarsan.pretty import pp
-import pickle
+#import pickle
 
 
 # If no server replies within this time, abandon request
@@ -30,8 +31,13 @@ SERVER_MAX      =   2
 #        level=logger.DEBUG)
 #        #level=logger.INFO)
 
+
 # =====================================================================
 # Synchronous part, works in our application thread
+
+
+on_sub = signal('on_sub')
+
 
 class Clone(object):
     ctx = None       # Our Context
@@ -40,6 +46,7 @@ class Clone(object):
     _subtree = None  # cache of our subtree value
 
     _default_ttl = 0
+    on_sub = signal('on_sub')
 
     def __init__(self):
         self.ctx = zmq.Context()
@@ -214,6 +221,8 @@ def clone_agent(ctx, pipe):
     agent = CloneAgent(ctx, pipe)
     server = None
 
+    on_sub = signal('on_sub')
+
     while True:
         poller = zmq.Poller()
         poller.register(agent.pipe, zmq.POLLIN)
@@ -262,7 +271,8 @@ def clone_agent(ctx, pipe):
         elif server_socket in items:
             kvmsg = KVMsg.recv(server_socket)
             if kvmsg.key != 'HUGZ':
-                pp(kvmsg)
+                on_sub.send(None, key=kvmsg.key, value=kvmsg.body)
+                #pp(kvmsg)
 
             # Anything from server resets its expiry time
             server.expiry = time.time() + SERVER_TTL

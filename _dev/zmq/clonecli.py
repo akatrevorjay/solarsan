@@ -17,7 +17,7 @@ def main():
     clone = Clone()
     clone.subtree = SUBTREE
     clone.connect("tcp://localhost", 5556)
-    #clone.connect("tcp://localhost", 5566)
+    clone.connect("tcp://localhost", 5566)
 
     clone['trevorj_yup'] = 'fksdkfjksdf'
     clone[SUBTREE + 'trevorj'] = 'woot'
