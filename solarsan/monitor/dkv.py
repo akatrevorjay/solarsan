@@ -4,7 +4,7 @@ logger = logging.getLogger(__name__)
 from circuits import Component, Event, Timer
 import pickle
 # Temp hack
-from _dev.zmq.clonecli import Clone
+from solarsan.zeromq.clonecli import Clone
 from solarsan.pretty import pp
 
 
@@ -14,15 +14,19 @@ Distributed Key Value Store Manager
 
 
 class DkvGet(Event):
-    """Gets a value in the distributed key value store"""
+    """Gets a value"""
 
 
 class DkvSet(Event):
-    """Sets a value in the distributed key value store"""
+    """Sets a value"""
 
 
-class DkvShow(Event):
-    """Shows a value in the distributed key value store"""
+#class DkvShow(Event):
+#    """Shows a value"""
+
+
+class DkvUpdate(Event):
+    """Updates a value"""
 
 
 def get_dkv_client():
@@ -39,29 +43,32 @@ class DkvManager(Component):
     def __init__(self, channel=channel):
         super(DkvManager, self).__init__(channel=channel)
         self.clone = get_dkv_client()
-        self.clone.on_sub.connect(self._on_dkv_get)
+        self.clone.signals.on_sub.connect(self._clone_on_sub)
 
-    def _on_dkv_get(self, sender=None, key=None, value=None):
+    def _clone_on_sub(self, sender=None, key=None, value=None, **kwargs):
         #pp('%s=%s' % (key, value))
-        logger.debug('Got kv: %s=%s', key, value)
-        #self.fire(DkvShow(key, value))
+        self.fire(DkvUpdate({key: value, 'kvmsg': sender}))
 
     def dkv_get(self, key):
         return self.clone.get(key)
 
-    def dkv_show(self, key):
-        return self.clone.show(key)
-
     def dkv_set(self, key, value, ttl=0):
         return self.clone.set(key, value, ttl=ttl)
+
+    #def dkv_show(self, key):
+    #    return self.clone.show(key)
+
+    #def dkv_update(self, update, **kwargs):
+    #    logger.debug('Got DKV update: %s kwargs=%s', update, kwargs)
 
     def started(self, component):
         self.test()
 
     def test(self):
-        self.fire(DkvSet('/test/trevorj', 'woot'))
-
+        logger.debug('Testing DKV')
         clone = self.clone
+
+        self.fire(DkvSet('/test/trevorj', 'woot'))
 
         clone['/test/trevorj_yup'] = 'fksdkfjksdf'
         clone['/test/trevorj2'] = 'woot'
@@ -70,3 +77,5 @@ class DkvManager(Component):
         logger.debug('SHOW SERVER: %s', clone.show('SERVER'))
         logger.debug('SHOW SERVERS: %s', clone.show('SERVERS'))
         logger.debug('SHOW SEQ: %s', clone.show('SEQ'))
+
+        logger.debug('Done Testing DKV')

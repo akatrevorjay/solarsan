@@ -6,13 +6,14 @@ Author: Min RK <benjaminrk@gmail.com>
 
 """
 
-import struct # for packing integers
+import struct  # for packing integers
 import sys
 from uuid import uuid4
 
 import zmq
 # zmq.jsonapi ensures bytes, instead of unicode:
 import zmq.utils.jsonapi as json
+
 
 class KVMsg(object):
     """
@@ -25,7 +26,7 @@ class KVMsg(object):
     """
     key = None
     sequence = 0
-    uuid=None
+    uuid = None
     properties = None
     body = None
 
@@ -62,8 +63,9 @@ class KVMsg(object):
         key = '' if self.key is None else self.key
         seq_s = struct.pack('!q', self.sequence)
         body = '' if self.body is None else self.body
+        #body_s = json.dumps(body)
         prop_s = json.dumps(self.properties)
-        socket.send_multipart([ key, seq_s, self.uuid, prop_s, body ])
+        socket.send_multipart([key, seq_s, self.uuid, prop_s, body])
 
     @classmethod
     def recv(cls, socket):
@@ -75,18 +77,19 @@ class KVMsg(object):
         """Construct key-value message from a multipart message"""
         key, seq_s, uuid, prop_s, body = msg
         key = key if key else None
-        seq = struct.unpack('!q',seq_s)[0]
+        seq = struct.unpack('!q', seq_s)[0]
         body = body if body else None
+        #body = json.loads(body_s)
         prop = json.loads(prop_s)
         return cls(seq, uuid=uuid, key=key, properties=prop, body=body)
 
     def dump(self):
         if self.body is None:
             size = 0
-            data='NULL'
+            data = 'NULL'
         else:
             size = len(self.body)
-            data=repr(self.body)
+            data = repr(self.body)
         return "[seq:{seq}][key:{key}][size:{size}] {props} {data}".format(
             seq=self.sequence,
             # uuid=hexlify(self.uuid),
@@ -97,15 +100,28 @@ class KVMsg(object):
         )
 
     def __str__(self):
-        return str(self.__repr__())
+        return str(self.dump())
 
     def __repr__(self):
-        return str(self.dump())
+        data = {}
+        for prop in ['key', 'properties', 'body', 'sequence']:
+            v = getattr(self, prop, None)
+            if v:
+                data[prop] = v
+        return '<%s %s>' % (self.__class__.__name__, data)
+
+        # append = ''
+        # for x, y in data.iteritems():
+        #    append += ' %s=' % x + y
+        # if append:
+        #    append = append[1:]
+        # return '<%s %s>' % (self.__class__.__name__, append)
+
 
 # ---------------------------------------------------------------------
 # Runs self test of class
 
-def test_kvmsg (verbose):
+def test_kvmsg(verbose):
     print " * kvmsg: ",
 
     # Prepare our context and sockets
@@ -131,7 +147,7 @@ def test_kvmsg (verbose):
     assert kvmsg2.key == "key"
     kvmsg2.store(kvmap)
 
-    assert len(kvmap) == 1 # shouldn't be different
+    assert len(kvmap) == 1  # shouldn't be different
 
     # test send/recv with properties:
     kvmsg = KVMsg(2, key="key", body="body")

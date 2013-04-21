@@ -1,10 +1,6 @@
-"""
-Clone server Model Six
 
-Author: Min RK <benjaminrk@gmail.com
-"""
-
-import logging
+from solarsan import logging
+logger = logging.getLogger(__name__)
 import time
 
 import zmq
@@ -15,8 +11,9 @@ from bstar import BinaryStar
 from kvmsg import KVMsg
 from zhelpers import dump
 
-# simple struct for routing information for a key-value snapshot
+
 class Route:
+    """Simple struct for routing information for a key-value snapshot"""
     def __init__(self, socket, identity, subtree):
         self.socket = socket        # ROUTER socket to send to
         self.identity = identity    # Identity of peer who requested state
@@ -31,40 +28,48 @@ def send_single(key, kvmsg, route):
         route.socket.send(route.identity, zmq.SNDMORE)
         kvmsg.send(route.socket)
 
-class CloneServer(object):
 
-    # Our server is defined by these properties
+class CloneServer(object):
     ctx = None                  # Context wrapper
+
     kvmap = None                # Key-value store
     bstar = None                # Binary Star
+
     sequence = 0                # How many updates so far
+
     port = None                 # Main port we're working on
     peer = None                 # Main port of our peer
+
     publisher = None            # Publish updates and hugz
     collector = None            # Collect updates from clients
     subscriber = None           # Get updates from peer
+
     pending = None              # Pending updates from client
+
     primary = False             # True if we're primary
     master = False              # True if we're master
     slave = False               # True if we're slave
 
-    def __init__(self, primary=True, ports=(5556,5566)):
+    def __init__(self, primary=True, ports=(5556, 5566)):
         self.primary = primary
         if primary:
             self.port, self.peer = ports
             frontend = "tcp://*:5003"
-            backend  = "tcp://localhost:5004"
+            backend = "tcp://localhost:5004"
             self.kvmap = {}
         else:
             self.peer, self.port = ports
             frontend = "tcp://*:5004"
-            backend  = "tcp://localhost:5003"
+            backend = "tcp://localhost:5003"
 
-        self.ctx = zmq.Context.instance()
+        if not self.ctx:
+            self.ctx = zmq.Context.instance()
+
         self.pending = []
         self.bstar = BinaryStar(primary, frontend, backend)
 
-        self.bstar.register_voter("tcp://*:%i" % self.port, zmq.ROUTER, self.handle_snapshot)
+        self.bstar.register_voter("tcp://*:%i" %
+                                  self.port, zmq.ROUTER, self.handle_snapshot)
 
         # Set up our clone server sockets
         self.publisher = self.ctx.socket(zmq.PUB)
@@ -92,10 +97,6 @@ class CloneServer(object):
         self.flush_callback = PeriodicCallback(self.flush_ttl, 1000)
         self.hugz_callback = PeriodicCallback(self.send_hugz, 1000)
 
-        # basic log formatting:
-        logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
-                level=logging.INFO)
-
     def start(self):
         # start periodic callbacks
         self.flush_callback.start()
@@ -109,7 +110,7 @@ class CloneServer(object):
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
         if msg[1] != "ICANHAZ?" or len(msg) != 3:
-            logging.error("E: bad request, aborting")
+            logger.error("E: bad request, aborting")
             dump(msg)
             self.bstar.loop.stop()
             return
@@ -120,11 +121,11 @@ class CloneServer(object):
             route = Route(socket, identity, subtree)
 
             # For each entry in kvmap, send kvmsg to client
-            for k,v in self.kvmap.items():
-                send_single(k,v,route)
+            for k, v in self.kvmap.items():
+                send_single(k, v, route)
 
             # Now send END message with sequence number
-            logging.info("I: Sending state shapshot=%d" % self.sequence)
+            logger.info("I: Sending state shapshot=%d", self.sequence)
             socket.send(identity, zmq.SNDMORE)
             kvmsg = KVMsg(self.sequence)
             kvmsg.key = "KTHXBAI"
@@ -146,7 +147,7 @@ class CloneServer(object):
             if ttl:
                 kvmsg['ttl'] = time.time() + ttl
             kvmsg.store(self.kvmap)
-            logging.info("I: publishing update=%d", self.sequence)
+            logger.info("I: publishing update=%d", self.sequence)
         else:
             # If we already got message from master, drop it, else
             # hold on pending list
@@ -169,7 +170,7 @@ class CloneServer(object):
     def flush_ttl(self):
         """Purge ephemeral values that have expired"""
         if self.kvmap:
-            for key,kvmsg in self.kvmap.items():
+            for key, kvmsg in self.kvmap.items():
                 self.flush_single(kvmsg)
 
     def flush_single(self, kvmsg):
@@ -182,7 +183,7 @@ class CloneServer(object):
             kvmsg.sequence = self.sequence
             kvmsg.send(self.publisher)
             del self.kvmap[kvmsg.key]
-            logging.info("I: publishing delete=%d", self.sequence)
+            logger.debug("I: publishing delete=%d", self.sequence)
 
     def send_hugz(self):
         """Send hugz to anyone listening on the publisher socket"""
@@ -211,8 +212,7 @@ class CloneServer(object):
             self.sequence += 1
             kvmsg.sequence = self.sequence
             kvmsg.store(self.kvmap)
-            logging.info ("I: publishing pending=%d", self.sequence)
-
+            logger.info("I: publishing pending=%d", self.sequence)
 
     def become_slave(self):
         """We're becoming slave"""
@@ -227,7 +227,8 @@ class CloneServer(object):
         We're always slave when we get these updates
         """
         if self.master:
-            logging.warn("received subscriber message, but we are master %s", msg)
+            logger.warn(
+                "received subscriber message, but we are master %s", msg)
             return
 
         # Get state snapshot if necessary
@@ -237,7 +238,7 @@ class CloneServer(object):
             snapshot.linger = 0
             snapshot.connect("tcp://localhost:%i" % self.peer)
 
-            logging.info ("I: asking for snapshot from: tcp://localhost:%d",
+            logger.info("I: asking for snapshot from: tcp://localhost:%d",
                         self.peer)
             snapshot.send_multipart(["ICANHAZ?", ''])
             while True:
@@ -252,7 +253,7 @@ class CloneServer(object):
                     break          # Done
                 kvmsg.store(self.kvmap)
 
-            logging.info ("I: received snapshot=%d", self.sequence)
+            logger.info("I: received snapshot=%d", self.sequence)
 
         # Find and remove update off pending list
         kvmsg = KVMsg.from_msg(msg)
@@ -272,18 +273,17 @@ class CloneServer(object):
             if (kvmsg.sequence > self.sequence):
                 self.sequence = kvmsg.sequence
                 kvmsg.store(self.kvmap)
-                logging.info ("I: received update=%d", self.sequence)
+                logger.info("I: received update=%d", self.sequence)
 
 
 def main():
     import sys
-    if '-p' in sys.argv:
-        primary = True
-    elif '-b' in sys.argv:
+    primary = True
+    if '-b' in sys.argv:
         primary = False
-    else:
-        print "Usage: clonesrv6.py { -p | -b }"
-        sys.exit(1)
+    # else:
+    #    print "Usage: clonesrv6.py [-b]"
+    #    sys.exit(1)
     clone = CloneServer(primary)
     clone.start()
 

@@ -33,6 +33,7 @@ class FSMError(Exception):
     """Exception class for invalid state"""
     pass
 
+
 class BinaryStar(object):
     ctx = None              # Our private context
     loop = None             # Reactor loop
@@ -65,7 +66,8 @@ class BinaryStar(object):
         self.statesub = ZMQStream(self.statesub, self.loop)
 
         # setup basic reactor events
-        self.heartbeat = PeriodicCallback(self.send_state, HEARTBEAT, self.loop)
+        self.heartbeat = PeriodicCallback(
+            self.send_state, HEARTBEAT, self.loop)
         self.statesub.on_recv(self.recv_state)
 
         # setup log formmater
@@ -99,7 +101,7 @@ class BinaryStar(object):
                 if (self.slave_callback):
                     self.loop.add_callback(self.slave_callback)
             elif (self.event == CLIENT_REQUEST):
-                if (time.time () >= self.peer_expiry):
+                if (time.time() >= self.peer_expiry):
                     print ("I: request from client, ready as master")
                     self.state = STATE_ACTIVE
                     if (self.master_callback):
@@ -146,7 +148,7 @@ class BinaryStar(object):
                 # Peer becomes master if timeout has passed
                 # It's the client request that triggers the failover
                 assert (self.peer_expiry > 0)
-                if (time.time () >= self.peer_expiry):
+                if (time.time() >= self.peer_expiry):
                     # If peer is dead, switch to the active state
                     print ("I: failover successful, ready as master")
                     self.state = STATE_ACTIVE
@@ -158,15 +160,13 @@ class BinaryStar(object):
                 self.loop.add_callback(self.master_callback)
         return accept
 
-
     # ---------------------------------------------------------------------
     # Reactor event handlers...
-
-    def send_state (self):
+    def send_state(self):
         """Publish our state to peer"""
         self.statepub.send("%d" % self.state)
 
-    def recv_state (self, msg):
+    def recv_state(self, msg):
         """Receive state from peer, execute finite state machine"""
         state = msg[0]
         if state:
