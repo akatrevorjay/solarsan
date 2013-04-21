@@ -10,6 +10,7 @@ from .device import DeviceManager
 from .ha import FloatingIPManager
 #from .auto_snapshot import AutoSnapshotManager
 from .logs import LogWatchManager
+from .dkv import DkvManager
 from .base import set_proc_status
 
 
@@ -48,6 +49,7 @@ class Monitor(Component):
         # TODO Finish this
         #BackupManager().register(self)
         #LogWatchManager().register(self)
+        DkvManager().register(self)
 
         self._check_timer = Timer(self.check_every,
                                   ManagersCheck(),

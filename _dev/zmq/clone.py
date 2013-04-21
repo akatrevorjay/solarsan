@@ -4,7 +4,8 @@ clone - client-side Clone Pattern class
 Author: Min RK <benjaminrk@gmail.com>
 """
 
-import logging
+from solarsan import logging
+logger = logging.getLogger(__name__)
 import threading
 import time
 
@@ -25,9 +26,9 @@ SERVER_TTL      =   5.0     # secs
 SERVER_MAX      =   2
 
 # basic log formatting:
-logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
-        level=logging.DEBUG)
-        #level=logging.INFO)
+#logger.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
+#        level=logger.DEBUG)
+#        #level=logger.INFO)
 
 # =====================================================================
 # Synchronous part, works in our application thread
@@ -177,7 +178,7 @@ class CloneAgent(object):
                 self.servers.append(CloneServer(self.ctx, address, port, self.subtree))
                 self.publisher.connect("%s:%i" % (address,port+2))
             else:
-                logging.error("E: too many servers (max. %i)", SERVER_MAX)
+                logger.error("E: too many servers (max. %i)", SERVER_MAX)
         elif command == "SET":
             key,value,sttl = msg
             ttl = int(sttl)
@@ -224,7 +225,7 @@ def clone_agent(ctx, pipe):
             # if we have a server to talk to...
             if agent.servers:
                 server = agent.servers[agent.cur_server]
-                logging.info("I: waiting for server at %s:%d...",
+                logger.info("I: waiting for server at %s:%d...",
                              server.address, server.port)
                 if (server.requests < 2):
                     server.snapshot.send_multipart(["ICANHAZ?", agent.subtree])
@@ -271,7 +272,7 @@ def clone_agent(ctx, pipe):
                 if kvmsg.key == "KTHXBAI":
                     agent.sequence = kvmsg.sequence
                     agent.state = STATE_ACTIVE
-                    logging.info("I: received from %s:%d snapshot=%d",
+                    logger.info("I: received from %s:%d snapshot=%d",
                                  server.address, server.port, agent.sequence)
                 else:
                     kvmsg.store(agent.kvmap)
@@ -283,11 +284,11 @@ def clone_agent(ctx, pipe):
                     kvmsg.store(agent.kvmap)
                     action = "update" if kvmsg.body else "delete"
 
-                    logging.info ("I: received from %s:%d %s=%d",
+                    logger.info ("I: received from %s:%d %s=%d",
                         server.address, server.port, action, agent.sequence)
         else:
             # Server has died, failover to next
-            logging.info ("I: server at %s:%d didn't give hugz",
+            logger.info ("I: server at %s:%d didn't give hugz",
                     server.address, server.port)
             agent.cur_server = (agent.cur_server + 1) % len(agent.servers)
             agent.state = STATE_INITIAL
