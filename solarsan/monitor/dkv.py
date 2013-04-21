@@ -2,7 +2,13 @@
 from solarsan import logging
 logger = logging.getLogger(__name__)
 from circuits import Component, Event, Timer
-import pickle
+
+import zmq.utils.jsonapi as json
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 # Temp hack
 from solarsan.zeromq.clonecli import Clone
 from solarsan.pretty import pp
@@ -72,7 +78,12 @@ class DkvManager(Component):
 
         clone['/test/trevorj_yup'] = 'fksdkfjksdf'
         clone['/test/trevorj2'] = 'woot'
-        clone['/test/trevorj-pickle'] = pickle.dumps({'whoa': 'yeah', 'lbh': True})
+
+        test_pickle = {'whoa': 'yeah', 'lbh': True}
+        clone.set('/test/trevorj-pickle2', test_pickle, pickle=True)
+
+        test_pickle_s = pickle.dumps(test_picke)
+        clone['/test/trevorj-pickle'] = test_pickle_s
 
         logger.debug('SHOW SERVER: %s', clone.show('SERVER'))
         logger.debug('SHOW SERVERS: %s', clone.show('SERVERS'))

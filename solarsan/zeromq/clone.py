@@ -17,7 +17,10 @@ from kvmsg import KVMsg
 
 from solarsan.pretty import pp
 import zmq.utils.jsonapi as json
-import pickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 
 # If no server replies within this time, abandon request
@@ -79,48 +82,58 @@ class Clone(object):
         """
         self.pipe.send_multipart(["CONNECT", address, str(port)])
 
-    def set(self, key, value, ttl=_default_ttl):
+    def set(self, key, value, ttl=_default_ttl, **kwargs):
         """Set new value in distributed hash table
         Sends [SET][key][value][ttl] to the agent
         """
-        # value = pickle.dumps(value)
-        self.pipe.send_multipart(["SET", key, value, str(ttl)])
+        _pickle = kwargs.pop('pickle', None)
+        _json = kwargs.pop('json', None)
+        cmd = kwargs.pop('_cmd', 'SET')
 
-    # def get(self, key, default=None):
-    def get(self, key):
+        if _pickle:
+            value = pickle.dumps(value)
+        elif _json:
+            value = json.dumps(value)
+
+        self.pipe.send_multipart([cmd, key, value, str(ttl)])
+
+    def get(self, key, default=None, **kwargs):
         """Lookup value in distributed hash table
         Sends [GET][key] to the agent and waits for a value response
         If there is no clone available, will eventually return None.
         """
-        self.pipe.send_multipart(["GET", key])
+        _pickle = kwargs.pop('pickle', None)
+        _json = kwargs.pop('json', None)
+        cmd = kwargs.pop('_cmd', 'GET')
+
+        self.pipe.send_multipart([cmd, key])
         try:
             reply = self.pipe.recv_multipart()
         except KeyboardInterrupt:
-            return
+            #value = None
+            return default
         else:
-            return reply[0]
-            # return pickle.loads(reply[0])
+            value = reply[0]
 
-    def show(self, key):
+        if _pickle:
+            value = pickle.loads(value)
+        elif _json:
+            value = json.loads(value)
+
+        return value or default
+
+    def show(self, key, default=None, **kwargs):
         """Lookup value in distributed hash table
         Sends [SHOW][key] to the agent and waits for a value response
         If there is no clone available, will eventually return None.
         """
-        self.pipe.send_multipart(["SHOW", key])
-        try:
-            reply = self.pipe.recv_multipart()
-        except KeyboardInterrupt:
-            return
-        else:
-            return reply[0]
-            # return pickle.loads(reply[0])
+        kwargs.update(dict(_cmd='SHOW'))
+        return self.get(key, default=default, **kwargs)
 
     def dump_kvmap(self):
         """Dumps agent's kvmap (which is gets via SHOW KVMAP, then
         loads it via pickle)"""
-        kvmap_s = self.show('kvmap')
-        kvmap = pickle.loads(kvmap_s)
-        return kvmap
+        return self.show('kvmap', pickle=True)
 
     def __getitem__(self, key):
         return self.get(key)

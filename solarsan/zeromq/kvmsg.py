@@ -14,6 +14,11 @@ import zmq
 # zmq.jsonapi ensures bytes, instead of unicode:
 import zmq.utils.jsonapi as json
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 
 class KVMsg(object):
     """
