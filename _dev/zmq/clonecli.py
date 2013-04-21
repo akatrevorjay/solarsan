@@ -19,8 +19,9 @@ def main():
     clone.connect("tcp://localhost", 5556)
     #clone.connect("tcp://localhost", 5566)
 
-    clone.set(SUBTREE + 'trevorj', 'woot')
-    clone.set(SUBTREE + 'trevorj-pickle', pickle.dumps({'whoa': 'yeah', 'lbh': True}))
+    clone['trevorj_yup'] = 'fksdkfjksdf'
+    clone[SUBTREE + 'trevorj'] = 'woot'
+    clone[SUBTREE + 'trevorj-pickle'] = pickle.dumps({'whoa': 'yeah', 'lbh': True})
 
     logger.debug('SHOW SERVER: %s', clone.show('SERVER'))
     logger.debug('SHOW SERVERS: %s', clone.show('SERVERS'))

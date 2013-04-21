@@ -33,15 +33,17 @@ logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S
 # Synchronous part, works in our application thread
 
 class Clone(object):
-    ctx = None      # Our Context
-    pipe = None     # Pipe through to clone agent
-    agent = None    # agent in a thread
-    _subtree = None # cache of our subtree value
+    ctx = None       # Our Context
+    pipe = None      # Pipe through to clone agent
+    agent = None     # agent in a thread
+    _subtree = None  # cache of our subtree value
+
+    _default_ttl = 0
 
     def __init__(self):
         self.ctx = zmq.Context()
         self.pipe, peer = zpipe(self.ctx)
-        self.agent = threading.Thread(target=clone_agent, args=(self.ctx,peer))
+        self.agent = threading.Thread(target=clone_agent, args=(self.ctx, peer))
         self.agent.daemon = True
         self.agent.start()
 
@@ -65,13 +67,14 @@ class Clone(object):
         """
         self.pipe.send_multipart(["CONNECT", address, str(port)])
 
-    def set(self, key, value, ttl=0):
+    def set(self, key, value, ttl=_default_ttl):
         """Set new value in distributed hash table
         Sends [SET][key][value][ttl] to the agent
         """
         #value = pickle.dumps(value)
         self.pipe.send_multipart(["SET", key, value, str(ttl)])
 
+    #def get(self, key, default=None):
     def get(self, key):
         """Lookup value in distributed hash table
         Sends [GET][key] to the agent and waits for a value response
@@ -100,6 +103,11 @@ class Clone(object):
             return reply[0]
             #return pickle.loads(reply[0])
 
+    def __getitem__(self, key):
+        return self.get(key)
+
+    def __setitem__(self, key, value):
+        return self.set(key, value)
 
 
 # =====================================================================
@@ -107,6 +115,7 @@ class Clone(object):
 
 # ---------------------------------------------------------------------
 # Simple class for one server we talk to
+
 
 class CloneServer(object):
     address = None          # Server address
