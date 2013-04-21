@@ -1,13 +1,11 @@
-"""
-Clone server Model Six
 
-"""
-
+from solarsan import logging
+logger = logging.getLogger(__name__)
+from solarsan.pretty import pp
 import random
 import time
-
-import zmq
-
+import pickle
+#import zmq
 from clone import Clone
 
 SUBTREE = "/client/"
@@ -21,8 +19,12 @@ def main():
     clone.connect("tcp://localhost", 5556)
     #clone.connect("tcp://localhost", 5566)
 
-    clone.set('trevorj', 'woot')
-    #clone.set('trevorj', {'whoa': 'yeah', 'lbh': True})
+    clone.set(SUBTREE + 'trevorj', 'woot')
+    clone.set(SUBTREE + 'trevorj-pickle', pickle.dumps({'whoa': 'yeah', 'lbh': True}))
+
+    logger.debug('SHOW SERVER: %s', clone.show('SERVER'))
+    logger.debug('SHOW SERVERS: %s', clone.show('SERVERS'))
+    logger.debug('SHOW SEQ: %s', clone.show('SEQ'))
 
     try:
         while True:

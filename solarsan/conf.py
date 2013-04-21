@@ -150,6 +150,16 @@ LOGGING = {
             'level': 'DEBUG',
             'handlers': ['console'],
         },
+        'butler': {
+            'propagate': False,
+            'level': 'INFO',
+            'handlers': ['console'],
+        },
+        'pizco': {
+            'propagate': False,
+            'level': 'INFO',
+            'handlers': ['console'],
+        },
     }
 }
 

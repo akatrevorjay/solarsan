@@ -86,6 +86,21 @@ class Clone(object):
             return reply[0]
             #return pickle.loads(reply[0])
 
+    def show(self, key):
+        """Lookup value in distributed hash table
+        Sends [SHOW][key] to the agent and waits for a value response
+        If there is no clone available, will eventually return None.
+        """
+        self.pipe.send_multipart(["SHOW", key])
+        try:
+            reply = self.pipe.recv_multipart()
+        except KeyboardInterrupt:
+            return
+        else:
+            return reply[0]
+            #return pickle.loads(reply[0])
+
+
 
 # =====================================================================
 # Asynchronous part, works in the background
@@ -168,6 +183,16 @@ class CloneAgent(object):
             key = msg[0]
             value = self.kvmap.get(key)
             self.pipe.send(value.body if value else '')
+        elif command == "SHOW":
+            key = msg[0].upper()
+            if key == 'SERVERS':
+                self.pipe.send(str(','.join([x.__repr__() for x in self.servers])))
+            elif key == 'SERVER':
+                self.pipe.send(str(self.cur_server))
+            elif key == 'SEQ':
+                self.pipe.send(str(self.sequence))
+            elif key == 'STATUS':
+                self.pipe.send(str(self.cur_status))
 
 
 # ---------------------------------------------------------------------
