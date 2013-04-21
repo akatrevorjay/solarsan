@@ -151,8 +151,9 @@ class TargetNode(AutomagicNode):
     def ui_getgroup_luns(self, key):
         key = int(key)
         ret = None
-        if key >= 0 and key < len(self.obj.devices):
-            ret = self.obj.devices[key]
+        luns = list(self.obj.get_all_luns())
+        if key >= 0 and key < len(luns):
+            ret = luns[key]
         if ret:
             return ret.name
 
@@ -185,9 +186,9 @@ class TargetNode(AutomagicNode):
         return True
 
     def summary(self):
-        if self.obj.is_target_enabled:
+        if self.obj.is_enabled:
             return ('Active', True)
-        elif self.obj.is_target_added:
+        elif self.obj.is_added:
             return ('Added', True)
         else:
             return ('Inactive', False)
