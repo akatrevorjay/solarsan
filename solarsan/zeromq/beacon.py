@@ -23,10 +23,11 @@ Peer = namedtuple('Peer', ['socket', 'addr', 'time'])
 
 log = logger
 
-T_TO_I = {'udp': 1,
-          'tcp': 1,
-          'pgm': 2,
-          }
+T_TO_I = {
+    #'udp': 1,
+    'tcp': 1,
+    'pgm': 2,
+}
 
 I_TO_T = {v: k for k, v in T_TO_I.items()}
 
@@ -64,8 +65,8 @@ class Beaconer(object):
                 socket.gethostbyname(service_addr))
         else:
             self.service_addr_bytes = NULL_IP
-        #self.me = uuid.uuid4().bytes
-        self.me = str(uuid.uuid4())
+
+        self.me = uuid.uuid4().bytes
 
     def start(self):
         """Greenlet to start the beaconer.  This sets up zmq context,
@@ -177,7 +178,9 @@ class Beaconer(object):
         registers it.
         """
         peer_addr = '%s://%s:%s' % (transport, addr, port)
-        log.debug('peer_addr=%s', peer_addr)
+
+        # ~trevorj good for connection debugging
+        #log.debug('peer_addr=%s', peer_addr)
 
         peer = self.peers.get(peer_id)
         if peer and peer.addr == peer_addr:
@@ -225,16 +228,13 @@ if __name__ == '__main__':
 
     import solarsan.cluster.models as cmodels
     local = cmodels.Peer.get_local()
-    bcast = str(local.cluster_nic.broadcast)
     ipaddr = str(local.cluster_nic.ipaddr)
-    #bcast = '255.255.255.255'
-    #bcast = '10.90.90.255'
-
-    log.info('ipaddr=%s bcast=%s', ipaddr, bcast)
+    log.debug('ipaddr=%s', ipaddr)
 
     p = Beaconer(my_callback,
                  #beacon_interval=10,
                  beacon_interval=1,
+                 dead_interval=10,
                  service_addr=ipaddr,
                  #broadcast_addr=bcast,
                  broadcast_port=conf.ports.discovery,
