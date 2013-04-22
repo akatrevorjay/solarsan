@@ -67,6 +67,7 @@ class StorageService(rpyc.Service):
     def peer_get_cluster_iface(self):
         """Gets Cluster IP"""
         if 'cluster_iface' not in conf.config:
+            # TODO NOT A GOOD DEFAULT!
             conf.config['cluster_iface'] = 'eth1'
         iface = conf.config['cluster_iface']
         nic = Nic(str(iface))
