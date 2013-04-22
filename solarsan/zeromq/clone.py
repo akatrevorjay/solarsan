@@ -1,21 +1,15 @@
-"""
-clone - client-side Clone Pattern class
 
-Author: Min RK <benjaminrk@gmail.com>
-"""
-
-from solarsan import logging
+from solarsan import logging, signals
 logger = logging.getLogger(__name__)
+#from solarsan.pretty import pp
 import threading
 import time
-from blinker import signal
 
 import zmq
-
 from zhelpers import zpipe
 from kvmsg import KVMsg
 
-#from solarsan.pretty import pp
+# Serializers
 import zmq.utils.jsonapi as json
 try:
     import cPickle as pickle
@@ -28,12 +22,9 @@ Basics
 """
 
 
-# If no server replies within this time, abandon request
-GLOBAL_TIMEOUT = 4000    # msecs
-# Server considered dead if silent for this long
-SERVER_TTL = 5.0     # secs
-# Number of servers we will talk to
-SERVER_MAX = 2
+GLOBAL_TIMEOUT = 4000   # If no server replies within this time, abandon request (msecs)
+SERVER_TTL = 5.0        # Server considered dead if silent for this long (secs)
+SERVER_MAX = 20         # Number of servers we will talk to
 
 
 """
@@ -41,49 +32,45 @@ Synchronous part, works in our application thread
 """
 
 
-on_sub = signal('on_sub')
-
-
 class Clone(object):
-    ctx = None       # Our Context
-    pipe = None      # Pipe through to clone agent
-    agent = None     # agent in a thread
-    _subtree = None  # cache of our subtree value
-
-    _default_ttl = 0
+    ctx = None          # Our Context
+    pipe = None         # Pipe through to clone agent
+    agent = None        # agent in a thread
+    _subtree = None     # cache of our subtree value
+    _default_ttl = 0    # Default TTL
 
     class signals:
-        on_sub = on_sub
+        on_sub = signals.signal('on_sub')
 
     def __init__(self):
         self.ctx = zmq.Context()
         self.pipe, peer = zpipe(self.ctx)
-        self.agent = threading.Thread(
-            target=clone_agent, args=(self.ctx, peer))
+
+        self.agent = threading.Thread(target=clone_agent, args=(self.ctx, peer))
         self.agent.daemon = True
         self.agent.start()
 
-    """ Clone.subtree is a property, which sets the subtree for snapshot
-    # and updates"""
-
     @property
     def subtree(self):
+        """ Get property for subtree for snapshot and updates """
         return self._subtree
 
     @subtree.setter
     def subtree(self, subtree):
-        """Sends [SUBTREE][subtree] to the agent"""
+        """ Set property for subtree for snapshot and updates.
+        Sends [SUBTREE][subtree] to the agent
+        """
         self._subtree = None
         self.pipe.send_multipart(["SUBTREE", subtree])
 
     def connect(self, address, port):
-        """Connect to new server endpoint
+        """ Connect to new server endpoint
         Sends [CONNECT][address][port] to the agent
         """
         self.pipe.send_multipart(["CONNECT", address, str(port)])
 
     def set(self, key, value, ttl=_default_ttl, **kwargs):
-        """Set new value in distributed hash table
+        """ Set new value in distributed hash table.
         Sends [SET][key][value][ttl][serializer] to the agent
         """
         serializer = kwargs.pop('serializer', '')
@@ -109,7 +96,7 @@ class Clone(object):
         self.pipe.send_multipart([cmd, key, value, str(ttl), serializer])
 
     def get(self, key, default=None, **kwargs):
-        """Lookup value in distributed hash table
+        """ Lookup value in distributed hash table
         Sends [GET][key] to the agent and waits for a value response
         If there is no clone available, will eventually return None.
         """
@@ -135,7 +122,7 @@ class Clone(object):
         return value or default
 
     def show(self, key, default=None, **kwargs):
-        """Lookup value in distributed hash table
+        """ Lookup value in distributed hash table
         Sends [SHOW][key] to the agent and waits for a value response
         If there is no clone available, will eventually return None.
         """
@@ -143,14 +130,21 @@ class Clone(object):
         return self.get(key, default=default, **kwargs)
 
     def dump_kvmap(self):
-        """Dumps agent's kvmap (which is gets via SHOW KVMAP, then
-        loads it via pickle)"""
-        return self.show('kvmap', pickle=True)
+        """ Dumps agent's kvmap (which is gets via SHOW KVMAP, then
+        loads it via pickle)
+        """
+        return self.show('KVMAP', pickle=True)
 
     def __getitem__(self, key):
+        """ Allows hash-like access.
+        eg: clone['/test']
+        """
         return self.get(key)
 
     def __setitem__(self, key, value):
+        """ Allows hash-like sets.
+        eg: clone['/test'] = 'blah'
+        """
         return self.set(key, value)
 
 
@@ -160,7 +154,7 @@ Asynchronous part, works in the background
 
 
 class CloneServer(object):
-    """Simple class for one server we talk to"""
+    """ Simple class for one server we talk to """
 
     address = None          # Server address
     port = None             # Server port
@@ -204,12 +198,17 @@ class CloneAgent(object):
 
     def __init__(self, ctx, pipe):
         self.ctx = ctx
+
         self.pipe = pipe
+
         self.kvmap = {}
         self.subtree = ''
+
         self.state = self.states.initial
+
         self.publisher = ctx.socket(zmq.PUSH)
         self.router = ctx.socket(zmq.ROUTER)
+
         self.servers = []
 
     def control_message(self):
@@ -315,7 +314,7 @@ def clone_agent(ctx, pipe):
             poll_timer = 1e3 * max(0, server.expiry - time.time())
 
         try:
-            # Pool loop
+            # Poll loop
             items = dict(poller.poll(poll_timer))
         except:
             raise  # DEBUG
@@ -327,13 +326,7 @@ def clone_agent(ctx, pipe):
         elif server_socket in items:
             kvmsg = KVMsg.recv(server_socket)
 
-            #if agent.state == agent.states.active and kvmsg.key != 'HUGZ':
-            #    # Send out on msg signals
-            #    #on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body)
-            #    on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
-
-            # Anything from server resets its expiry time
-            server.expiry = time.time() + SERVER_TTL
+            server.expiry = time.time() + SERVER_TTL    # Anything from server resets its expiry time
 
             if agent.state == agent.states.syncing:
                 """Store in snapshot until we're finished"""
@@ -346,9 +339,6 @@ def clone_agent(ctx, pipe):
                 else:
                     kvmsg.store(agent.kvmap)
 
-                    ## Send on_sub signal out
-                    #on_sync_msg.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
-
             elif agent.state == agent.states.active:
                 """Discard out-of-sequence updates, incl. hugz"""
                 if kvmsg.sequence > agent.sequence:
@@ -359,10 +349,9 @@ def clone_agent(ctx, pipe):
                     logger.debug("received from %s:%d %s=%d",
                                  server.address, server.port, action, agent.sequence)
 
-                    # Don't send signals if it's just hugz
-                    if kvmsg.key != 'HUGZ':
-                        # Send on_sub signal out
-                        on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
+                    """ Signal """
+                    if kvmsg.key != 'HUGZ':  # Don't send signals if it's just hugz
+                        Clone.signals.on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
 
         else:
             """Server has died, failover to next"""
