@@ -244,7 +244,7 @@ class CloneAgent(object):
 
             if value:
                 body = value.body
-                serializer = value.properties.get('serializer', '')
+                serializer = str(value.properties.get('serializer', ''))
             else:
                 body, serializer = ('', '')
 

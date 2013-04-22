@@ -82,7 +82,7 @@ class DkvManager(Component):
         test_pickle = {'whoa': 'yeah', 'lbh': True}
         clone.set('/test/trevorj-pickle2', test_pickle, pickle=True)
 
-        test_pickle_s = pickle.dumps(test_picke)
+        test_pickle_s = pickle.dumps(test_pickle)
         clone['/test/trevorj-pickle'] = test_pickle_s
 
         logger.debug('SHOW SERVER: %s', clone.show('SERVER'))
