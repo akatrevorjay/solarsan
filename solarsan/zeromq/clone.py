@@ -322,8 +322,8 @@ def clone_agent(ctx, pipe):
         elif server_socket in items:
             kvmsg = KVMsg.recv(server_socket)
             if agent.state == STATE_ACTIVE and kvmsg.key != 'HUGZ':
-                on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body)
-                # pp(kvmsg)
+                #on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body)
+                on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
 
             # Anything from server resets its expiry time
             server.expiry = time.time() + SERVER_TTL
