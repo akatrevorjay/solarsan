@@ -41,8 +41,11 @@ class Beaconer(object):
     interconnection layer, and disconnected peer detection.
     """
     service_port = None
+    _debug = False
 
-    def __init__(self, callback,
+    def __init__(self,
+                 callback,
+                 peer_connected_cb,
                  broadcast_addr='',
                  broadcast_port=35713,
                  service_addr='*',
@@ -50,7 +53,9 @@ class Beaconer(object):
                  service_socket_type=zmq.ROUTER,
                  beacon_interval=1,
                  dead_interval=30):
+
         self.callback = callback
+        self.peer_connected_cb = peer_connected_cb
         self.broadcast_addr = broadcast_addr
         self.broadcast_port = broadcast_port
         self.service_addr = service_addr
@@ -179,8 +184,8 @@ class Beaconer(object):
         """
         peer_addr = '%s://%s:%s' % (transport, addr, port)
 
-        # ~trevorj good for connection debugging
-        #log.debug('peer_addr=%s', peer_addr)
+        if self._debug:
+            log.debug('peer_addr=%s', peer_addr)
 
         peer = self.peers.get(peer_id)
         if peer and peer.addr == peer_addr:
@@ -191,8 +196,8 @@ class Beaconer(object):
             # close it, we'll reconnect
             self.peers[peer_id].socket.close()
 
-        # ~trevorj good for connection debugging
-        #log.debug('peers=%s', self.peers)
+        if self._debug:
+            log.debug('peers=%s', self.peers)
 
         # connect DEALER to peer_addr address from beacon
         peer = self.context.socket(zmq.DEALER)
@@ -203,8 +208,9 @@ class Beaconer(object):
         peer.connect(peer_addr)
         self.peers[peer_id] = Peer(peer, peer_addr, time.time())
 
-        # ~trevorj
-        #peer.send('test')
+        if self.peer_connected_cb:
+            #self.peers[peer_id] = peer = peer._replace(time=time.time())
+            gevent.spawn(self.peer_connected_cb, self, self.peers[peer_id])
 
     def handle_msg(self, peer_id, msg):
         """Override this method to customize message handling.
@@ -220,21 +226,32 @@ class Beaconer(object):
 if __name__ == '__main__':
     import sys
 
-    def my_callback(pyre, peer, msg):
-        log.info('msg=%s', msg)
-        log.info('pyre=%s', pyre)
-        log.info('peer=%s', peer)
-        #peer.send('test')
+    def on_msg_cb(pyre, peer, msg):
+        log.info('msg=%s peer=%s', msg, peer)
+        #log.info('pyre=%s', pyre)
+        #gevent.sleep(1)
 
-        time.sleep(1)
-        print msg
+        if msg == 'SUP':
+            logger.debug('sending WAT')
+            peer.socket.send('WAT')
+        elif msg == 'WAT':
+            logger.debug('got final WAT mofo')
+
+    def on_peer_connected_cb(pyre, peer):
+        # Send test message soon as we're connected
+        logger.debug('sending SUP')
+        peer.socket.send('SUP')
 
     import solarsan.cluster.models as cmodels
     local = cmodels.Peer.get_local()
     ipaddr = str(local.cluster_nic.ipaddr)
-    log.debug('ipaddr=%s', ipaddr)
 
-    p = Beaconer(my_callback,
+    log.info('service_addr=%s discovery_port=%s',
+             ipaddr, conf.ports.discovery)
+    log.info('Starting')
+
+    p = Beaconer(on_msg_cb,
+                 on_peer_connected_cb,
                  #beacon_interval=10,
                  beacon_interval=1,
                  dead_interval=10,
