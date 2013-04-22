@@ -44,8 +44,9 @@ class Beaconer(object):
     _debug = False
 
     def __init__(self,
-                 callback,
+                 msg_cb,
                  peer_connected_cb,
+                 peer_deadbeat_cb,
                  broadcast_addr='',
                  broadcast_port=35713,
                  service_addr='*',
@@ -54,8 +55,9 @@ class Beaconer(object):
                  beacon_interval=1,
                  dead_interval=30):
 
-        self.callback = callback
+        self.msg_cb = msg_cb
         self.peer_connected_cb = peer_connected_cb
+        self.peer_deadbeat_cb = peer_deadbeat_cb
         self.broadcast_addr = broadcast_addr
         self.broadcast_port = broadcast_port
         self.service_addr = service_addr
@@ -166,6 +168,10 @@ class Beaconer(object):
                 if now - peer.time > self.dead_interval:
                     log.debug('Deadbeat: %s' % uuid.UUID(bytes=peer_id))
                     peer.socket.close()
+
+                    if self.peer_deadbeat_cb:
+                        gevent.spawn(self.peer_deadbeat_cb, self, self.peers[peer_id])
+
                     del self.peers[peer_id]
 
     def _recv_msg(self):
@@ -220,7 +226,7 @@ class Beaconer(object):
         peer = self.peers.get(peer_id)
         if peer:
             self.peers[peer_id] = peer = peer._replace(time=time.time())
-            gevent.spawn(self.callback, self, peer, msg)
+            gevent.spawn(self.msg_cb, self, peer, msg)
 
 
 if __name__ == '__main__':
@@ -244,6 +250,9 @@ if __name__ == '__main__':
         logger.debug('sending SUP')
         peer.socket.send('SUP')
 
+    def on_peer_deadbeat_cb(pyre, peer):
+        log.info('deadbeat peer=%s', peer)
+
     import solarsan.cluster.models as cmodels
     local = cmodels.Peer.get_local()
     ipaddr = str(local.cluster_nic.ipaddr)
@@ -254,6 +263,7 @@ if __name__ == '__main__':
 
     p = Beaconer(on_msg_cb,
                  on_peer_connected_cb,
+                 on_peer_deadbeat_cb,
                  #beacon_interval=10,
                  beacon_interval=1,
                  dead_interval=10,
