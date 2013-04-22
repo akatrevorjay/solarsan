@@ -6,12 +6,11 @@ import time
 import socket
 import ethtool
 import threading
-
 import zmq
 
 #from zhelpers import zpipe
 #from kvmsg import KVMsg
-
+#
 #import zmq.utils.jsonapi as json
 #try:
 #    import cPickle as pickle
@@ -43,9 +42,9 @@ class UDP(object):
     def __init__(self, port, address=None, broadcast=None):
         if broadcast is None:
             broadcast = '255.255.255.255'
-
         self.broadcast = broadcast
         self.port = port
+
         # Create UDP socket
         self.handle = socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -73,7 +72,7 @@ class Beacon(UDP):
         self.address = ethtool.get_ipaddr(interface)
         self._local_ip_cache = LRUCacheDict(max_size=32, expiration=3600)
 
-        # if not broadcast:
+        #if not broadcast:
         #    broadcast = ethtool.get_broadcast(interface)
 
         super(Beacon, self).__init__(port, broadcast=broadcast)

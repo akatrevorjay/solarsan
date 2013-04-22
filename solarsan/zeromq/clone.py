@@ -15,12 +15,17 @@ import zmq
 from zhelpers import zpipe
 from kvmsg import KVMsg
 
-from solarsan.pretty import pp
+#from solarsan.pretty import pp
 import zmq.utils.jsonapi as json
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
+
+
+"""
+Basics
+"""
 
 
 # If no server replies within this time, abandon request
@@ -30,14 +35,10 @@ SERVER_TTL = 5.0     # secs
 # Number of servers we will talk to
 SERVER_MAX = 2
 
-# basic log formatting:
-# logger.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
-#        level=logger.DEBUG)
-#        #level=logger.debug)
 
-
-# =====================================================================
-# Synchronous part, works in our application thread
+"""
+Synchronous part, works in our application thread
+"""
 
 
 on_sub = signal('on_sub')
@@ -62,9 +63,8 @@ class Clone(object):
         self.agent.daemon = True
         self.agent.start()
 
-    # ---------------------------------------------------------------------
-    # Clone.subtree is a property, which sets the subtree for snapshot
-    # and updates
+    """ Clone.subtree is a property, which sets the subtree for snapshot
+    # and updates"""
 
     @property
     def subtree(self):
@@ -154,14 +154,14 @@ class Clone(object):
         return self.set(key, value)
 
 
-# =====================================================================
-# Asynchronous part, works in the background
-
-# ---------------------------------------------------------------------
-# Simple class for one server we talk to
+"""
+Asynchronous part, works in the background
+"""
 
 
 class CloneServer(object):
+    """Simple class for one server we talk to"""
+
     address = None          # Server address
     port = None             # Server port
     snapshot = None         # Snapshot socket
@@ -172,25 +172,26 @@ class CloneServer(object):
     def __init__(self, ctx, address, port, subtree):
         self.address = address
         self.port = port
+
         self.snapshot = ctx.socket(zmq.DEALER)
         self.snapshot.linger = 0
         self.snapshot.connect("%s:%i" % (address, port))
+
         self.subscriber = ctx.socket(zmq.SUB)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, subtree)
         self.subscriber.connect("%s:%i" % (address, port + 1))
         self.subscriber.linger = 0
 
 
-# ---------------------------------------------------------------------
-# Simple class for one background agent
-
-#  States we can be in
-STATE_INITIAL = 0  # Before asking server for state
-STATE_SYNCING = 1  # Getting state from server
-STATE_ACTIVE = 2  # Getting new updates from server
-
-
 class CloneAgent(object):
+    """ Simple class for one background agent """
+
+    class states:
+        """ States we can be in """
+        initial = 0         # Before asking server for state
+        syncing = 1         # Getting state from server
+        active = 2          # Getting new updates from server
+
     ctx = None              # Own context
     pipe = None             # Socket to talk back to application
     kvmap = None            # Actual key/value dict
@@ -206,7 +207,7 @@ class CloneAgent(object):
         self.pipe = pipe
         self.kvmap = {}
         self.subtree = ''
-        self.state = STATE_INITIAL
+        self.state = self.states.initial
         self.publisher = ctx.socket(zmq.PUSH)
         self.router = ctx.socket(zmq.ROUTER)
         self.servers = []
@@ -223,7 +224,7 @@ class CloneAgent(object):
                     self.ctx, address, port, self.subtree))
                 self.publisher.connect("%s:%i" % (address, port + 2))
             else:
-                logger.error("E: too many servers (max. %i)", SERVER_MAX)
+                logger.error("too many servers (max. %i)", SERVER_MAX)
 
         elif command == "SET":
             key, value, sttl, serializer = msg
@@ -265,12 +266,11 @@ class CloneAgent(object):
                 kvmap_s = pickle.dumps(self.kvmap)
                 self.pipe.send_multipart([kvmap_s, 'pickle'])
 
-# ---------------------------------------------------------------------
-# Asynchronous agent manages server pool and handles request/reply
-# dialog when the application asks for it.
-
 
 def clone_agent(ctx, pipe):
+    """ Asynchronous agent manages server pool and handles request/reply
+    dialog when the application asks for it. """
+
     agent = CloneAgent(ctx, pipe)
     server = None
 
@@ -280,38 +280,42 @@ def clone_agent(ctx, pipe):
         poll_timer = None
         server_socket = None
 
-        if agent.state == STATE_INITIAL:
-            # In this state we ask the server for a snapshot,
-            # if we have a server to talk to...
+        if agent.state == agent.states.initial:
+            """In this state we ask the server for a snapshot,
+            if we have a server to talk to..."""
             if agent.servers:
                 server = agent.servers[agent.cur_server]
+
                 logger.debug("waiting for server at %s:%d...",
-                            server.address, server.port)
+                             server.address, server.port)
+
                 if (server.requests < 2):
                     server.snapshot.send_multipart(["ICANHAZ?", agent.subtree])
                     server.requests += 1
+
                 server.expiry = time.time() + SERVER_TTL
-                agent.state = STATE_SYNCING
+                agent.state = agent.states.syncing
                 server_socket = server.snapshot
-        elif agent.state == STATE_SYNCING:
-            # In this state we read from snapshot and we expect
-            # the server to respond, else we fail over.
+
+        elif agent.state == agent.states.syncing:
+            """In this state we read from snapshot and we expect
+            the server to respond, else we fail over."""
             server_socket = server.snapshot
-        elif agent.state == STATE_ACTIVE:
-            # In this state we read from subscriber and we expect
-            # the server to give hugz, else we fail over.
+
+        elif agent.state == agent.atates.active:
+            """In this state we read from subscriber and we expect
+            the server to give hugz, else we fail over."""
             server_socket = server.subscriber
 
         if server_socket:
-            # we have a second socket to poll:
+            """we have a second socket to poll"""
             poller.register(server_socket, zmq.POLLIN)
 
         if server is not None:
             poll_timer = 1e3 * max(0, server.expiry - time.time())
 
-        # ------------------------------------------------------------
-        # Poll loop
         try:
+            # Pool loop
             items = dict(poller.poll(poll_timer))
         except:
             raise  # DEBUG
@@ -319,37 +323,50 @@ def clone_agent(ctx, pipe):
 
         if agent.pipe in items:
             agent.control_message()
+
         elif server_socket in items:
             kvmsg = KVMsg.recv(server_socket)
-            if agent.state == STATE_ACTIVE and kvmsg.key != 'HUGZ':
-                #on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body)
-                on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
+
+            #if agent.state == agent.states.active and kvmsg.key != 'HUGZ':
+            #    # Send out on msg signals
+            #    #on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body)
+            #    on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
 
             # Anything from server resets its expiry time
             server.expiry = time.time() + SERVER_TTL
-            if (agent.state == STATE_SYNCING):
-                # Store in snapshot until we're finished
+
+            if agent.state == agent.states.syncing:
+                """Store in snapshot until we're finished"""
                 server.requests = 0
                 if kvmsg.key == "KTHXBAI":
                     agent.sequence = kvmsg.sequence
-                    agent.state = STATE_ACTIVE
+                    agent.state = agent.states.active
                     logger.debug("received from %s:%d snapshot=%d",
-                                server.address, server.port, agent.sequence)
+                                 server.address, server.port, agent.sequence)
                 else:
                     kvmsg.store(agent.kvmap)
 
-            elif (agent.state == STATE_ACTIVE):
-                # Discard out-of-sequence updates, incl. hugz
-                if (kvmsg.sequence > agent.sequence):
+                    ## Send on_sub signal out
+                    #on_sync_msg.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
+
+            elif agent.state == agent.states.active:
+                """Discard out-of-sequence updates, incl. hugz"""
+                if kvmsg.sequence > agent.sequence:
                     agent.sequence = kvmsg.sequence
                     kvmsg.store(agent.kvmap)
                     action = "update" if kvmsg.body else "delete"
 
                     logger.debug("received from %s:%d %s=%d",
-                                server.address, server.port, action, agent.sequence)
+                                 server.address, server.port, action, agent.sequence)
+
+                    # Don't send signals if it's just hugz
+                    if kvmsg.key != 'HUGZ':
+                        # Send on_sub signal out
+                        on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
+
         else:
-            # Server has died, failover to next
-            logger.debug("server at %s:%d didn't give hugz",
-                        server.address, server.port)
+            """Server has died, failover to next"""
+            logger.error("server at %s:%d didn't give hugz",
+                         server.address, server.port)
             agent.cur_server = (agent.cur_server + 1) % len(agent.servers)
-            agent.state = STATE_INITIAL
+            agent.state = agent.states.initial
