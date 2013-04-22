@@ -82,13 +82,8 @@ class Beacon(UDP):
 
     def recv(self, n):
         buf, addrinfo = self.handle.recvfrom(n)
-        self.found_peer(addrinfo[0], buf)
+        ip = addrinfo[0]
 
-    def send_ping(self):
-        logger.debug("Pinging peers...")
-        self.send('!')
-
-    def found_peer(self, ip, buf):
         try:
             local_ip = self._local_ip_cache[ip]
         except KeyError:
@@ -97,11 +92,16 @@ class Beacon(UDP):
         if from_self:
             return
 
-        logger.debug("Got peer broadcast ip='%s', from_self='%s', buf='%s'",
-                     ip, from_self, buf)
+        return self.found_peer(ip, buf)
 
-        #tasks.probe_node.delay(ip)
-        logger.error('Not proving peer cause lazy')
+    def send_ping(self):
+        logger.debug("Pinging peers...")
+        self.send('!')
+
+    def found_peer(self, ip, buf):
+        logger.debug("Got peer broadcast ip='%s', buf='%s'", ip, buf)
+        # TODO Probe
+        logger.error('Not probing peer cause lazy')
 
     def run(self):
         poller = zmq.Poller()
