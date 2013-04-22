@@ -191,7 +191,8 @@ class Beaconer(object):
             # close it, we'll reconnect
             self.peers[peer_id].socket.close()
 
-        log.debug('peers=%s', self.peers)
+        # ~trevorj good for connection debugging
+        #log.debug('peers=%s', self.peers)
 
         # connect DEALER to peer_addr address from beacon
         peer = self.context.socket(zmq.DEALER)
@@ -199,9 +200,11 @@ class Beaconer(object):
 
         uid = uuid.UUID(bytes=peer_id)
         log.debug('conecting to: %s at %s' % (uid, peer_addr))
-        #peer.connect(peer_addr)
         peer.connect(peer_addr)
         self.peers[peer_id] = Peer(peer, peer_addr, time.time())
+
+        # ~trevorj
+        #peer.send('test')
 
     def handle_msg(self, peer_id, msg):
         """Override this method to customize message handling.
