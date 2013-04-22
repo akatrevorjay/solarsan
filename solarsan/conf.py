@@ -1,16 +1,39 @@
 
+""" Basics """
+
 import socket
+
 hostname = socket.gethostname()
 
-
 SOLARSAN_ROOT = '/opt/solarsan'
-SERVER_ID = hostname
+#SERVER_ID = hostname
 
+rpyc_conn_config = dict(
+    allow_exposed_attrs=False,
+    allow_public_attrs=True,
+    allow_all_attrs=True,
+    allow_setattr=True,
+    allow_delattr=True,
+    #allow_pickle=False,
+    #exposed_prefix=,
+    include_local_traceback=True,
+    #include_local_traceback=False,
+)
+
+scst_config_file = '/etc/scst.conf'
+
+ports = dict(
+    discovery=1785,
+    #_rpc=1787,
+    #_drbd_start=7800,
+)
+
+""" Config """
 
 import os
-
-
 from config import Config as _BaseConfig
+
+
 CONFIG_FILE = os.path.join(SOLARSAN_ROOT, 'etc', 'solarsan', 'solarsan.conf')
 
 
@@ -24,6 +47,7 @@ class Config(_BaseConfig):
         super(Config, self).save(f)
 
 
+_config_updated = None
 config = Config()
 
 
@@ -31,13 +55,11 @@ config = Config()
 if not 'uuid' in config:
     from uuid import uuid1
     config['uuid'] = uuid1()
-    config.save()
-
+    _config_updated = True
 
 if not 'cluster_iface' in config:
     config['cluster_iface'] = 'eth1'
-    config.save()
-
+    _config_updated = True
 
 if not 'auto_snap' in config:
     config['auto_snap'] = {
@@ -48,10 +70,14 @@ if not 'auto_snap' in config:
             'interval': 3600,
         },
     }
+    _config_updated = True
+
+if _config_updated:
+    del _config_updated
     config.save()
 
+""" Logging """
 
-# logging
 LOGGING = {
     'version': 1,
     #'disable_existing_loggers': True,
@@ -168,19 +194,3 @@ LOGGING = {
         },
     }
 }
-
-
-rpyc_conn_config = {
-    'allow_exposed_attrs': False,
-    'allow_public_attrs': True,
-    'allow_all_attrs': True,
-    'allow_setattr': True,
-    'allow_delattr': True,
-    #'allow_pickle': False,
-    #'exposed_prefix': '',
-    'include_local_traceback': True,
-    #'include_local_traceback': False,
-}
-
-
-scst_config_file = '/etc/scst.conf'
