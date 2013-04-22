@@ -1,5 +1,5 @@
 
-from solarsan import logging
+from solarsan import logging, conf
 logger = logging.getLogger(__name__)
 import time
 
@@ -50,17 +50,30 @@ class CloneServer(object):
     master = False              # True if we're master
     slave = False               # True if we're slave
 
-    def __init__(self, primary=True, ports=(5556, 5566)):
+    def __init__(self, primary=True, ports=(5556, 5556)):
+        if conf.hostname == 'san0':
+            remote_host = 'san1'
+        elif conf.hostname == 'san1':
+            remote_host = 'san0'
+            primary = False
+        else:
+            remote_host = 'localhost'
+        self.remote_host = remote_host
+
         self.primary = primary
+
+        #backend_host = 'localhost'
+        backend_host = remote_host
+
         if primary:
             self.port, self.peer = ports
             frontend = "tcp://*:5003"
-            backend = "tcp://localhost:5004"
+            backend = "tcp://%s:5004" % backend_host
             self.kvmap = {}
         else:
             self.peer, self.port = ports
             frontend = "tcp://*:5004"
-            backend = "tcp://localhost:5003"
+            backend = "tcp://%s:5003" % backend_host
 
         if not self.ctx:
             self.ctx = zmq.Context.instance()
@@ -81,7 +94,7 @@ class CloneServer(object):
         # Set up our own clone client interface to peer
         self.subscriber = self.ctx.socket(zmq.SUB)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-        self.subscriber.connect("tcp://localhost:%d" % (self.peer + 1))
+        self.subscriber.connect("tcp://%s:%d" % (remote_host, self.peer + 1))
 
         # Register state change handlers
         self.bstar.master_callback = self.become_master
@@ -236,10 +249,10 @@ class CloneServer(object):
             self.kvmap = {}
             snapshot = self.ctx.socket(zmq.DEALER)
             snapshot.linger = 0
-            snapshot.connect("tcp://localhost:%i" % self.peer)
+            snapshot.connect("tcp://%s:%i" % (self.remote_host, self.peer))
 
-            logger.info("I: asking for snapshot from: tcp://localhost:%d",
-                        self.peer)
+            logger.info("I: asking for snapshot from: tcp://%s:%d",
+                        self.remote_host, self.peer)
             snapshot.send_multipart(["ICANHAZ?", ''])
             while True:
                 try:

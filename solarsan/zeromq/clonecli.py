@@ -1,5 +1,5 @@
 
-from solarsan import logging
+from solarsan import logging, conf
 logger = logging.getLogger(__name__)
 from solarsan.pretty import pp
 import random
@@ -20,8 +20,23 @@ def get_client():
     # Create and connect clone
     clone = Clone()
     clone.subtree = SUBTREE
+    #clone.subtree = '/client/'
+
     clone.connect("tcp://localhost", 5556)
-    clone.connect("tcp://localhost", 5566)
+    #clone.connect("tcp://localhost", 5566)
+
+    if conf.hostname == 'san0':
+        remote_host = 'san1'
+    elif conf.hostname == 'san1':
+        remote_host = 'san0'
+        primary = False
+    else:
+        remote_host = 'localhost'
+
+    clone.connect("tcp://%s" % remote_host, 5556)
+    #clone.connect("tcp://san0", 5556)
+    #clone.connect("tcp://san1", 5556)
+
     return clone
 
 
@@ -41,6 +56,7 @@ def test_rand_cache(clone):
     key = "%d" % random.randint(1, 10000)
     value = "%d" % random.randint(1, 1000000)
     clone.set(key, value, random.randint(0, 30))
+
 
 
 def main():

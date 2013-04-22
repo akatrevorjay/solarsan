@@ -253,14 +253,14 @@ class CloneAgent(object):
         elif command == "SHOW":
             key = msg[0].upper()
             if key == 'SERVERS':
-                self.pipe.send(str(','.join(
-                    [x.__repr__() for x in self.servers])))
+                self.pipe.send_multipart([
+                    str(','.join([x.__repr__() for x in self.servers])), ''])
             elif key == 'SERVER':
-                self.pipe.send(str(self.cur_server))
+                self.pipe.send_multipart([str(self.cur_server), ''])
             elif key == 'SEQ':
-                self.pipe.send(str(self.sequence))
+                self.pipe.send_multipart([str(self.sequence), ''])
             elif key == 'STATUS':
-                self.pipe.send(str(self.cur_status))
+                self.pipe.send_multipart([str(self.cur_status), ''])
             elif key == 'KVMAP':
                 kvmap_s = pickle.dumps(self.kvmap)
                 self.pipe.send_multipart([kvmap_s, 'pickle'])

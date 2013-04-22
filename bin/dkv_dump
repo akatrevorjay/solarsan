@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+"""SolarSan DKV Dump
+Dumps distributed key-value store.
+
+Usage: dkv_dump [-vd] [<delay>] [<iterations>]
+
+    -v --verbose        Verbose [default: False]
+    -d --debug          Debug [default: False]
+    <delay>             Sleep secs between iterations [default: 3]
+    <interations>       Dump this many times, then exit [default: 0]
+
+"""
+from solarsan import logging
+logger = logging.getLogger(__name__)
+from solarsan.pretty import pp
+
+from docopt import docopt
+from time import sleep
+
+from solarsan.zeromq.clonecli import get_client
+
+
+def main(arguments):
+    delay = int(arguments['<delay>'] or 3)
+    max_iterations = int(arguments['<iterations>'] or 0)
+
+    c = get_client()
+
+    try:
+        iterations = 0
+        while max_iterations == 0 or iterations > max_iterations:
+            print "\n"
+            logger.info("KVMap @%ds (%d/%d):", delay, iterations, max_iterations)
+
+            kvmap = c.dump_kvmap()
+            pp(kvmap)
+
+            sleep(delay)
+            iterations += 1
+
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
+
+if __name__ == '__main__':
+    arguments = docopt(__doc__, version='SolarSan DKV Dump 0.1')
+    #print arguments
+    main(arguments)
