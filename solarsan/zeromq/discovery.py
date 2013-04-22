@@ -38,7 +38,7 @@ def get_local_ip_to(target):
 class UDP(object):
     """simple UDP ping class"""
     handle = None   # Socket for send/recv
-    broadcast = ''  # Broadcast address
+    broadcast = None  # Broadcast address
 
     def __init__(self, port, address=None, broadcast=None):
         if broadcast is None:
@@ -76,9 +76,10 @@ class Beacon(UDP):
         # if not broadcast:
         #    broadcast = ethtool.get_broadcast(interface)
 
-        logger.info("Using iface '%s' address '%s:%d' broadcast '%s'",
-                    interface, self.address, port, broadcast)
         super(Beacon, self).__init__(port, broadcast=broadcast)
+
+        logger.info("Using iface=%s address=%s:%d broadcast=%s",
+                    interface, self.address, self.port, self.broadcast)
 
     def recv(self, n):
         buf, addrinfo = self.handle.recvfrom(n)
