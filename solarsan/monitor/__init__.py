@@ -38,12 +38,12 @@ class Monitor(Component):
             #Debugger(logger=logger, prefix="\ndebugger").register(self)
             Debugger(logger=logger).register(self)
 
-        PeerManager().register(self)
-        Discovery().register(self)
+        #PeerManager().register(self)
+        #Discovery().register(self)
         DeviceManager().register(self)
-        FloatingIPManager().register(self)
-        ResourceManager().register(self)
-        TargetManager().register(self)
+        #FloatingIPManager().register(self)
+        #ResourceManager().register(self)
+        #TargetManager().register(self)
         # TODO Finish this
         #AutoSnapshotManager().register(self)
         # TODO Finish this

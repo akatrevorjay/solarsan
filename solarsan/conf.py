@@ -76,7 +76,7 @@ LOGGING = {
             #'format': '%(asctime)s %(levelname)8s %(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d} %(message)s',
             #'format': '>> %(asctime)s %(levelname)8s %(name)20s@%(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d}\n%(message)s\n',
             #'format': '%(asctime)s %(name)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
-            'format': '%(asctime)s %(name)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
+            'format': '%(asctime)s %(name)s[%(process)d]: [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d',
             #'format': '%(asctime)s %(name)s[%(process)d] {%(thread)d}: %(message)s @%(funcName)s:%(lineno)d',
         },
         'verbose': {
@@ -151,6 +151,11 @@ LOGGING = {
             'level': 'DEBUG',
             'handlers': ['console'],
         },
+        #'solarsan.zeromq.clone': {
+        #    'propagate': False,
+        #    'level': 'INFO',
+        #    'handlers': ['console'],
+        #},
         'butler': {
             'propagate': False,
             'level': 'INFO',

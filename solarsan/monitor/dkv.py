@@ -66,22 +66,22 @@ class DkvManager(Component):
 
 
 class TestUpdate(Event):
-    """"""
+    """Test Update"""
 
 
 class TestUpdate2(TestUpdate):
-    """"""
+    """Test Update 2"""
 
 
 class DkvTest(Component):
-    channel = 'dkv'
+    channel = 'dkv_test'
 
     def __init__(self, clone, channel=channel):
         Component.__init__(self, channel=channel)
         self.clone = clone
 
-        Timer(11.0, TestUpdate(), 'dkv', persist=True).register(self)
-        Timer(15.0, TestUpdate2(), 'dkv', persist=True).register(self)
+        Timer(10.0, TestUpdate(), 'dkv_test', persist=True).register(self)
+        Timer(10.0, TestUpdate2(), 'dkv_test', persist=True).register(self)
 
     #def started(self, component):
     #    self.test()
@@ -90,15 +90,16 @@ class DkvTest(Component):
         logger.debug('Testing DKV One')
         clone = self.clone
 
-        clone.set('/nodes/%s/alive' % conf.hostname, 'yes', ttl=20)
+        clone.set('/nodes/%s.neighbors' % conf.hostname, 'san0 san1')
+        clone.set('/nodes/%s.alive' % conf.hostname, 'yes', ttl=30)
 
-        me = clone.get('me')
-        if me != conf.hostname:
-            clone.set('me', conf.hostname, ttl=20)
+    def test_update2(self):
+        logger.debug('Testing DKV Two')
+        clone = self.clone
 
-    #def test_update2(self):
-    #    logger.debug('Testing DKV Two')
-    #    clone = self.clone
+        #clone.set('/nodes/me', str(conf.hostname), ttl=30)
+        clone.set('/nodes2/%s.alive' % conf.hostname, 'yes', ttl=30)
+        clone.set('/nodes2/%s.neighbors' % conf.hostname, 'san0 san1')
 
     def test(self):
         logger.debug('Testing DKV')

@@ -29,11 +29,11 @@ def main(arguments):
     try:
         iterations = 0
         while max_iterations == 0 or iterations > max_iterations:
-            print "\n"
-            logger.info("KVMap @%ds (%d/%d):", delay, iterations, max_iterations)
 
             kvmap = c.dump_kvmap()
-            pp(kvmap)
+            if kvmap is not None:
+                logger.debug("KVMap @%ds (%d/%d):", delay, iterations, max_iterations)
+                pp(kvmap)
 
             sleep(delay)
             iterations += 1

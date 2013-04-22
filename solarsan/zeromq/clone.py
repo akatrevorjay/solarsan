@@ -33,7 +33,7 @@ SERVER_MAX = 2
 # basic log formatting:
 # logger.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
 #        level=logger.DEBUG)
-#        #level=logger.INFO)
+#        #level=logger.debug)
 
 
 # =====================================================================
@@ -285,7 +285,7 @@ def clone_agent(ctx, pipe):
             # if we have a server to talk to...
             if agent.servers:
                 server = agent.servers[agent.cur_server]
-                logger.info("I: waiting for server at %s:%d...",
+                logger.debug("waiting for server at %s:%d...",
                             server.address, server.port)
                 if (server.requests < 2):
                     server.snapshot.send_multipart(["ICANHAZ?", agent.subtree])
@@ -333,7 +333,7 @@ def clone_agent(ctx, pipe):
                 if kvmsg.key == "KTHXBAI":
                     agent.sequence = kvmsg.sequence
                     agent.state = STATE_ACTIVE
-                    logger.info("I: received from %s:%d snapshot=%d",
+                    logger.debug("received from %s:%d snapshot=%d",
                                 server.address, server.port, agent.sequence)
                 else:
                     kvmsg.store(agent.kvmap)
@@ -345,11 +345,11 @@ def clone_agent(ctx, pipe):
                     kvmsg.store(agent.kvmap)
                     action = "update" if kvmsg.body else "delete"
 
-                    logger.info("I: received from %s:%d %s=%d",
+                    logger.debug("received from %s:%d %s=%d",
                                 server.address, server.port, action, agent.sequence)
         else:
             # Server has died, failover to next
-            logger.info("I: server at %s:%d didn't give hugz",
+            logger.debug("server at %s:%d didn't give hugz",
                         server.address, server.port)
             agent.cur_server = (agent.cur_server + 1) % len(agent.servers)
             agent.state = STATE_INITIAL

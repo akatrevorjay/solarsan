@@ -19,21 +19,21 @@ SUBTREE = "/client/"
 def get_client():
     # Create and connect clone
     clone = Clone()
-    clone.subtree = SUBTREE
+    #clone.subtree = SUBTREE
     #clone.subtree = '/client/'
 
-    clone.connect("tcp://localhost", 5556)
+    #clone.connect("tcp://localhost", 5556)
     #clone.connect("tcp://localhost", 5566)
 
-    if conf.hostname == 'san0':
+    host = conf.hostname
+    if host == 'san0':
         remote_host = 'san1'
-    elif conf.hostname == 'san1':
+    elif host == 'san1':
         remote_host = 'san0'
-        primary = False
-    else:
-        remote_host = 'localhost'
 
+    clone.connect("tcp://%s" % host, 5556)
     clone.connect("tcp://%s" % remote_host, 5556)
+
     #clone.connect("tcp://san0", 5556)
     #clone.connect("tcp://san1", 5556)
 
@@ -56,7 +56,6 @@ def test_rand_cache(clone):
     key = "%d" % random.randint(1, 10000)
     value = "%d" % random.randint(1, 1000000)
     clone.set(key, value, random.randint(0, 30))
-
 
 
 def main():
