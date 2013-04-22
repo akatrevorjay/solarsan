@@ -30,12 +30,15 @@ def send_single(key, kvmsg, route):
 
 
 class CloneServer(object):
+    """ Clone Server object """
+
     ctx = None                  # Context wrapper
 
-    kvmap = None                # Key-value store
-    bstar = None                # Binary Star
-
     sequence = 0                # How many updates so far
+    kvmap = None                # Key-value store
+
+    bstar = None                # Binary Star
+    #beacon = None               # Beacon
 
     port = None                 # Main port we're working on
     peer = None                 # Main port of our peer
@@ -123,7 +126,7 @@ class CloneServer(object):
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
         if msg[1] != "ICANHAZ?" or len(msg) != 3:
-            logger.error("E: bad request, aborting")
+            logger.error("bad request, aborting")
             dump(msg)
             self.bstar.loop.stop()
             return
@@ -138,7 +141,7 @@ class CloneServer(object):
                 send_single(k, v, route)
 
             # Now send END message with sequence number
-            logger.info("I: Sending state shapshot=%d", self.sequence)
+            logger.info("Sending state shapshot=%d", self.sequence)
             socket.send(identity, zmq.SNDMORE)
             kvmsg = KVMsg(self.sequence)
             kvmsg.key = "KTHXBAI"
@@ -160,7 +163,7 @@ class CloneServer(object):
             if ttl:
                 kvmsg['ttl'] = time.time() + ttl
             kvmsg.store(self.kvmap)
-            logger.info("I: publishing update=%d", self.sequence)
+            logger.info("publishing update=%d", self.sequence)
         else:
             # If we already got message from master, drop it, else
             # hold on pending list
@@ -196,7 +199,7 @@ class CloneServer(object):
             kvmsg.sequence = self.sequence
             kvmsg.send(self.publisher)
             del self.kvmap[kvmsg.key]
-            logger.debug("I: publishing delete=%d", self.sequence)
+            logger.debug("publishing delete=%d", self.sequence)
 
     def send_hugz(self):
         """Send hugz to anyone listening on the publisher socket"""
@@ -205,8 +208,9 @@ class CloneServer(object):
         kvmsg.body = ""
         kvmsg.send(self.publisher)
 
-    # ---------------------------------------------------------------------
-    # State change handlers
+    """
+    State change handlers
+    """
 
     def become_master(self):
         """We're becoming master
@@ -216,6 +220,7 @@ class CloneServer(object):
         """
         self.master = True
         self.slave = False
+
         # stop receiving subscriber updates while we are master
         self.subscriber.stop_on_recv()
 
@@ -225,14 +230,15 @@ class CloneServer(object):
             self.sequence += 1
             kvmsg.sequence = self.sequence
             kvmsg.store(self.kvmap)
-            logger.info("I: publishing pending=%d", self.sequence)
+            logger.info("publishing pending=%d", self.sequence)
 
     def become_slave(self):
         """We're becoming slave"""
-        # clear kvmap
-        self.kvmap = None
+        self.kvmap = None       # clear kvmap
+
         self.master = False
         self.slave = True
+
         self.subscriber.on_recv(self.handle_subscriber)
 
     def handle_subscriber(self, msg):
@@ -251,7 +257,7 @@ class CloneServer(object):
             snapshot.linger = 0
             snapshot.connect("tcp://%s:%i" % (self.remote_host, self.peer))
 
-            logger.info("I: asking for snapshot from: tcp://%s:%d",
+            logger.info("asking for snapshot from: tcp://%s:%d",
                         self.remote_host, self.peer)
             snapshot.send_multipart(["ICANHAZ?", ''])
             while True:
@@ -266,10 +272,11 @@ class CloneServer(object):
                     break          # Done
                 kvmsg.store(self.kvmap)
 
-            logger.info("I: received snapshot=%d", self.sequence)
+            logger.info("received snapshot=%d", self.sequence)
 
         # Find and remove update off pending list
         kvmsg = KVMsg.from_msg(msg)
+
         # update integer ttl -> timestamp
         ttl = kvmsg.get('ttl')
         if ttl is not None:
@@ -277,16 +284,17 @@ class CloneServer(object):
 
         if kvmsg.key != "HUGZ":
             if not self.was_pending(kvmsg):
-                # If master update came before client update, flip it
-                # around, store master update (with sequence) on pending
-                # list and use to clear client update when it comes later
+                """ If master update came before client update, flip it
+                around, store master update (with sequence) on pending
+                list and use to clear client update when it comes later.
+                """
                 self.pending.append(kvmsg)
 
             # If update is more recent than our kvmap, apply it
             if (kvmsg.sequence > self.sequence):
                 self.sequence = kvmsg.sequence
                 kvmsg.store(self.kvmap)
-                logger.info("I: received update=%d", self.sequence)
+                logger.info("received update=%d", self.sequence)
 
 
 def main():

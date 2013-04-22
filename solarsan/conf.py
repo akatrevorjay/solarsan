@@ -1,6 +1,7 @@
 
 """ Basics """
 
+from bunch import Bunch
 import socket
 
 hostname = socket.gethostname()
@@ -8,7 +9,7 @@ hostname = socket.gethostname()
 SOLARSAN_ROOT = '/opt/solarsan'
 #SERVER_ID = hostname
 
-rpyc_conn_config = dict(
+rpyc_conn_config = Bunch(
     allow_exposed_attrs=False,
     allow_public_attrs=True,
     allow_all_attrs=True,
@@ -22,7 +23,7 @@ rpyc_conn_config = dict(
 
 scst_config_file = '/etc/scst.conf'
 
-ports = dict(
+ports = Bunch(
     discovery=1785,
     #_rpc=1787,
     #_drbd_start=7800,

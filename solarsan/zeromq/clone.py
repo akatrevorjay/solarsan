@@ -301,7 +301,7 @@ def clone_agent(ctx, pipe):
             the server to respond, else we fail over."""
             server_socket = server.snapshot
 
-        elif agent.state == agent.atates.active:
+        elif agent.state == agent.states.active:
             """In this state we read from subscriber and we expect
             the server to give hugz, else we fail over."""
             server_socket = server.subscriber
