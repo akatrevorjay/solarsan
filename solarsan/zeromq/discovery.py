@@ -1,11 +1,11 @@
 
 from solarsan import logging, conf
 logger = logging.getLogger(__name__)
-from solarsan.pretty import pp
 from lru import LRUCacheDict
 import time
 import socket
 import ethtool
+import threading
 
 import zmq
 
@@ -65,18 +65,19 @@ class UDP(object):
 
 
 class Beacon(UDP):
-    address = None  # Our own address
+    address = None          # Our own address
     _local_ip_cache = None  # Cache of what our local IP is to target
+    _thread = None          # Placeholder for thread is .start() is called
 
     def __init__(self, interface, port, broadcast=None):
         self.address = ethtool.get_ipaddr(interface)
-        self._local_ip_cache = LRUCacheDict(max_size=1024, expiration=3600)
+        self._local_ip_cache = LRUCacheDict(max_size=32, expiration=3600)
 
         # if not broadcast:
         #    broadcast = ethtool.get_broadcast(interface)
 
-        logging.info("Using iface '%s' address '%s:%d' broadcast '%s'",
-                     interface, self.address, port, broadcast)
+        logger.info("Using iface '%s' address '%s:%d' broadcast '%s'",
+                    interface, self.address, port, broadcast)
         super(Beacon, self).__init__(port, broadcast=broadcast)
 
     def recv(self, n):
@@ -84,7 +85,7 @@ class Beacon(UDP):
         self.found_peer(addrinfo[0], buf)
 
     def send_ping(self):
-        logging.debug("Pinging peers...")
+        logger.debug("Pinging peers...")
         self.send('!')
 
     def found_peer(self, ip, buf):
@@ -95,40 +96,58 @@ class Beacon(UDP):
         from_self = local_ip == ip
         if from_self:
             return
-        logging.debug(
-            "Got peer broadcast ip='%s', from_self='%s', buf='%s'", ip, from_self, buf)
+
+        logger.debug("Got peer broadcast ip='%s', from_self='%s', buf='%s'",
+                     ip, from_self, buf)
 
         #tasks.probe_node.delay(ip)
-        logging.error('Not proving peer cause lazy')
+        logger.error('Not proving peer cause lazy')
+
+    def run(self):
+        poller = zmq.Poller()
+        poller.register(self.handle, zmq.POLLIN)
+
+        # Send first ping right away
+        ping_at = time.time()
+
+        while True:
+            timeout = ping_at - time.time()
+            if timeout < 0:
+                timeout = 0
+            try:
+                events = dict(poller.poll(1000 * timeout))
+            except (KeyboardInterrupt, SystemExit):
+                print("interrupted")
+                break
+
+            # Someone answered our ping
+            if self.handle.fileno() in events:
+                self.recv(MSG_SIZE)
+
+            if time.time() >= ping_at:
+                # Broadcast our self
+                self.send_ping()
+                ping_at = time.time() + INTERVAL
+
+    def start(self):
+        t = self._thread = threading.Thread(target=self.run)
+        t.setName('discovery')
+        t.start()
+
+    def join(self, timeout=None):
+        if self._thread:
+            return self._thread.join(timeout=timeout)
 
 
 def main():
     beacon = Beacon(conf.config['cluster_iface'], conf.ports['discovery'])
 
-    poller = zmq.Poller()
-    poller.register(beacon.handle, zmq.POLLIN)
-
-    # Send first ping right away
-    ping_at = time.time()
-
-    while True:
-        timeout = ping_at - time.time()
-        if timeout < 0:
-            timeout = 0
-        try:
-            events = dict(poller.poll(1000 * timeout))
-        except KeyboardInterrupt:
-            print("interrupted")
-            break
-
-        # Someone answered our ping
-        if beacon.handle.fileno() in events:
-            beacon.recv(MSG_SIZE)
-
-        if time.time() >= ping_at:
-            # Broadcast our beacon
-            beacon.send_ping()
-            ping_at = time.time() + INTERVAL
+    try:
+        beacon.run()
+        #beacon.start()
+        #beacon.join()
+    except (KeyboardInterrupt, SystemExit):
+        print("interrupted")
 
 
 if __name__ == '__main__':
