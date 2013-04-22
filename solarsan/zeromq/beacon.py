@@ -227,7 +227,7 @@ if __name__ == '__main__':
     import sys
 
     def on_msg_cb(pyre, peer, msg):
-        log.info('msg=%s peer=%s', msg, peer)
+        log.info('got msg=%s peer=%s', msg, peer)
         #log.info('pyre=%s', pyre)
         #gevent.sleep(1)
 
@@ -238,6 +238,8 @@ if __name__ == '__main__':
             logger.debug('got final WAT mofo')
 
     def on_peer_connected_cb(pyre, peer):
+        log.info('connected peer=%s', peer)
+
         # Send test message soon as we're connected
         logger.debug('sending SUP')
         peer.socket.send('SUP')
