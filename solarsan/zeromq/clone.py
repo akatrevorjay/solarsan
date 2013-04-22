@@ -84,41 +84,53 @@ class Clone(object):
 
     def set(self, key, value, ttl=_default_ttl, **kwargs):
         """Set new value in distributed hash table
-        Sends [SET][key][value][ttl] to the agent
+        Sends [SET][key][value][ttl][serializer] to the agent
         """
-        _pickle = kwargs.pop('pickle', None)
-        _json = kwargs.pop('json', None)
+        serializer = kwargs.pop('serializer', '')
+
+        allowed_serializers = {}
+        if kwargs.pop('pickle', None) is True:
+            allowed_serializers['pickle'] = pickle.dumps
+            if not serializer:
+                serializer = 'pickle'
+        if kwargs.pop('json', None) is True:
+            allowed_serializers['json'] = json.dumps
+            if not serializer:
+                serializer = 'json'
+
         cmd = kwargs.pop('_cmd', 'SET')
 
-        if _pickle:
-            value = pickle.dumps(value)
-        elif _json:
-            value = json.dumps(value)
+        if serializer:
+            if serializer in allowed_serializers:
+                value = allowed_serializers[serializer](value)
+            else:
+                raise Exception("Cannot find serializer '%s'" % serializer)
 
-        self.pipe.send_multipart([cmd, key, value, str(ttl)])
+        self.pipe.send_multipart([cmd, key, value, str(ttl), serializer])
 
     def get(self, key, default=None, **kwargs):
         """Lookup value in distributed hash table
         Sends [GET][key] to the agent and waits for a value response
         If there is no clone available, will eventually return None.
         """
-        _pickle = kwargs.pop('pickle', None)
-        _json = kwargs.pop('json', None)
+        allowed_serializers = {}
+        if kwargs.pop('pickle', None) is True:
+            allowed_serializers['pickle'] = pickle.loads
+        if kwargs.pop('json', None) is True:
+            allowed_serializers['json'] = json.loads
         cmd = kwargs.pop('_cmd', 'GET')
 
         self.pipe.send_multipart([cmd, key])
         try:
             reply = self.pipe.recv_multipart()
         except KeyboardInterrupt:
-            #value = None
             return default
         else:
             value = reply[0]
+            serializer = reply[1]
 
-        if _pickle:
-            value = pickle.loads(value)
-        elif _json:
-            value = json.loads(value)
+        if serializer in allowed_serializers:
+            value = allowed_serializers[serializer](value)
 
         return value or default
 
@@ -165,7 +177,7 @@ class CloneServer(object):
         self.snapshot.connect("%s:%i" % (address, port))
         self.subscriber = ctx.socket(zmq.SUB)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, subtree)
-        self.subscriber.connect("%s:%i" % (address, port+1))
+        self.subscriber.connect("%s:%i" % (address, port + 1))
         self.subscriber.linger = 0
 
 
@@ -212,8 +224,9 @@ class CloneAgent(object):
                 self.publisher.connect("%s:%i" % (address, port + 2))
             else:
                 logger.error("E: too many servers (max. %i)", SERVER_MAX)
+
         elif command == "SET":
-            key, value, sttl = msg
+            key, value, sttl, serializer = msg
             ttl = int(sttl)
 
             # Send key-value pair on to server
@@ -221,11 +234,22 @@ class CloneAgent(object):
             kvmsg.store(self.kvmap)
             if ttl:
                 kvmsg["ttl"] = ttl
+            if serializer:
+                kvmsg["serializer"] = serializer
             kvmsg.send(self.publisher)
+
         elif command == "GET":
             key = msg[0]
             value = self.kvmap.get(key)
-            self.pipe.send(value.body if value else '')
+
+            if value:
+                body = value.body
+                serializer = value.properties.get('serializer', '')
+            else:
+                body, serializer = ('', '')
+
+            self.pipe.send_multipart([body, serializer])
+
         elif command == "SHOW":
             key = msg[0].upper()
             if key == 'SERVERS':
@@ -238,11 +262,8 @@ class CloneAgent(object):
             elif key == 'STATUS':
                 self.pipe.send(str(self.cur_status))
             elif key == 'KVMAP':
-                #kvmap_s = json.dumps(self.kvmap)
                 kvmap_s = pickle.dumps(self.kvmap)
-
-                self.pipe.send(kvmap_s)
-                #self.pipe.send('pickle!' + kvmap_s)
+                self.pipe.send_multipart([kvmap_s, 'pickle'])
 
 # ---------------------------------------------------------------------
 # Asynchronous agent manages server pool and handles request/reply
