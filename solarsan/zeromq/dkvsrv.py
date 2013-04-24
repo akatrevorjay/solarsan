@@ -8,7 +8,7 @@ import solarsan.cluster.models as cmodels
 import time
 import threading
 import errno
-#from functools import partial
+from functools import partial
 
 import zmq
 #from zmq import ZMQError
@@ -383,6 +383,11 @@ class Peer:
         greet = ZippedPickle.dump(greet)
         self.socket.send_multipart(['GREET', greet])
 
+        delay = getattr(self, 'send_greet_delay', None)
+        if delay:
+            delay.stop()
+            delattr(self, 'send_greet_delay')
+
     def on_greet(self, z):
         greet = ZippedPickle.load(z)
         log.debug('Peer %s: Got Greet', self.uuid)
@@ -398,7 +403,12 @@ class GreeterBeacon(Beacon):
         super(GreeterBeacon, self).__init__(*args, **kwargs)
 
         self.clonesrv = CloneServer()
+
+    def start(self, loop=True):
+        super(GreeterBeacon, self).start(loop=False)
         self.clonesrv.start(loop=False)
+        if loop:
+            return self.loop.start()
 
     def on_recv_msg(self, peer, *msg):
         cmd = msg[0]
@@ -407,6 +417,7 @@ class GreeterBeacon(Beacon):
 
         if cmd == 'GREET':
             peer.on_greet(msg[1])
+            self.loop.add_callback(partial(self._callback, 'peer_on_greet', peer))
         else:
             log.error('Peer %s: Wtfux %s?', peer.uuid, cmd)
             peer.socket.close()
@@ -414,8 +425,8 @@ class GreeterBeacon(Beacon):
     def on_peer_connected(self, peer):
         log.info('Peer %s: Connected.', peer.uuid)
 
-        peer.greet_callback = DelayedCallback(peer.send_greet, self.beacon_interval * 1000, self.loop)
-        peer.greet_callback.start()
+        peer.send_greet_delay = DelayedCallback(peer.send_greet, self.beacon_interval * 1000, self.loop)
+        peer.send_greet_delay.start()
 
     def on_peer_deadbeat(self, peer):
         log.info('Peer %s: Lost.', peer.uuid)
@@ -651,8 +662,13 @@ class CloneServer(object):
         self.service_addr = '*'
         self.port = 5556
 
+        if conf.hostname == 'san0':
+            remote_host = 'san1'
+        elif conf.hostname == 'san1':
+            remote_host = 'san0'
+
         frontend = "tcp://*:5003"
-        backend = "tcp://%s:5004" % 'localhost'
+        backend = "tcp://%s:5004" % remote_host
 
         self.kvmap = {}
 
@@ -704,6 +720,8 @@ class CloneServer(object):
         return 'tcp://%s:%d' % (self.service_addr, self.publisher_port)
 
     def start(self, loop=True):
+        log.debug('CloneServer %s start', self)
+
         # start periodic callbacks
         self.flush_callback.start()
         self.hugz_callback.start()
