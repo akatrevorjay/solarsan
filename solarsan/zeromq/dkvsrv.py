@@ -122,13 +122,14 @@ class Beacon(object):
         self.send_beacon = PeriodicCallback(
             self._send_beacon, self.beacon_interval * 1000, self.loop)
 
-    def run(self):
+    def run(self, loop=True):
         self.init()
         self.send_beacon.start()
-        try:
-            self.loop.start()
-        except KeyboardInterrupt:
-            pass
+        if loop:
+            try:
+                return self.loop.start()
+            except KeyboardInterrupt:
+                pass
 
     def _recv_beacon(self, fd, events):
         """Greenlet that received udp beacons
@@ -352,8 +353,12 @@ class Peer:
 
         self.state = self.STATES.INITIAL
 
+        self.init()
+
+    def init(self):
         if not self.ctx:
             self.ctx = zmq.Context.instance()
+        self.loop = IOLoop.instance()
 
         # Set up our own clone client interface to peer
         self.subscriber = self.ctx.socket(zmq.SUB)
@@ -361,7 +366,8 @@ class Peer:
         self.subscriber.connect(self.subscriber_endpoint)
 
         # Wrap sockets in ZMQStreams for IOLoop handlers
-        self.subscriber = ZMQStream(self.subscriber)
+        self.subscriber = ZMQStream(self.subscriber, self.loop)
+        self.subscriber.on_recv(self.subscriber_recv)
 
     port = 5556
 
@@ -376,6 +382,13 @@ class Peer:
     @property
     def subscriber_endpoint(self):
         return 'tcp://%s:%d' % (self.host, self.publisher_port)
+
+    def subscriber_recv(self, msg):
+        log.debug('msg=%s', msg)
+
+    """
+    Greet
+    """
 
     def send_greet(self):
         log.debug('Peer %s: Sending Greet', self.uuid)
@@ -397,7 +410,8 @@ class GreeterBeacon(Beacon):
     def __init__(self, *args, **kwargs):
         super(GreeterBeacon, self).__init__(*args, **kwargs)
 
-        #self.clonesrv = CloneServer()
+        self.clonesrv = CloneServer()
+        self.clonesrv.run(loop=False)
 
     def on_recv_msg(self, peer, *msg):
         cmd = msg[0]
@@ -486,11 +500,15 @@ class BinaryStar(object):
         """Update peer expiry time to be 2 heartbeats from now."""
         self.peer_expiry = time.time() + 2e-3 * self.HEARTBEAT
 
-    def run(self):
+    def run(self, loop=True):
         """Start Binary Star loop"""
         self.update_peer_expiry()
         self.heartbeat.start()
-        return self.loop.start()
+        if loop:
+            try:
+                return self.loop.start()
+            except KeyboardInterrupt:
+                pass
 
     def execute_fsm(self):
         """Binary Star finite state machine (applies event to state)
@@ -620,7 +638,7 @@ class BinaryStar(object):
 
     def start(self):
         t = self._thread = threading.Thread(target=self.run)
-        t.setName('discovery')
+        t.setName('bstar')
         t.start()
 
     def join(self, timeout=None):
@@ -710,13 +728,13 @@ class CloneServer(object):
     def publisher_endpoint(self):
         return 'tcp://%s:%d' % (self.service_addr, self.publisher_port)
 
-    def start(self):
+    def run(self, loop=True):
         # start periodic callbacks
         self.flush_callback.start()
         self.hugz_callback.start()
         # Run bstar reactor until process interrupted
         try:
-            self.bstar.run()
+            self.bstar.run(loop=loop)
         except KeyboardInterrupt:
             pass
 
