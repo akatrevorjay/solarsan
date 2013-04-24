@@ -14,6 +14,10 @@ from zhelpers import dump
 
 class Route:
     """Simple struct for routing information for a key-value snapshot"""
+    socket = None
+    identity = None
+    subtree = None
+
     def __init__(self, socket, identity, subtree):
         self.socket = socket        # ROUTER socket to send to
         self.identity = identity    # Identity of peer who requested state

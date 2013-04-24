@@ -46,6 +46,66 @@ NULL_IP = '\x00' * 4
 
 #Peer = namedtuple('Peer', ['socket', 'addr', 'time'])
 
+import solarsan.cluster.models as cmodels
+
+
+class Greet:
+    hostname = None
+    uuid = None
+    cluster_iface = None
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def gen_from_peer(cls, peer):
+        self = Greet()
+        self.hostname = peer.hostname
+        self.uuid = peer.uuid
+        self.cluster_iface = peer.cluster_iface
+        return self
+
+    @classmethod
+    def gen_from_local(cls):
+        peer = cmodels.Peer.get_local()
+        return cls.gen_from_peer(peer)
+
+
+class Peer:
+    id = None
+    uuid = None
+    socket = None
+    addr = None
+    time = None
+
+    def __init__(self, id, uuid, socket, addr, time):
+        self.id = id
+        self.uuid = uuid
+        self.socket = socket
+        self.addr = addr
+        self.time = time
+
+        #self.state = self.states.initial
+
+    #class states:
+    #    initial = 'initial'
+    #    greet = 'greet'
+
+    greet = None
+
+    def send_greet(self):
+        logger.debug('Peer %s: Sending Greet', self.uuid)
+        greet = Greet.gen_from_local()
+        greet = ZippedPickle.dump(greet)
+        self.socket.send_multipart(['GREET', greet])
+
+        #if self.state == self.states.initial:
+        #    self.state = self.states.greet
+
+    def on_greet(self, z):
+        self.greet = ZippedPickle.load(z)
+        logger.debug('Peer %s: Got Greet %s', self.uuid, self.greet.__dict__)
+
 
 class Beacon(object):
     """ZRE beacon emmiter.  http://rfc.zeromq.org/spec:20
@@ -58,6 +118,8 @@ class Beacon(object):
     _debug = False
 
     service_port = None
+
+    _peer_cls = Peer
 
     def __init__(self,
                  broadcast_addr='',
@@ -243,7 +305,7 @@ class Beacon(object):
         uid = uuid.UUID(bytes=peer_id)
         log.info('Conecting to: %s at %s' % (uid, peer_addr))
         peer.connect(peer_addr)
-        self.peers[peer_id] = Peer(peer_id, uid, peer, peer_addr, time.time())
+        self.peers[peer_id] = self._peer_cls(peer_id, uid, peer, peer_addr, time.time())
 
         peer = self.peers.get(peer_id)
         if peer:
@@ -288,67 +350,6 @@ class Beacon(object):
             gevent.spawn(meth, self, *args, **kwargs)
 
 
-import solarsan.cluster.models as cmodels
-
-
-class Greet:
-    hostname = None
-    uuid = None
-    cluster_iface = None
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def gen_from_peer(cls, peer):
-        self = Greet()
-        self.hostname = peer.hostname
-        self.uuid = peer.uuid
-        self.cluster_iface = peer.cluster_iface
-        return self
-
-    @classmethod
-    def gen_from_local(cls):
-        peer = cmodels.Peer.get_local()
-        return cls.gen_from_peer(peer)
-
-
-class Peer:
-    id = None
-    uuid = None
-    socket = None
-    addr = None
-    time = None
-
-    def __init__(self, id, uuid, socket, addr, time):
-        self.id = id
-        self.uuid = uuid
-        self.socket = socket
-        self.addr = addr
-        self.time = time
-
-        #self.state = self.states.initial
-
-    #class states:
-    #    initial = 'initial'
-    #    greet = 'greet'
-
-    greet = None
-
-    def send_greet(self):
-        logger.debug('Peer %s: Sending Greet', self.uuid)
-        greet = Greet.gen_from_local()
-        greet = ZippedPickle.dump(greet)
-        self.socket.send_multipart(['GREET', greet])
-
-        #if self.state == self.states.initial:
-        #    self.state = self.states.greet
-
-    def on_greet(self, z):
-        self.greet = ZippedPickle.load(z)
-        logger.debug('Peer %s: Got Greet %s', self.uuid, self.greet.__dict__)
-
-
 class GreeterBeacon(Beacon):
     def on_recv_msg(self, peer, *msg):
         cmd = msg[0]
@@ -374,7 +375,7 @@ class GreeterBeacon(Beacon):
         log.info('Peer %s: Lost.', peer.uuid)
 
 
-if __name__ == '__main__':
+def main():
     local = cmodels.Peer.get_local()
     ipaddr = str(local.cluster_nic.ipaddr)
 
@@ -395,3 +396,7 @@ if __name__ == '__main__':
     log.info('Started.')
 
     g.join()
+
+
+if __name__ == '__main__':
+    main()
