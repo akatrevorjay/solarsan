@@ -6,6 +6,8 @@ if __name__ == '__main__':
 from solarsan import logging, conf
 logger = logging.getLogger(__name__)
 
+from solarsan.utils.stack import get_last_func_name
+
 import socket
 import struct
 #import errno
@@ -44,9 +46,6 @@ class Beaconer(object):
     _debug = False
 
     def __init__(self,
-                 msg_cb,
-                 peer_connected_cb,
-                 peer_deadbeat_cb,
                  broadcast_addr='',
                  broadcast_port=35713,
                  service_addr='*',
@@ -54,10 +53,10 @@ class Beaconer(object):
                  service_socket_type=zmq.ROUTER,
                  beacon_interval=1,
                  dead_interval=30):
+                 on_msg=None,
+                 on_peer_connected=None,
+                 on_peer_deadbeat=None):
 
-        self.msg_cb = msg_cb
-        self.peer_connected_cb = peer_connected_cb
-        self.peer_deadbeat_cb = peer_deadbeat_cb
         self.broadcast_addr = broadcast_addr
         self.broadcast_port = broadcast_port
         self.service_addr = service_addr
@@ -65,6 +64,13 @@ class Beaconer(object):
         self.service_socket_type = service_socket_type
         self.beacon_interval = beacon_interval
         self.dead_interval = dead_interval
+
+        if on_msg:
+            self.on_msg_cb = on_msg
+        if on_peer_connected:
+            self.on_peer_connected_cb = on_peer_connected
+        if on_peer_deadbeat:
+            self.on_peer_deadbeat_cb = on_peer_deadbeat
 
         self.peers = {}
         if service_addr != '*':
@@ -169,8 +175,7 @@ class Beaconer(object):
                     log.debug('Deadbeat: %s' % uuid.UUID(bytes=peer_id))
                     peer.socket.close()
 
-                    if self.peer_deadbeat_cb:
-                        gevent.spawn(self.peer_deadbeat_cb, self, self.peers[peer_id])
+                    self._on_peer_deadbeat(self.peers[peer_id])
 
                     del self.peers[peer_id]
 
@@ -214,9 +219,7 @@ class Beaconer(object):
         peer.connect(peer_addr)
         self.peers[peer_id] = Peer(peer, peer_addr, time.time())
 
-        if self.peer_connected_cb:
-            #self.peers[peer_id] = peer = peer._replace(time=time.time())
-            gevent.spawn(self.peer_connected_cb, self, self.peers[peer_id])
+        self._on_peer_connected(self.peers[peer_id])
 
     def handle_msg(self, peer_id, msg):
         """Override this method to customize message handling.
@@ -226,7 +229,62 @@ class Beaconer(object):
         peer = self.peers.get(peer_id)
         if peer:
             self.peers[peer_id] = peer = peer._replace(time=time.time())
-            gevent.spawn(self.msg_cb, self, peer, msg)
+            self._on_msg(peer, msg)
+
+    """
+    Callbacks
+    """
+
+    on_msg = None
+    on_peer_connected = None
+    on_peer_deadneat = None
+
+    def _on_msg(self, peer, msg):
+        return self._callback(None, peer, msg)
+
+    def _on_peer_connected(self, peer):
+        return self._callback(None, peer)
+
+    def _on_peer_deadbeat(self, peer):
+        return self._callback(None, peer)
+
+    def _callback(self, name, *args, **kwargs):
+        if not name:
+            name = get_last_func_name()
+            if name.startswith('_'):
+                name = name[1:]
+
+        meth = getattr(self, name, None)
+        if meth:
+            #gevent.spawn(meth, *args, **kwargs)
+            meth(*args, **kwargs)
+
+        meth = getattr(self, '%s_cb' % name, None)
+        if meth:
+            gevent.spawn(meth, self, *args, **kwargs)
+
+
+class Beaconer2(Beaconer):
+    def on_msg(self, peer, msg):
+        log.info('got msg=%s peer=%s', msg, peer)
+        #log.info('self=%s', self)
+        #gevent.sleep(1)
+
+        if msg == 'SUP':
+            logger.debug('sending WAT')
+            peer.socket.send('WAT')
+        elif msg == 'WAT':
+            logger.debug('got final WAT mofo')
+
+    def on_peer_connected(self, peer):
+        log.info('connected peer=%s', peer)
+
+        # Send test message soon as we're connected
+        logger.debug('sending SUP')
+        peer.socket.send('SUP')
+
+    def on_peer_deadbeat(self, peer):
+        log.info('deadbeat peer=%s', peer)
 
 
 if __name__ == '__main__':
@@ -261,16 +319,18 @@ if __name__ == '__main__':
              ipaddr, conf.ports.discovery)
     log.info('Starting')
 
-    p = Beaconer(on_msg_cb,
-                 on_peer_connected_cb,
-                 on_peer_deadbeat_cb,
-                 #beacon_interval=10,
-                 beacon_interval=1,
-                 dead_interval=10,
-                 service_addr=ipaddr,
-                 #broadcast_addr=bcast,
-                 broadcast_port=conf.ports.discovery,
-                 )
+    p = Beaconer2(
+        #beacon_interval=10,
+        beacon_interval=1,
+        dead_interval=10,
+        service_addr=ipaddr,
+        #broadcast_addr=bcast,
+        broadcast_port=conf.ports.discovery,
+        #on_msg=on_msg_cb,
+        #on_peer_connected=on_peer_connected_cb,
+        #on_peer_deadbeat=on_peer_deadbeat_cb,
+    )
+
     g = gevent.spawn(p.start)
     s = gevent.sleep
 
