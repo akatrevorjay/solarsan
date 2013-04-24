@@ -4,7 +4,8 @@ Binary Star server
 Author: Min RK <benjaminrk@gmail.com>
 """
 
-import logging
+from solarsan import logging, conf
+logger = logging.getLogger(__name__)
 import time
 
 import zmq
@@ -70,8 +71,6 @@ class BinaryStar(object):
             self.send_state, HEARTBEAT, self.loop)
         self.statesub.on_recv(self.recv_state)
 
-        # setup log formmater
-
     def update_peer_expiry(self):
         """Update peer expiry time to be 2 heartbeats from now."""
         self.peer_expiry = time.time() + 2e-3 * HEARTBEAT
@@ -91,18 +90,18 @@ class BinaryStar(object):
             # Primary server is waiting for peer to connect
             # Accepts CLIENT_REQUEST events in this state
             if (self.event == PEER_BACKUP):
-                print ("I: connected to backup (slave), ready as master")
+                logging.info("connected to backup (slave), ready as master")
                 self.state = STATE_ACTIVE
                 if (self.master_callback):
                     self.loop.add_callback(self.master_callback)
             elif (self.event == PEER_ACTIVE):
-                print ("I: connected to backup (master), ready as slave")
+                logging.info("connected to backup (master), ready as slave")
                 self.state = STATE_PASSIVE
                 if (self.slave_callback):
                     self.loop.add_callback(self.slave_callback)
             elif (self.event == CLIENT_REQUEST):
                 if (time.time() >= self.peer_expiry):
-                    print ("I: request from client, ready as master")
+                    logging.info("request from client, ready as master")
                     self.state = STATE_ACTIVE
                     if (self.master_callback):
                         self.loop.add_callback(self.master_callback)
@@ -115,7 +114,7 @@ class BinaryStar(object):
             # Backup server is waiting for peer to connect
             # Rejects CLIENT_REQUEST events in this state
             if (self.event == PEER_ACTIVE):
-                print ("I: connected to primary (master), ready as slave")
+                logging.info("connected to primary (master), ready as slave")
                 self.state = STATE_PASSIVE
                 if (self.slave_callback):
                     self.loop.add_callback(self.slave_callback)
@@ -127,22 +126,22 @@ class BinaryStar(object):
             # The only way out of ACTIVE is death
             if (self.event == PEER_ACTIVE):
                 # Two masters would mean split-brain
-                print ("E: fatal error - dual masters, aborting")
+                logging.error("fatal error - dual masters, aborting")
                 raise FSMError("Dual Masters")
         elif (self.state == STATE_PASSIVE):
             # Server is passive
             # CLIENT_REQUEST events can trigger failover if peer looks dead
             if (self.event == PEER_PRIMARY):
                 # Peer is restarting - become active, peer will go passive
-                print ("I: primary (slave) is restarting, ready as master")
+                logging.info("primary (slave) is restarting, ready as master")
                 self.state = STATE_ACTIVE
             elif (self.event == PEER_BACKUP):
                 # Peer is restarting - become active, peer will go passive
-                print ("I: backup (slave) is restarting, ready as master")
+                logging.info("backup (slave) is restarting, ready as master")
                 self.state = STATE_ACTIVE
             elif (self.event == PEER_PASSIVE):
                 # Two passives would mean cluster would be non-responsive
-                print ("E: fatal error - dual slaves, aborting")
+                logging.error("fatal error - dual slaves, aborting")
                 raise FSMError("Dual slaves")
             elif (self.event == CLIENT_REQUEST):
                 # Peer becomes master if timeout has passed
@@ -150,7 +149,7 @@ class BinaryStar(object):
                 assert (self.peer_expiry > 0)
                 if (time.time() >= self.peer_expiry):
                     # If peer is dead, switch to the active state
-                    print ("I: failover successful, ready as master")
+                    logging.info("failover successful, ready as master")
                     self.state = STATE_ACTIVE
                 else:
                     # If peer is alive, reject connections
@@ -179,7 +178,7 @@ class BinaryStar(object):
         # If server can accept input now, call appl handler
         self.event = CLIENT_REQUEST
         if self.execute_fsm():
-            print "CLIENT REQUEST"
+            logger.debug("CLIENT REQUEST")
             self.voter_callback(self.voter_socket, msg)
         else:
             # Message will be ignored
