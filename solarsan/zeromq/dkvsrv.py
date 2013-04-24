@@ -84,6 +84,9 @@ class Beacon(object):
 
         self.me = uuid.uuid4().bytes
 
+        self._peer_init_kwargs = {}
+        self._peer_init_kwargs['beacon'] = self
+
     def init(self):
         if not self.ctx:
             self.ctx = zmq.Context.instance()
@@ -256,7 +259,7 @@ class Beacon(object):
         sock.on_recv(self._recv_peer)
         sock.set_close_callback(self._peer_socket_closed)
 
-        peer = self.peers[peer_id] = self._peer_cls(peer_id, uid, sock, peer_addr, time.time())
+        peer = self.peers[peer_id] = self._peer_cls(peer_id, uid, sock, peer_addr, time.time(), **self._peer_init_kwargs)
         self._on_peer_connected(peer)
 
     def _peer_socket_closed(self, *args):
@@ -326,7 +329,7 @@ class Peer:
 
     ctx = None
 
-    def __init__(self, id, uuid, socket, addr, time_=None):
+    def __init__(self, id, uuid, socket, addr, time_=None, beacon=None, clonesrv=None):
         self.id = id
         self.uuid = uuid
         self.socket = socket
@@ -337,6 +340,9 @@ class Peer:
         host, port = host.rsplit(':', 1)
         self.host = host
         #self.host = self.addr.rsplit(':', 1)[0].split('://', 1)[1]
+
+        self.beacon = beacon
+        self.clonesrv = clonesrv
 
         self.state = self.STATES.INITIAL
 
@@ -371,7 +377,10 @@ class Peer:
         return 'tcp://%s:%d' % (self.host, self.subscriber_port)
 
     def subscriber_recv(self, msg):
-        log.debug('msg=%s', msg)
+        if msg[0] == 'HUGZ':
+            return
+        log.debug('Peer %s: Subscriber msg=%s', self.uuid, msg)
+        self.clonesrv.handle_subscriber(msg)
 
     """
     Greet
@@ -403,6 +412,8 @@ class GreeterBeacon(Beacon):
         super(GreeterBeacon, self).__init__(*args, **kwargs)
 
         self.clonesrv = CloneServer()
+
+        self._peer_init_kwargs['clonesrv'] = self.clonesrv
 
     def start(self, loop=True):
         super(GreeterBeacon, self).start(loop=False)
@@ -647,11 +658,14 @@ class CloneServer(object):
     sequence = 0                # How many updates so far
     #port = None                 # Main port we're working on
     #peer = None                 # Main port of our peer
+
+    #bstar = None                # Binary Star
+    router = None
+
     publisher = None            # Publish updates and hugz
     collector = None            # Collect updates from clients
     pending = None              # Pending updates from client
 
-    bstar = None                # Binary Star
     primary = False             # True if we're primary
     master = False              # True if we're master
     slave = False               # True if we're slave
@@ -662,24 +676,24 @@ class CloneServer(object):
         self.service_addr = '*'
         self.port = 5556
 
-        if conf.hostname == 'san0':
-            remote_host = 'san1'
-        elif conf.hostname == 'san1':
-            remote_host = 'san0'
-
-        frontend = "tcp://*:5003"
-        backend = "tcp://%s:5004" % remote_host
-
-        self.kvmap = {}
+        self.primary = primary
+        if primary:
+            self.kvmap = {}
 
         if not self.ctx:
             self.ctx = zmq.Context.instance()
+        self.loop = IOLoop.instance()
 
         self.pending = []
-        self.bstar = BinaryStar(primary, frontend, backend)
 
-        self.bstar.register_voter("tcp://*:%i" %
-                                  self.port, zmq.ROUTER, self.handle_snapshot)
+        #self.bstar = BinaryStar(primary, frontend, backend)
+        #self.bstar.register_voter("tcp://*:%i" %
+        #                          self.port, zmq.ROUTER, self.handle_snapshot)
+
+        self.router = self.ctx.socket(zmq.ROUTER)
+        self.router.bind('tcp://*:%d' % self.port)
+        self.router = ZMQStream(self.router, self.loop)
+        self.router.on_recv(self.handle_snapshot)
 
         # Set up our clone server sockets
         self.publisher = self.ctx.socket(zmq.PUB)
@@ -690,18 +704,18 @@ class CloneServer(object):
         self.collector.bind(self.collector_endpoint)
 
         # Register state change handlers
-        self.bstar.master_callback = self.become_master
-        self.bstar.slave_callback = self.become_slave
+        #self.bstar.master_callback = self.become_master
+        #self.bstar.slave_callback = self.become_slave
 
         # Wrap sockets in ZMQStreams for IOLoop handlers
-        self.publisher = ZMQStream(self.publisher)
-        self.collector = ZMQStream(self.collector)
+        self.publisher = ZMQStream(self.publisher, self.loop)
+        self.collector = ZMQStream(self.collector, self.loop)
 
         # Register our handlers with reactor
         self.collector.on_recv(self.handle_collect)
 
-        self.flush_callback = PeriodicCallback(self.flush_ttl, 1000)
-        self.hugz_callback = PeriodicCallback(self.send_hugz, 1000)
+        self.flush_callback = PeriodicCallback(self.flush_ttl, 1000, self.loop)
+        self.hugz_callback = PeriodicCallback(self.send_hugz, 1000, self.loop)
 
     @property
     def collector_port(self):
@@ -725,15 +739,19 @@ class CloneServer(object):
         # start periodic callbacks
         self.flush_callback.start()
         self.hugz_callback.start()
+
         # Start bstar reactor until process interrupted
-        self.bstar.start(loop=loop)
+        #self.bstar.start(loop=loop)
+        if loop:
+            self.loop.start()
 
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
         if msg[1] != "ICANHAZ?" or len(msg) != 3:
             log.error("bad request, aborting")
             dump(msg)
-            self.bstar.loop.stop()
+            #self.bstar.loop.stop()
+            self.loop.stop()
             return
         identity, request = msg[:2]
         if len(msg) >= 3:
@@ -870,7 +888,8 @@ class CloneServer(object):
                     kvmsg = KVMsg.recv(snapshot)
                 except KeyboardInterrupt:
                     # Interrupted
-                    self.bstar.loop.stop()
+                    #self.bstar.loop.stop()
+                    self.loop.stop()
                     return
                 if kvmsg.key == "KTHXBAI":
                     self.sequence = kvmsg.sequence
