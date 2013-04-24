@@ -122,14 +122,11 @@ class Beacon(object):
         self.send_beacon = PeriodicCallback(
             self._send_beacon, self.beacon_interval * 1000, self.loop)
 
-    def run(self, loop=True):
+    def start(self, loop=True):
         self.init()
         self.send_beacon.start()
         if loop:
-            try:
-                return self.loop.start()
-            except KeyboardInterrupt:
-                pass
+            return self.loop.start()
 
     def _recv_beacon(self, fd, events):
         """Greenlet that received udp beacons
@@ -307,16 +304,6 @@ class Beacon(object):
             meth(self, *args, **kwargs)
             #self.loop.add_callback(partial(meth, *args, **kwargs))
 
-    def start(self):
-        t = self._thread = threading.Thread(target=self.run)
-        t.setName('beacon')
-        t.start()
-        return t
-
-    def join(self, timeout=None):
-        if self._thread:
-            return self._thread.join(timeout=timeout)
-
 
 class Greet:
     @classmethod
@@ -376,12 +363,12 @@ class Peer:
     #    return self.port + 1
 
     @property
-    def publisher_port(self):
+    def subscriber_port(self):
         return self.port + 2
 
     @property
     def subscriber_endpoint(self):
-        return 'tcp://%s:%d' % (self.host, self.publisher_port)
+        return 'tcp://%s:%d' % (self.host, self.subscriber_port)
 
     def subscriber_recv(self, msg):
         log.debug('msg=%s', msg)
@@ -411,7 +398,7 @@ class GreeterBeacon(Beacon):
         super(GreeterBeacon, self).__init__(*args, **kwargs)
 
         self.clonesrv = CloneServer()
-        self.clonesrv.run(loop=False)
+        self.clonesrv.start(loop=False)
 
     def on_recv_msg(self, peer, *msg):
         cmd = msg[0]
@@ -500,15 +487,12 @@ class BinaryStar(object):
         """Update peer expiry time to be 2 heartbeats from now."""
         self.peer_expiry = time.time() + 2e-3 * self.HEARTBEAT
 
-    def run(self, loop=True):
+    def start(self, loop=True):
         """Start Binary Star loop"""
         self.update_peer_expiry()
         self.heartbeat.start()
         if loop:
-            try:
-                return self.loop.start()
-            except KeyboardInterrupt:
-                pass
+            return self.loop.start()
 
     def execute_fsm(self):
         """Binary Star finite state machine (applies event to state)
@@ -636,15 +620,6 @@ class BinaryStar(object):
         stream = ZMQStream(socket, self.loop)
         stream.on_recv(self.voter_ready)
 
-    def start(self):
-        t = self._thread = threading.Thread(target=self.run)
-        t.setName('bstar')
-        t.start()
-
-    def join(self, timeout=None):
-        if self._thread:
-            return self._thread.join(timeout=timeout)
-
 
 #from . import clonesrv
 #from .bstar import BinaryStar
@@ -728,15 +703,12 @@ class CloneServer(object):
     def publisher_endpoint(self):
         return 'tcp://%s:%d' % (self.service_addr, self.publisher_port)
 
-    def run(self, loop=True):
+    def start(self, loop=True):
         # start periodic callbacks
         self.flush_callback.start()
         self.hugz_callback.start()
-        # Run bstar reactor until process interrupted
-        try:
-            self.bstar.run(loop=loop)
-        except KeyboardInterrupt:
-            pass
+        # Start bstar reactor until process interrupted
+        self.bstar.start(loop=loop)
 
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
@@ -928,16 +900,18 @@ def main():
         broadcast_port=conf.ports.discovery,
     )
 
-    gb.run()
+    try:
+        #gb.start()
 
-    #gb.start()
+        t = threading.Thread(target=gb.start)
+        t.daemon = True
+        t.start()
+        log.info('Started.')
 
-    log.info('Started.')
-
-    #try:
-    #    gb.join()
-    #except (KeyboardInterrupt, SystemExit):
-    #    pass
+        while True:
+            time.sleep(1)
+    except (KeyboardInterrupt, SystemExit):
+        pass
 
 
 if __name__ == '__main__':
