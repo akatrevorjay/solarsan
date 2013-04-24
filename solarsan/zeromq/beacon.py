@@ -42,8 +42,11 @@ class Beaconer(object):
     This implements only the base UDP beaconing 0mq socket
     interconnection layer, and disconnected peer detection.
     """
-    service_port = None
+    ctx = None
+
     _debug = False
+
+    service_port = None
 
     def __init__(self,
                  broadcast_addr='',
@@ -75,8 +78,10 @@ class Beaconer(object):
         """Greenlet to start the beaconer.  This sets up zmq context,
         sockets, and spawns worker greenlets.
         """
-        self.context = zmq.Context()
-        self.router = self.context.socket(self.service_socket_type)
+        if not self.ctx:
+            self.ctx = zmq.Context.instance()
+
+        self.router = self.ctx.socket(self.service_socket_type)
         endpoint = '%s://%s' % (self.service_transport, self.service_addr)
         self.service_port = self.router.bind_to_random_port(endpoint)
 
@@ -201,7 +206,7 @@ class Beaconer(object):
             log.debug('peers=%s', self.peers)
 
         # connect DEALER to peer_addr address from beacon
-        peer = self.context.socket(zmq.DEALER)
+        peer = self.ctx.socket(zmq.DEALER)
         peer.setsockopt(zmq.IDENTITY, self.me)
 
         uid = uuid.UUID(bytes=peer_id)
