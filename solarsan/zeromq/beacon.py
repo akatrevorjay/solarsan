@@ -5,6 +5,7 @@ if __name__ == '__main__':
 
 from solarsan import logging, conf
 logger = logging.getLogger(__name__)
+log = logger
 
 from solarsan.utils.stack import get_last_func_name
 
@@ -13,17 +14,24 @@ import struct
 #import errno
 import uuid
 import time
-from collections import namedtuple
+#from collections import namedtuple
 
 import gevent
 from zmq import green as zmq
 
+## Serializers
+#import zmq.utils.jsonapi as json
+#try:
+#    import cPickle as pickle
+#except ImportError:
+#    import pickle
+
+#from .util import BloscPickle
+from .util import ZippedPickle
+
+
 beaconv1 = struct.Struct('3sB16sH')
 beaconv2 = struct.Struct('3sB16sHBB4s')
-
-Peer = namedtuple('Peer', ['socket', 'addr', 'time'])
-
-log = logger
 
 T_TO_I = {
     #'udp': 1,
@@ -36,7 +44,10 @@ I_TO_T = {v: k for k, v in T_TO_I.items()}
 NULL_IP = '\x00' * 4
 
 
-class Beaconer(object):
+#Peer = namedtuple('Peer', ['socket', 'addr', 'time'])
+
+
+class Beacon(object):
     """ZRE beacon emmiter.  http://rfc.zeromq.org/spec:20
 
     This implements only the base UDP beaconing 0mq socket
@@ -55,7 +66,10 @@ class Beaconer(object):
                  service_transport='tcp',
                  service_socket_type=zmq.ROUTER,
                  beacon_interval=1,
-                 dead_interval=30):
+                 dead_interval=30,
+                 on_recv_msg=None,
+                 on_peer_connected=None,
+                 on_peer_deadbeat=None):
 
         self.broadcast_addr = broadcast_addr
         self.broadcast_port = broadcast_port
@@ -64,6 +78,10 @@ class Beaconer(object):
         self.service_socket_type = service_socket_type
         self.beacon_interval = beacon_interval
         self.dead_interval = dead_interval
+
+        self.on_recv_msg_cb = on_recv_msg
+        self.on_peer_connected_cb = on_peer_connected
+        self.on_peer_deadbeat_cb = on_peer_deadbeat
 
         self.peers = {}
         if service_addr != '*':
@@ -112,6 +130,8 @@ class Beaconer(object):
         """Greenlet that receives udp beacons.
         """
         while True:
+            #gevent.sleep(0)
+
             try:
                 data, (peer_addr, port) = self.broadcaster.recvfrom(beaconv2.size)
             except socket.error:
@@ -148,6 +168,8 @@ class Beaconer(object):
         """Greenlet that sends udp beacons at intervals.
         """
         while True:
+            #gevent.sleep(0)
+
             try:
                 beacon = beaconv2.pack(
                     'ZRE', 2, self.me,
@@ -161,16 +183,21 @@ class Beaconer(object):
                     ('<broadcast>', self.broadcast_port))
             except socket.error:
                 log.exception('Error sending beacon:')
+
             gevent.sleep(self.beacon_interval)
+
             # check for deadbeats
             now = time.time()
             for peer_id in self.peers.keys():
-                peer = self.peers[peer_id]
+                peer = self.peers.get(peer_id)
+                if not peer:
+                    continue
+
                 if now - peer.time > self.dead_interval:
                     log.debug('Deadbeat: %s' % uuid.UUID(bytes=peer_id))
                     peer.socket.close()
 
-                    self._on_peer_deadbeat(self.peers[peer_id])
+                    self._on_peer_deadbeat(peer)
 
                     del self.peers[peer_id]
 
@@ -179,7 +206,11 @@ class Beaconer(object):
         socket.
         """
         while True:
-            self.handle_msg(*self.router.recv_multipart())
+            #gevent.sleep(0)
+
+            self.handle_recv_msg(*self.router.recv_multipart())
+            #peer_id = self.router.recv()
+            #self.handle_recv_msg(peer_id, self.router)
 
     def handle_beacon(self, peer_id, transport, addr, port, socket_type):
         """ Handle a beacon.
@@ -195,7 +226,7 @@ class Beaconer(object):
 
         peer = self.peers.get(peer_id)
         if peer and peer.addr == peer_addr:
-            self.peers[peer_id] = peer._replace(time=time.time())
+            peer.time = time.time()
             return
         elif peer:
             # we have the peer, but it's addr changed,
@@ -210,28 +241,30 @@ class Beaconer(object):
         peer.setsockopt(zmq.IDENTITY, self.me)
 
         uid = uuid.UUID(bytes=peer_id)
-        log.debug('conecting to: %s at %s' % (uid, peer_addr))
+        log.info('Conecting to: %s at %s' % (uid, peer_addr))
         peer.connect(peer_addr)
-        self.peers[peer_id] = Peer(peer, peer_addr, time.time())
+        self.peers[peer_id] = Peer(peer_id, uid, peer, peer_addr, time.time())
 
-        self._on_peer_connected(self.peers[peer_id])
+        peer = self.peers.get(peer_id)
+        if peer:
+            self._on_peer_connected(peer)
 
-    def handle_msg(self, peer_id, msg):
+    def handle_recv_msg(self, peer_id, *msg):
         """Override this method to customize message handling.
 
         Defaults to calling the callback.
         """
         peer = self.peers.get(peer_id)
         if peer:
-            self.peers[peer_id] = peer = peer._replace(time=time.time())
-            self._on_msg(peer, msg)
+            peer.time = time.time()
+            self._on_recv_msg(peer, *msg)
 
     """
     Callbacks
     """
 
-    def _on_msg(self, peer, msg):
-        return self._callback(None, peer, msg)
+    def _on_recv_msg(self, peer, *msg):
+        return self._callback(None, peer, *msg)
 
     def _on_peer_connected(self, peer):
         return self._callback(None, peer)
@@ -242,60 +275,123 @@ class Beaconer(object):
     def _callback(self, name, *args, **kwargs):
         if not name:
             name = get_last_func_name()
-            if name.startswith('_'):
-                name = name[1:]
+            if name.startswith('_on_'):
+                name = name[4:]
 
-        meth = getattr(self, name, None)
+        meth = getattr(self, 'on_%s' % name, None)
         if meth:
-            gevent.spawn(meth, *args, **kwargs)
-            #meth(*args, **kwargs)
+            #gevent.spawn(meth, *args, **kwargs)
+            meth(*args, **kwargs)
+
+        meth = getattr(self, 'on_%s_cb' % name, None)
+        if meth:
+            gevent.spawn(meth, self, *args, **kwargs)
 
 
-class Beaconer2(Beaconer):
-    def on_msg(self, peer, msg):
-        log.info('got msg=%s peer=%s', msg, peer)
-        #log.info('self=%s', self)
-        #gevent.sleep(1)
+import solarsan.cluster.models as cmodels
 
-        if msg == 'SUP':
-            logger.debug('sending WAT')
-            peer.socket.send('WAT')
-        elif msg == 'WAT':
-            logger.debug('got final WAT mofo')
+
+class Greet:
+    hostname = None
+    uuid = None
+    cluster_iface = None
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def gen_from_peer(cls, peer):
+        self = Greet()
+        self.hostname = peer.hostname
+        self.uuid = peer.uuid
+        self.cluster_iface = peer.cluster_iface
+        return self
+
+    @classmethod
+    def gen_from_local(cls):
+        peer = cmodels.Peer.get_local()
+        return cls.gen_from_peer(peer)
+
+
+class Peer:
+    id = None
+    uuid = None
+    socket = None
+    addr = None
+    time = None
+
+    def __init__(self, id, uuid, socket, addr, time):
+        self.id = id
+        self.uuid = uuid
+        self.socket = socket
+        self.addr = addr
+        self.time = time
+
+        #self.state = self.states.initial
+
+    #class states:
+    #    initial = 'initial'
+    #    greet = 'greet'
+
+    greet = None
+
+    def send_greet(self):
+        logger.debug('Peer %s: Sending Greet', self.uuid)
+        greet = Greet.gen_from_local()
+        greet = ZippedPickle.dump(greet)
+        self.socket.send_multipart(['GREET', greet])
+
+        #if self.state == self.states.initial:
+        #    self.state = self.states.greet
+
+    def on_greet(self, z):
+        self.greet = ZippedPickle.load(z)
+        logger.debug('Peer %s: Got Greet %s', self.uuid, self.greet.__dict__)
+
+
+class GreeterBeacon(Beacon):
+    def on_recv_msg(self, peer, *msg):
+        cmd = msg[0]
+        #log.debug('Peer %s: %s (state=%s)', peer.uuid, cmd, peer.state)
+        #log.debug('msg=%s', msg)
+
+        if cmd == 'GREET':
+            peer.on_greet(msg[1])
+        else:
+            logger.error('Peer %s: Wtfux %s?', peer.uuid, cmd)
+            peer.socket.close()
 
     def on_peer_connected(self, peer):
-        log.info('connected peer=%s', peer)
+        log.info('Peer %s: Connected.', peer.uuid)
 
-        # Send test message soon as we're connected
-        logger.debug('sending SUP')
-        peer.socket.send('SUP')
+        # The connectee takes a small amount of time before it actaully accepts
+        # anything, otherwise it kinda just gets "lost".
+        gevent.sleep(self.beacon_interval)
+
+        peer.send_greet()
 
     def on_peer_deadbeat(self, peer):
-        log.info('deadbeat peer=%s', peer)
+        log.info('Peer %s: Lost.', peer.uuid)
 
 
 if __name__ == '__main__':
-    import sys
-
-    import solarsan.cluster.models as cmodels
     local = cmodels.Peer.get_local()
     ipaddr = str(local.cluster_nic.ipaddr)
 
-    log.info('service_addr=%s discovery_port=%s',
+    log.info('Starting Beacon (service_addr=%s, discovery_port=%s)',
              ipaddr, conf.ports.discovery)
-    log.info('Starting')
 
-    p = Beaconer2(
-        #beacon_interval=10,
-        beacon_interval=1,
-        dead_interval=10,
+    p = GreeterBeacon(
+        beacon_interval=2,
+        #beacon_interval=1,
+        dead_interval=2,
         service_addr=ipaddr,
         #broadcast_addr=bcast,
         broadcast_port=conf.ports.discovery,
     )
 
     g = gevent.spawn(p.start)
-    s = gevent.sleep
 
-    if len(sys.argv) > 1:
-        g.join()
+    log.info('Started.')
+
+    g.join()
