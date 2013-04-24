@@ -5,7 +5,7 @@ if __name__ == '__main__':
 
 from solarsan import logging, conf
 log = logging.getLogger(__name__)
-
+from solarsan.utils.stack import get_last_func_name
 from solarsan.pretty import pp
 import solarsan.cluster.models as cmodels
 
@@ -15,8 +15,270 @@ from zmq import green as zmq
 from zmq.eventloop.ioloop import IOLoop, PeriodicCallback
 from zmq.eventloop.zmqstream import ZMQStream
 
-from .beacon import Beacon
+#from .beacon import Beacon
 from .util import ZippedPickle
+
+
+import socket
+import uuid
+import struct
+
+beaconv1 = struct.Struct('3sB16sH')
+beaconv2 = struct.Struct('3sB16sHBB4s')
+
+T_TO_I = {
+    #'udp': 1,
+    'tcp': 1,
+    'pgm': 2,
+}
+
+I_TO_T = {v: k for k, v in T_TO_I.items()}
+
+NULL_IP = '\x00' * 4
+
+
+class Beacon(object):
+    """ZRE beacon emmiter.  http://rfc.zeromq.org/spec:20
+
+    This implements only the base UDP beaconing 0mq socket
+    interconnection layer, and disconnected peer detection.
+    """
+    ctx = None
+
+    _debug = False
+
+    service_port = None
+
+    _peer_cls = None
+
+    def __init__(self,
+                 broadcast_addr='',
+                 broadcast_port=35713,
+                 service_addr='*',
+                 service_transport='tcp',
+                 service_socket_type=zmq.ROUTER,
+                 beacon_interval=1,
+                 dead_interval=30,
+                 on_recv_msg=None,
+                 on_peer_connected=None,
+                 on_peer_deadbeat=None):
+
+        self.broadcast_addr = broadcast_addr
+        self.broadcast_port = broadcast_port
+        self.service_addr = service_addr
+        self.service_transport = service_transport
+        self.service_socket_type = service_socket_type
+        self.beacon_interval = beacon_interval
+        self.dead_interval = dead_interval
+
+        self.on_recv_msg_cb = on_recv_msg
+        self.on_peer_connected_cb = on_peer_connected
+        self.on_peer_deadbeat_cb = on_peer_deadbeat
+
+        self.peers = {}
+        if service_addr != '*':
+            self.service_addr_bytes = socket.inet_aton(
+                socket.gethostbyname(service_addr))
+        else:
+            self.service_addr_bytes = NULL_IP
+
+        self.me = uuid.uuid4().bytes
+
+    def start(self):
+        """Greenlet to start the beaconer.  This sets up zmq context,
+        sockets, and spawns worker greenlets.
+        """
+        if not self.ctx:
+            self.ctx = zmq.Context.instance()
+
+        self.router = self.ctx.socket(self.service_socket_type)
+        endpoint = '%s://%s' % (self.service_transport, self.service_addr)
+        self.service_port = self.router.bind_to_random_port(endpoint)
+
+        self.broadcaster = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_DGRAM,
+            socket.IPPROTO_UDP)
+
+        self.broadcaster.setsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_BROADCAST,
+            2)
+
+        self.broadcaster.setsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_REUSEADDR,
+            1)
+
+        self.broadcaster.bind((self.broadcast_addr, self.broadcast_port))
+
+        # start all worker greenlets
+        gevent.joinall(
+            [gevent.spawn(self._send_beacon),
+             gevent.spawn(self._recv_beacon),
+             gevent.spawn(self._recv_msg)])
+
+    def _recv_beacon(self):
+        """Greenlet that receives udp beacons.
+        """
+        while True:
+            #gevent.sleep(0)
+
+            try:
+                data, (peer_addr, port) = self.broadcaster.recvfrom(beaconv2.size)
+            except socket.error:
+                log.exception('Error recving beacon:')
+                gevent.sleep(self.beacon_interval)  # don't busy error loop
+                continue
+            try:
+                if len(data) == beaconv1.size:
+                    #greet, ver, peer_id, peer_port = beaconv2.unpack(data)
+                    greet, ver, peer_id, peer_port = beaconv1.unpack(data)
+                    peer_transport = 1
+                    peer_socket_type = zmq.ROUTER
+                    peer_socket_address = NULL_IP
+                    if ver != 1:
+                        continue
+                else:
+                    greet, ver, peer_id, peer_port, \
+                        peer_transport, peer_socket_type, \
+                        peer_socket_address = beaconv2.unpack(data)
+                    if ver != 2:
+                        continue
+            except Exception:
+                continue
+            if greet != 'ZRE':
+                continue
+            if peer_id == self.me:
+                continue
+            if peer_socket_address != NULL_IP:
+                peer_addr = socket.inet_ntoa(peer_socket_address)
+            peer_transport = I_TO_T[peer_transport]
+            self.handle_beacon(peer_id, peer_transport, peer_addr,
+                               peer_port, peer_socket_type)
+
+    def _send_beacon(self):
+        """Greenlet that sends udp beacons at intervals.
+        """
+        while True:
+            #gevent.sleep(0)
+
+            try:
+                beacon = beaconv2.pack(
+                    'ZRE', 2, self.me,
+                    self.service_port,
+                    T_TO_I[self.service_transport],
+                    self.service_socket_type,
+                    self.service_addr_bytes)
+
+                self.broadcaster.sendto(
+                    beacon,
+                    ('<broadcast>', self.broadcast_port))
+            except socket.error:
+                log.exception('Error sending beacon:')
+
+            gevent.sleep(self.beacon_interval)
+
+            # check for deadbeats
+            now = time.time()
+            for peer_id in self.peers.keys():
+                peer = self.peers.get(peer_id)
+                if not peer:
+                    continue
+
+                if now - peer.time > self.dead_interval:
+                    log.debug('Deadbeat: %s' % uuid.UUID(bytes=peer_id))
+                    peer.socket.close()
+
+                    self._on_peer_deadbeat(peer)
+
+                    del self.peers[peer_id]
+
+    def _recv_msg(self):
+        """Greenlet that receives messages from the local ROUTER
+        socket.
+        """
+        while True:
+            #gevent.sleep(0)
+
+            self.handle_recv_msg(*self.router.recv_multipart())
+            #peer_id = self.router.recv()
+            #self.handle_recv_msg(peer_id, self.router)
+
+    def handle_beacon(self, peer_id, transport, addr, port, socket_type):
+        """ Handle a beacon.
+
+        Overide this method to handle new peers.  By default, connects
+        a DEALER socket to the new peers broadcast endpoint and
+        registers it.
+        """
+        peer_addr = '%s://%s:%s' % (transport, addr, port)
+
+        if self._debug:
+            log.debug('peer_addr=%s', peer_addr)
+
+        peer = self.peers.get(peer_id)
+        if peer and peer.addr == peer_addr:
+            peer.time = time.time()
+            return
+        elif peer:
+            # we have the peer, but it's addr changed,
+            # close it, we'll reconnect
+            self.peers[peer_id].socket.close()
+
+        if self._debug:
+            log.debug('peers=%s', self.peers)
+
+        # connect DEALER to peer_addr address from beacon
+        peer = self.ctx.socket(zmq.DEALER)
+        peer.setsockopt(zmq.IDENTITY, self.me)
+
+        uid = uuid.UUID(bytes=peer_id)
+        log.info('Conecting to: %s at %s' % (uid, peer_addr))
+        peer.connect(peer_addr)
+        self.peers[peer_id] = self._peer_cls(peer_id, uid, peer, peer_addr, time.time())
+
+        peer = self.peers.get(peer_id)
+        if peer:
+            self._on_peer_connected(peer)
+
+    def handle_recv_msg(self, peer_id, *msg):
+        """Override this method to customize message handling.
+
+        Defaults to calling the callback.
+        """
+        peer = self.peers.get(peer_id)
+        if peer:
+            peer.time = time.time()
+            self._on_recv_msg(peer, *msg)
+
+    """
+    Callbacks
+    """
+
+    def _on_recv_msg(self, peer, *msg):
+        return self._callback(None, peer, *msg)
+
+    def _on_peer_connected(self, peer):
+        return self._callback(None, peer)
+
+    def _on_peer_deadbeat(self, peer):
+        return self._callback(None, peer)
+
+    def _callback(self, name, *args, **kwargs):
+        if not name:
+            name = get_last_func_name()
+            if name.startswith('_on_'):
+                name = name[4:]
+
+        meth = getattr(self, 'on_%s' % name, None)
+        if meth:
+            #gevent.spawn(meth, *args, **kwargs)
+            meth(*args, **kwargs)
+
+        meth = getattr(self, 'on_%s_cb' % name, None)
+        if meth:
+            gevent.spawn(meth, self, *args, **kwargs)
 
 
 class Greet:
@@ -132,14 +394,14 @@ class FSMError(Exception):
 
 class BinaryStar(object):
     class STATES:
-        # States we can be in at any point in time
+        """States we can be in at any point in time"""
         PRIMARY = 1          # Primary, waiting for peer to connect
         BACKUP = 2           # Backup, waiting for peer to connect
         ACTIVE = 3           # Active - accepting connections
         PASSIVE = 4          # Passive - not accepting connections
 
     class EVENTS:
-        # Events, which start with the states our peer can be in
+        """Events, which start with the states our peer can be in"""
         PEER_PRIMARY = 1           # HA peer is pending primary
         PEER_BACKUP = 2            # HA peer is pending backup
         PEER_ACTIVE = 3            # HA peer is active
@@ -163,8 +425,10 @@ class BinaryStar(object):
     heartbeat = None        # PeriodicCallback for
 
     def __init__(self, primary, local, remote):
+        if not self.ctx:
+            self.ctx = zmq.Context.instance()
+
         # initialize the Binary Star
-        self.ctx = zmq.Context()
         self.loop = IOLoop.instance()
         self.state = self.STATES.PRIMARY if primary else self.STATES.BACKUP
 
@@ -190,6 +454,7 @@ class BinaryStar(object):
         self.peer_expiry = time.time() + 2e-3 * self.HEARTBEAT
 
     def start(self):
+        """Start Binary Star loop"""
         self.update_peer_expiry()
         self.heartbeat.start()
         return self.loop.start()
