@@ -87,7 +87,6 @@ class KVMsg(object):
         """Construct key-value message from a multipart message"""
         if cls._debug:
             log.debug('msg=%s', msg)
-
         key, seq_s, uuid, prop_s, body = msg
         key = key if key else None
         seq = struct.unpack('!q', seq_s)[0]

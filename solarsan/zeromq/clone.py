@@ -246,7 +246,7 @@ class CloneAgent(object):
     def connect_via_discovery(self):
         logger.info('Starting beacon to discover neighbors; will auto-connect to any found.')
 
-        self.beacon = Beacon()
+        self.beacon = Beacon(send_beacon=False)
         self.beacon.on_peer_connected_cb = self._beacon_on_peer_connected
         self.beacon.on_peer_lost_cb = self._beacon_on_peer_lost
 

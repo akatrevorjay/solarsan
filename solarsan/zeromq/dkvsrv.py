@@ -1,7 +1,7 @@
 
 from solarsan import logging, conf
 log = logging.getLogger(__name__)
-#from solarsan.utils.stack import get_last_func_name
+from solarsan.utils.stack import get_last_func_name
 from solarsan.pretty import pp
 import solarsan.cluster.models as cmodels
 
@@ -13,9 +13,9 @@ import zmq
 #from zmq import ZMQError
 from zmq.eventloop.ioloop import IOLoop, DelayedCallback, PeriodicCallback
 from zmq.eventloop.zmqstream import ZMQStream
-import zmq.utils.jsonapi as json
+#import zmq.utils.jsonapi as json
 
-#from .util import ZippedPickle
+from .util import ZippedPickle
 from .beacon import Beacon
 
 
@@ -37,7 +37,7 @@ class Greet:
 class Peer:
     ctx = None
 
-    def __init__(self, id, uuid, socket, addr, time_=None, beacon=None, clonesrv=None):
+    def __init__(self, id, uuid, socket, addr, time_=None, beacon=None, **kwargs):
         self.id = id
         self.uuid = uuid
         self.socket = socket
@@ -45,15 +45,14 @@ class Peer:
         self.time = time_ or time.time()
 
         self.proto, host = addr.split('://', 1)
-        self.host, port = host.rsplit(':', 1)
+        self.host, self.broadcast_port = host.rsplit(':', 1)
         #self.host = self.addr.rsplit(':', 1)[0].split('://', 1)[1]
 
-        # TODO This does not belong here.
-        self.on_subscriber_recv_cb = clonesrv.handle_subscriber
+        # Set callbacks
+        for k, v in kwargs.iteritems():
+            if k.startswith('on_') and k.endswith('_cb'):
+                setattr(self, k, v)
 
-        self.init()
-
-    def init(self):
         if not self.ctx:
             self.ctx = zmq.Context.instance()
         self.loop = IOLoop.instance()
@@ -61,39 +60,54 @@ class Peer:
         # Set up our own clone client interface to peer
         self.subscriber = self.ctx.socket(zmq.SUB)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
-        self.subscriber.connect(self.subscriber_endpoint)
+        self.subscriber.connect(self.publisher_endpoint)
 
         # Wrap sockets in ZMQStreams for IOLoop handlers
-        self.subscriber = ZMQStream(self.subscriber, self.loop)
-        self.subscriber.on_recv(self.subscriber_recv)
+        self.subscriber = ZMQStream(self.subscriber)
+        self.subscriber.on_recv(self._on_subscriber_recv)
 
     port = 5556
 
     @property
     def collector_port(self):
-        return self.port + 1
-
-    @property
-    def subscriber_port(self):
         return self.port + 2
 
     @property
-    def subscriber_endpoint(self):
-        return 'tcp://%s:%d' % (self.host, self.subscriber_port)
+    def publisher_port(self):
+        return self.port + 1
 
-    def subscriber_recv(self, msg):
-        if msg[0] != 'HUGZ':
-            log.debug('Peer %s: Subscriber msg=%s', self.uuid, msg)
-        if self.on_subscriber_recv_cb:
-            self.on_subscriber_recv_cb(self, msg)
+    @property
+    def publisher_endpoint(self):
+        return 'tcp://%s:%d' % (self.host, self.publisher_port)
 
+    def _on_subscriber_recv(self, msg):
+        #if msg[0] != 'HUGZ':
+        #    log.debug('Peer %s: Subscriber msg=%s', self.uuid, msg)
+
+        return self._callback(None, msg)
+
+    def _callback(self, name, *args, **kwargs):
+        if not name:
+            name = get_last_func_name()
+            if name.startswith('_on_'):
+                name = name[4:]
+
+        meth = getattr(self, 'on_%s' % name, None)
+        if meth:
+            #meth(*args, **kwargs)
+            self.loop.add_callback(partial(meth, *args, **kwargs))
+
+        meth = getattr(self, 'on_%s_cb' % name, None)
+        if meth:
+            #meth(self, *args, **kwargs)
+            self.loop.add_callback(partial(meth, self, *args, **kwargs))
     """
     Clone
     """
 
     @property
     def snapshot_endpoint(self):
-        return 'tcp://%s:%d' % (self.host, self.collector_port)
+        return 'tcp://%s:%d' % (self.host, self.port)
 
     def get_snapshot(self):
         snapshot = self.ctx.socket(zmq.DEALER)
@@ -112,8 +126,8 @@ class Peer:
     def send_greet(self):
         log.debug('Peer %s: Sending Greet', self.uuid)
         greet = Greet.gen_from_local()
-        #greet = ZippedPickle.dump(greet)
-        greet = json.dumps(greet.__dict__)
+        greet = ZippedPickle.dump(greet)
+        #greet = json.dumps(greet.__dict__)
         self.socket.send_multipart(['GREET', greet])
 
         delay = getattr(self, 'send_greet_delay', None)
@@ -121,15 +135,17 @@ class Peer:
             delay.stop()
             delattr(self, 'send_greet_delay')
 
-    def on_greet(self, serialized_obj):
-        #greet = ZippedPickle.load(z)
-        greet = Greet()
-        greet.__dict__ = json.loads(serialized_obj)
+    def _on_greet(self, serialized_obj):
+        greet = ZippedPickle.load(serialized_obj)
+        #greet = Greet()
+        #greet.__dict__ = json.loads(serialized_obj)
 
         log.debug('Peer %s: Got Greet', self.uuid)
         pp(greet.__dict__)
 
         self.greet = greet
+
+        return self._callback(None, serialized_obj)
 
 
 class GreeterBeacon(Beacon):
@@ -140,7 +156,9 @@ class GreeterBeacon(Beacon):
         super(GreeterBeacon, self).__init__(*args, **kwargs)
 
         self.clonesrv = CloneServer()
-        self._peer_init_kwargs['clonesrv'] = self.clonesrv
+
+        # Set subscriber callback
+        self._peer_init_kwargs['on_subscriber_recv_cb'] = self.clonesrv.handle_subscriber
 
     def start(self, loop=True):
         super(GreeterBeacon, self).start(loop=False)
@@ -151,11 +169,10 @@ class GreeterBeacon(Beacon):
 
     def on_recv_msg(self, peer, *msg):
         cmd = msg[0]
-        #log.debug('Peer %s: %s (state=%s)', peer.uuid, cmd, peer.state)
-        #log.debug('msg=%s', msg)
+        log.info('Peer %s: %s.', peer.uuid, cmd)
 
         if cmd == 'GREET':
-            peer.on_greet(msg[1])
+            peer._on_greet(msg[1])
             self.loop.add_callback(partial(self._callback, 'peer_on_greet', peer))
         else:
             log.error('Peer %s: Wtfux %s?', peer.uuid, cmd)
@@ -164,7 +181,7 @@ class GreeterBeacon(Beacon):
     def on_peer_connected(self, peer):
         log.info('Peer %s: Connected.', peer.uuid)
 
-        peer.send_greet_delay = DelayedCallback(peer.send_greet, self.beacon_interval * 1000, self.loop)
+        peer.send_greet_delay = DelayedCallback(peer.send_greet, self.beacon_interval * 1000)
         peer.send_greet_delay.start()
 
         self.clonesrv.add_peer(peer)
@@ -232,12 +249,12 @@ class BinaryStar(object):
         self.statesub.connect(remote)
 
         # wrap statesub in ZMQStream for event triggers
-        self.statesub = ZMQStream(self.statesub, self.loop)
+        self.statesub = ZMQStream(self.statesub)
+        self.statesub.on_recv(self.recv_state)
 
         # setup basic reactor events
         self.heartbeat = PeriodicCallback(
-            self.send_state, self.HEARTBEAT, self.loop)
-        self.statesub.on_recv(self.recv_state)
+            self.send_state, self.HEARTBEAT)
 
     def update_peer_expiry(self):
         """Update peer expiry time to be 2 heartbeats from now."""
@@ -374,7 +391,7 @@ class BinaryStar(object):
         self.voter_socket = socket
         self.voter_callback = handler
 
-        stream = ZMQStream(socket, self.loop)
+        stream = ZMQStream(socket)
         stream.on_recv(self.voter_ready)
 
 
@@ -439,27 +456,24 @@ class CloneServer(object):
         self.peers = {}
         self.pending = []
 
-        primary = True
+        """TODO Automatic voting mechanism to pick primary"""
+
         if conf.hostname == 'san0':
             remote_host = 'san1'
+            primary = True
         elif conf.hostname == 'san1':
             remote_host = 'san0'
             primary = False
-        else:
-            remote_host = 'localhost'
         self.remote_host = remote_host
         self.primary = primary
 
-        self.kvmap = {}
         if primary:
+            self.kvmap = {}
             bstar_local_ep = 'tcp://*:5003'
             bstar_remote_ep = 'tcp://%s:5004' % remote_host
-
-            #self.become_master()
         else:
             bstar_local_ep = 'tcp://*:5004'
             bstar_remote_ep = 'tcp://%s:5003' % remote_host
-            #self.become_slave()
 
         # Setup router socket
         #self.router = self.ctx.socket(zmq.ROUTER)
@@ -472,22 +486,23 @@ class CloneServer(object):
                                   zmq.ROUTER,
                                   self.handle_snapshot)
 
-        # Set up our clone server sockets
-        self.publisher = self.ctx.socket(zmq.PUB)
-        self.publisher.bind(self.publisher_endpoint)
-        self.publisher = ZMQStream(self.publisher)
-
-        self.collector = self.ctx.socket(zmq.SUB)
-        self.collector.setsockopt(zmq.SUBSCRIBE, b'')
-        self.collector.bind(self.collector_endpoint)
-        self.collector = ZMQStream(self.collector)
-
         # Register state change handlers
         self.bstar.master_callback = self.become_master
         self.bstar.slave_callback = self.become_slave
 
-        # Register our handlers with reactor
+        # Set up our clone server sockets
+        self.publisher = self.ctx.socket(zmq.PUB)
+        self.publisher.bind(self.publisher_endpoint)
+        #self.publisher = ZMQStream(self.publisher)
+
+        self.collector = self.ctx.socket(zmq.SUB)
+        self.collector.setsockopt(zmq.SUBSCRIBE, b'')
+        #self.collector.setsockopt(zmq.SUBSCRIBE, '/clients/updates')
+        self.collector.bind(self.collector_endpoint)
+        self.collector = ZMQStream(self.collector)
         self.collector.on_recv(self.handle_collect)
+
+        # Register our handlers with reactor
         self.flush_callback = PeriodicCallback(self.flush_ttl, 1000)
         self.hugz_callback = PeriodicCallback(self.send_hugz, 1000)
 
@@ -522,7 +537,7 @@ class CloneServer(object):
 
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
-        log.debug('handle_snapshot: Got msg=%s', msg[1:])
+        #log.debug('handle_snapshot: Got msg=%s', msg[1:])
 
         #if msg[1] == 'IM_SLAVE':
         #    log.debug('Tried to get snapshot from slave.')
@@ -531,7 +546,7 @@ class CloneServer(object):
         if msg[1] != "ICANHAZ?" or len(msg) != 3:
             log.error("bad request, aborting")
             dump(msg)
-            self.bstar.loop.stop()
+            #self.bstar.loop.stop()
             return
 
         identity, request = msg[:2]
@@ -564,6 +579,10 @@ class CloneServer(object):
         If we're master, we apply these to the kvmap
         If we're slave, or unsure, we queue them on our pending list
         """
+        #if len(msg) != 5:
+        #    log.info('handle_collect: Got bad message %s.', msg)
+        #    return
+
         kvmsg = KVMsg.from_msg(msg)
         if self.master:
             self.sequence += 1
@@ -631,12 +650,12 @@ class CloneServer(object):
         The backup server applies its pending list to its own hash table,
         and then starts to process state snapshot requests.
         """
+        log.info('Becoming master')
+
         self.master = True
         self.slave = False
 
         # stop receiving subscriber updates while we are master
-        #self.subscriber.stop_on_recv()
-        #self._handle_subscriber = False
         for peer in self.peers.values():
             peer.subscriber.stop_on_recv()
 
@@ -650,58 +669,51 @@ class CloneServer(object):
 
     def become_slave(self):
         """We're becoming slave"""
+        log.info('Becoming slave')
+
         self.kvmap = {}      # clear kvmap
 
         self.master = False
         self.slave = True
 
-        # start receivinv subscriber updates
-        #self.subscriber.on_recv(self.handle_subscriber)
-        #self._handle_subscriber = True
+        # start receiving subscriber updates
         for peer in self.peers.values():
-            peer.subscriber.on_recv(peer.subscriber_recv)
+            peer.subscriber.on_recv(peer._on_subscriber_recv)
 
     def handle_subscriber(self, peer, msg):
         """Collect updates from peer (master)
         We're always slave when we get these updates
         """
-        #if not self._handle_subscriber:
-        #    log.debug('handle_subscriber called with msg=%s but we are not slave, so returning', msg)
-        #    return
-
         if self.master:
             log.warn(
-                "received subscriber message, but we are master %s", msg)
+                "Received subscriber message, but we are master msg=%s from_peer=%s", msg, peer.uuid)
             return
 
         # Get state snapshot if necessary
         if self.kvmap is None:
             self.kvmap = {}
 
-            #snapshot = self.ctx.socket(zmq.DEALER)
-            #snapshot.linger = 0
-            #snapshot.connect("tcp://%s:%i" % (self.remote_host, self.peer))
-            #
-            #log.info("asking for snapshot from: tcp://%s:%d",
-            #         self.remote_host, self.peer)
-            #snapshot.send_multipart(["ICANHAZ?", ''])
-
             snapshot = peer.get_snapshot()
-
             while True:
                 try:
                     kvmsg = KVMsg.recv(snapshot)
                 except KeyboardInterrupt:
-                    # Interrupted
                     #self.bstar.loop.stop()
                     self.loop.stop()
                     return
+
                 if kvmsg.key == "KTHXBAI":
                     self.sequence = kvmsg.sequence
                     break          # Done
+
                 kvmsg.store(self.kvmap)
 
             log.info("received snapshot=%d", self.sequence)
+
+        ##if not isinstance(msg, (tuple, list)) or len(msg) < 5:
+        #if not len(msg) == 5:
+        #    log.debug('bad msg=%s', msg)
+        #    return
 
         # Find and remove update off pending list
         kvmsg = KVMsg.from_msg(msg)

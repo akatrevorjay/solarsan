@@ -70,10 +70,11 @@ class Beacon(object):
                  service_transport='tcp',
                  service_socket_type=zmq.ROUTER,
                  beacon_interval=1,
-                 dead_interval=30,
+                 dead_interval=10,
                  on_recv_msg=None,
                  on_peer_connected=None,
-                 on_peer_lost=None):
+                 on_peer_lost=None,
+                 send_beacon=True):
 
         self.broadcast_addr = broadcast_addr
         self.broadcast_port = broadcast_port
@@ -87,6 +88,8 @@ class Beacon(object):
         self.on_peer_connected_cb = on_peer_connected
         self.on_peer_lost_cb = on_peer_lost
 
+        self.send_beacon = send_beacon
+
         self.peers = {}
         if service_addr != '*':
             self.service_addr_bytes = socket.inet_aton(
@@ -97,7 +100,7 @@ class Beacon(object):
         self.me = uuid.uuid4().bytes
 
         self._peer_init_kwargs = {}
-        self._peer_init_kwargs['beacon'] = self
+        #self._peer_init_kwargs['beacon'] = self
 
     def init(self):
         if not self.ctx:
@@ -117,29 +120,28 @@ class Beacon(object):
             socket.AF_INET,
             socket.SOCK_DGRAM,
             socket.IPPROTO_UDP)
-
         self.broadcaster.setsockopt(
             socket.SOL_SOCKET,
             socket.SO_BROADCAST,
             2)
-
         self.broadcaster.setsockopt(
             socket.SOL_SOCKET,
             socket.SO_REUSEADDR,
             1)
 
         self.broadcaster.setblocking(0)
-
         self.broadcaster.bind((self.broadcast_addr, self.broadcast_port))
 
         self.loop.add_handler(self.broadcaster.fileno(), self._recv_beacon, self.loop.READ)
 
-        self.send_beacon = PeriodicCallback(
-            self._send_beacon, self.beacon_interval * 1000, self.loop)
+        if self.send_beacon:
+            self._send_beacon_cb = PeriodicCallback(
+                self._send_beacon, self.beacon_interval * 1000, self.loop)
 
     def start(self, loop=True):
         self.init()
-        self.send_beacon.start()
+        if self.send_beacon:
+            self._send_beacon_cb.start()
         if loop:
             return self.loop.start()
 
@@ -157,8 +159,8 @@ class Beacon(object):
 
             try:
                 if len(data) == beaconv1.size:
-                    #greet, ver, peer_id, peer_port = beaconv2.unpack(data)
-                    greet, ver, peer_id, peer_port = beaconv1.unpack(data)
+                    greet, ver, peer_id, peer_port = beaconv2.unpack(data)
+                    #greet, ver, peer_id, peer_port = beaconv1.unpack(data)
                     peer_transport = 1
                     peer_socket_type = zmq.ROUTER
                     peer_socket_address = NULL_IP
@@ -243,6 +245,8 @@ class Beacon(object):
         a DEALER socket to the new peers broadcast endpoint and
         registers it.
         """
+        #log.debug('handle_beacon peer_uuid=%s', peer_id)
+
         peer_addr = '%s://%s:%s' % (transport, addr, port)
 
         peer = self.peers.get(peer_id)
