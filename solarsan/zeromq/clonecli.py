@@ -12,8 +12,8 @@ try:
 except ImportError:
     from .clone import Clone
 
-SUBTREE = "/client/"
-# SUBTREE = ""
+#SUBTREE = "/client/"
+SUBTREE = ""
 
 
 def get_client():

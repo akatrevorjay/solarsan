@@ -1,7 +1,7 @@
 
 from solarsan import logging, signals
 logger = logging.getLogger(__name__)
-#from solarsan.pretty import pp
+from solarsan.pretty import pp
 import threading
 import time
 
@@ -180,11 +180,11 @@ class CloneServer(object):
 class CloneAgent(object):
     """ Simple class for one background agent """
 
-    class states:
+    class STATES:
         """ States we can be in """
-        initial = 0         # Before asking server for state
-        syncing = 1         # Getting state from server
-        active = 2          # Getting new updates from server
+        INITIAL = 0         # Before asking server for state
+        SYNCING = 1         # Getting state from server
+        ACTIVE = 2          # Getting new updates from server
 
     ctx = None              # Own context
     pipe = None             # Socket to talk back to application
@@ -204,7 +204,7 @@ class CloneAgent(object):
         self.kvmap = {}
         self.subtree = ''
 
-        self.state = self.states.initial
+        self.state = self.STATES.INITIAL
 
         self.publisher = ctx.socket(zmq.PUSH)
         self.router = ctx.socket(zmq.ROUTER)
@@ -214,6 +214,7 @@ class CloneAgent(object):
     def control_message(self):
         msg = self.pipe.recv_multipart()
         command = msg.pop(0)
+        #logger.debug('cmd=%s msg=%s', command, msg)
 
         if command == "CONNECT":
             address = msg.pop(0)
@@ -279,7 +280,7 @@ def clone_agent(ctx, pipe):
         poll_timer = None
         server_socket = None
 
-        if agent.state == agent.states.initial:
+        if agent.state == agent.STATES.INITIAL:
             """In this state we ask the server for a snapshot,
             if we have a server to talk to..."""
             if agent.servers:
@@ -293,15 +294,15 @@ def clone_agent(ctx, pipe):
                     server.requests += 1
 
                 server.expiry = time.time() + SERVER_TTL
-                agent.state = agent.states.syncing
+                agent.state = agent.STATES.SYNCING
                 server_socket = server.snapshot
 
-        elif agent.state == agent.states.syncing:
+        elif agent.state == agent.STATES.SYNCING:
             """In this state we read from snapshot and we expect
             the server to respond, else we fail over."""
             server_socket = server.snapshot
 
-        elif agent.state == agent.states.active:
+        elif agent.state == agent.STATES.ACTIVE:
             """In this state we read from subscriber and we expect
             the server to give hugz, else we fail over."""
             server_socket = server.subscriber
@@ -326,20 +327,22 @@ def clone_agent(ctx, pipe):
         elif server_socket in items:
             kvmsg = KVMsg.recv(server_socket)
 
+            #pp(kvmsg.__dict__)
+
             server.expiry = time.time() + SERVER_TTL    # Anything from server resets its expiry time
 
-            if agent.state == agent.states.syncing:
+            if agent.state == agent.STATES.SYNCING:
                 """Store in snapshot until we're finished"""
                 server.requests = 0
                 if kvmsg.key == "KTHXBAI":
                     agent.sequence = kvmsg.sequence
-                    agent.state = agent.states.active
+                    agent.state = agent.STATES.ACTIVE
                     logger.debug("received from %s:%d snapshot=%d",
                                  server.address, server.port, agent.sequence)
                 else:
                     kvmsg.store(agent.kvmap)
 
-            elif agent.state == agent.states.active:
+            elif agent.state == agent.STATES.ACTIVE:
                 """Discard out-of-sequence updates, incl. hugz"""
                 if kvmsg.sequence > agent.sequence:
                     agent.sequence = kvmsg.sequence
@@ -358,4 +361,4 @@ def clone_agent(ctx, pipe):
             logger.error("server at %s:%d didn't give hugz",
                          server.address, server.port)
             agent.cur_server = (agent.cur_server + 1) % len(agent.servers)
-            agent.state = agent.states.initial
+            agent.state = agent.STATES.INITIAL

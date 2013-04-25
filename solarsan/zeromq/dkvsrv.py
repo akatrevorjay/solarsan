@@ -16,7 +16,8 @@ from zmq.eventloop.ioloop import IOLoop, DelayedCallback, PeriodicCallback
 from zmq.eventloop.zmqstream import ZMQStream
 
 #from .beacon import Beacon
-from .util import ZippedPickle
+#from .util import ZippedPickle
+import zmq.utils.jsonapi as json
 
 import socket
 import uuid
@@ -346,8 +347,6 @@ class Peer:
 
         self.state = self.STATES.INITIAL
 
-        self.init()
-
     def init(self):
         if not self.ctx:
             self.ctx = zmq.Context.instance()
@@ -362,11 +361,13 @@ class Peer:
         self.subscriber = ZMQStream(self.subscriber, self.loop)
         self.subscriber.on_recv(self.subscriber_recv)
 
+        self.clonesrv.add_peer(self)
+
     port = 5556
 
-    #@property
-    #def collector_port(self):
-    #    return self.port + 1
+    @property
+    def collector_port(self):
+        return self.port + 1
 
     @property
     def subscriber_port(self):
@@ -377,10 +378,27 @@ class Peer:
         return 'tcp://%s:%d' % (self.host, self.subscriber_port)
 
     def subscriber_recv(self, msg):
-        if msg[0] == 'HUGZ':
-            return
-        log.debug('Peer %s: Subscriber msg=%s', self.uuid, msg)
-        self.clonesrv.handle_subscriber(msg)
+        if msg[0] != 'HUGZ':
+            log.debug('Peer %s: Subscriber msg=%s', self.uuid, msg)
+        self.clonesrv.handle_subscriber(self, msg)
+
+    """
+    Clone
+    """
+
+    @property
+    def snapshot_endpoint(self):
+        return 'tcp://%s:%d' % (self.host, self.collector_port)
+
+    def get_snapshot(self):
+        snapshot = self.ctx.socket(zmq.DEALER)
+        snapshot.linger = 0
+
+        snapshot.connect(self.snapshot_endpoint)
+
+        log.info("Asking for snapshot from: %s", self.snapshot_endpoint)
+        snapshot.send_multipart(["ICANHAZ?", ''])
+        return snapshot
 
     """
     Greet
@@ -389,7 +407,8 @@ class Peer:
     def send_greet(self):
         log.debug('Peer %s: Sending Greet', self.uuid)
         greet = Greet.gen_from_local()
-        greet = ZippedPickle.dump(greet)
+        #greet = ZippedPickle.dump(greet)
+        greet = json.dumps(greet.__dict__)
         self.socket.send_multipart(['GREET', greet])
 
         delay = getattr(self, 'send_greet_delay', None)
@@ -397,10 +416,17 @@ class Peer:
             delay.stop()
             delattr(self, 'send_greet_delay')
 
-    def on_greet(self, z):
-        greet = ZippedPickle.load(z)
+    def on_greet(self, serialized_obj):
+        #greet = ZippedPickle.load(z)
+        greet = Greet()
+        greet.__dict__ = json.loads(serialized_obj)
+
         log.debug('Peer %s: Got Greet', self.uuid)
         pp(greet.__dict__)
+
+        self.greet = greet
+
+        self.init()
 
 
 class GreeterBeacon(Beacon):
@@ -417,9 +443,10 @@ class GreeterBeacon(Beacon):
 
     def start(self, loop=True):
         super(GreeterBeacon, self).start(loop=False)
-        self.clonesrv.start(loop=False)
+        #self.clonesrv.start(loop=False)
         if loop:
-            return self.loop.start()
+            return self.clonesrv.start(loop=loop)
+            #return self.loop.start()
 
     def on_recv_msg(self, peer, *msg):
         cmd = msg[0]
@@ -526,18 +553,18 @@ class BinaryStar(object):
             # Primary server is waiting for peer to connect
             # Accepts self.EVENTS.CLIENT_REQUEST events in this state
             if (self.event == self.EVENTS.PEER_BACKUP):
-                logging.info("connected to backup (slave), ready as master")
+                log.info("connected to backup (slave), ready as master")
                 self.state = self.STATES.ACTIVE
                 if (self.master_callback):
                     self.loop.add_callback(self.master_callback)
             elif (self.event == self.EVENTS.PEER_ACTIVE):
-                logging.info("connected to backup (master), ready as slave")
+                log.info("connected to backup (master), ready as slave")
                 self.state = self.STATES.PASSIVE
                 if (self.slave_callback):
                     self.loop.add_callback(self.slave_callback)
             elif (self.event == self.EVENTS.CLIENT_REQUEST):
                 if (time.time() >= self.peer_expiry):
-                    logging.info("request from client, ready as master")
+                    log.info("request from client, ready as master")
                     self.state = self.STATES.ACTIVE
                     if (self.master_callback):
                         self.loop.add_callback(self.master_callback)
@@ -550,7 +577,7 @@ class BinaryStar(object):
             # Backup server is waiting for peer to connect
             # Rejects self.EVENTS.CLIENT_REQUEST events in this state
             if (self.event == self.EVENTS.PEER_ACTIVE):
-                logging.info("connected to primary (master), ready as slave")
+                log.info("connected to primary (master), ready as slave")
                 self.state = self.STATES.PASSIVE
                 if (self.slave_callback):
                     self.loop.add_callback(self.slave_callback)
@@ -562,22 +589,22 @@ class BinaryStar(object):
             # The only way out of ACTIVE is death
             if (self.event == self.EVENTS.PEER_ACTIVE):
                 # Two masters would mean split-brain
-                logging.error("fatal error - dual masters, aborting")
+                log.error("fatal error - dual masters, aborting")
                 raise FSMError("Dual Masters")
         elif (self.state == self.STATES.PASSIVE):
             # Server is passive
             # self.EVENTS.CLIENT_REQUEST events can trigger failover if peer looks dead
             if (self.event == self.EVENTS.PEER_PRIMARY):
                 # Peer is restarting - become active, peer will go passive
-                logging.info("primary (slave) is restarting, ready as master")
+                log.info("primary (slave) is restarting, ready as master")
                 self.state = self.STATES.ACTIVE
             elif (self.event == self.EVENTS.PEER_BACKUP):
                 # Peer is restarting - become active, peer will go passive
-                logging.info("backup (slave) is restarting, ready as master")
+                log.info("backup (slave) is restarting, ready as master")
                 self.state = self.STATES.ACTIVE
             elif (self.event == self.EVENTS.PEER_PASSIVE):
                 # Two passives would mean cluster would be non-responsive
-                logging.error("fatal error - dual slaves, aborting")
+                log.error("fatal error - dual slaves, aborting")
                 raise FSMError("Dual slaves")
             elif (self.event == self.EVENTS.CLIENT_REQUEST):
                 # Peer becomes master if timeout has passed
@@ -585,7 +612,7 @@ class BinaryStar(object):
                 assert (self.peer_expiry > 0)
                 if (time.time() >= self.peer_expiry):
                     # If peer is dead, switch to the active state
-                    logging.info("failover successful, ready as master")
+                    log.info("failover successful, ready as master")
                     self.state = self.STATES.ACTIVE
                 else:
                     # If peer is alive, reject connections
@@ -656,11 +683,9 @@ class CloneServer(object):
 
     kvmap = None                # Key-value store
     sequence = 0                # How many updates so far
-    #port = None                 # Main port we're working on
-    #peer = None                 # Main port of our peer
 
-    #bstar = None                # Binary Star
-    router = None
+    #bstar = None
+    #router = None               # Router socket used for DKV
 
     publisher = None            # Publish updates and hugz
     collector = None            # Collect updates from clients
@@ -670,60 +695,92 @@ class CloneServer(object):
     master = False              # True if we're master
     slave = False               # True if we're slave
 
-    #beacon = None               # Beacon
+    _debug = False
 
-    def __init__(self, primary=True):
-        self.service_addr = '*'
-        self.port = 5556
+    def add_peer(self, peer):
+        log.info('Add peer %s to CloneServer', peer.uuid)
+        #uuid = peer.uuid
+        greet = peer.greet
+        uuid = greet.uuid
+        log.info('Peer has Cluster Peer UUID=%s', greet.uuid)
 
-        self.primary = primary
-        if primary:
-            self.kvmap = {}
+        self.peers[uuid] = peer
+
+    @property
+    def router_endpoint(self):
+        return 'tcp://%s:%d' % (self.service_addr, self.port)
+
+    def __init__(self, service_addr='*', port=5556):
+        self.service_addr = service_addr
+        self.port = port
 
         if not self.ctx:
             self.ctx = zmq.Context.instance()
         self.loop = IOLoop.instance()
 
+        # Base init
+        self.peers = {}
         self.pending = []
 
-        #self.bstar = BinaryStar(primary, frontend, backend)
-        #self.bstar.register_voter("tcp://*:%i" %
-        #                          self.port, zmq.ROUTER, self.handle_snapshot)
+        primary = True
+        if conf.hostname == 'san0':
+            remote_host = 'san1'
+        elif conf.hostname == 'san1':
+            remote_host = 'san0'
+            primary = False
+        else:
+            remote_host = 'localhost'
+        self.remote_host = remote_host
+        self.primary = primary
 
-        self.router = self.ctx.socket(zmq.ROUTER)
-        self.router.bind('tcp://*:%d' % self.port)
-        self.router = ZMQStream(self.router, self.loop)
-        self.router.on_recv(self.handle_snapshot)
+        if primary:
+            self.kvmap = {}
+            bstar_local_ep = 'tcp://*:5003'
+            bstar_remote_ep = 'tcp://%s:5004' % remote_host
+
+            #self.become_master()
+        else:
+            bstar_local_ep = 'tcp://*:5004'
+            bstar_remote_ep = 'tcp://%s:5003' % remote_host
+            #self.become_slave()
+
+        # Setup router socket
+        #self.router = self.ctx.socket(zmq.ROUTER)
+        #self.router.bind(self.router_endpoint)
+        #self.router = ZMQStream(self.router)
+        #self.router.on_recv_stream(self.handle_snapshot)
+
+        self.bstar = BinaryStar(primary, bstar_local_ep, bstar_remote_ep)
+        self.bstar.register_voter(self.router_endpoint,
+                                  zmq.ROUTER,
+                                  self.handle_snapshot)
 
         # Set up our clone server sockets
         self.publisher = self.ctx.socket(zmq.PUB)
         self.publisher.bind(self.publisher_endpoint)
+        self.publisher = ZMQStream(self.publisher)
 
         self.collector = self.ctx.socket(zmq.SUB)
         self.collector.setsockopt(zmq.SUBSCRIBE, b'')
         self.collector.bind(self.collector_endpoint)
+        self.collector = ZMQStream(self.collector)
 
         # Register state change handlers
-        #self.bstar.master_callback = self.become_master
-        #self.bstar.slave_callback = self.become_slave
-
-        # Wrap sockets in ZMQStreams for IOLoop handlers
-        self.publisher = ZMQStream(self.publisher, self.loop)
-        self.collector = ZMQStream(self.collector, self.loop)
+        self.bstar.master_callback = self.become_master
+        self.bstar.slave_callback = self.become_slave
 
         # Register our handlers with reactor
         self.collector.on_recv(self.handle_collect)
-
-        self.flush_callback = PeriodicCallback(self.flush_ttl, 1000, self.loop)
-        self.hugz_callback = PeriodicCallback(self.send_hugz, 1000, self.loop)
+        self.flush_callback = PeriodicCallback(self.flush_ttl, 1000)
+        self.hugz_callback = PeriodicCallback(self.send_hugz, 1000)
 
     @property
     def collector_port(self):
-        return self.port + 1
+        return self.port + 2
 
     @property
     def publisher_port(self):
-        return self.port + 2
+        return self.port + 1
 
     @property
     def collector_endpoint(self):
@@ -741,23 +798,37 @@ class CloneServer(object):
         self.hugz_callback.start()
 
         # Start bstar reactor until process interrupted
-        #self.bstar.start(loop=loop)
-        if loop:
-            self.loop.start()
+        self.bstar.start(loop=loop)
+
+        #if loop:
+        #    self.loop.start()
 
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
+        log.debug('handle_snapshot: Got msg=%s', msg)
+
+        #if msg[1] == 'IM_SLAVE':
+        #    log.debug('Tried to get snapshot from slave.')
+        #    return
+
         if msg[1] != "ICANHAZ?" or len(msg) != 3:
             log.error("bad request, aborting")
             dump(msg)
-            #self.bstar.loop.stop()
-            self.loop.stop()
+            self.bstar.loop.stop()
             return
+
         identity, request = msg[:2]
+
         if len(msg) >= 3:
             subtree = msg[2]
             # Send state snapshot to client
             route = Route(socket, identity, subtree)
+
+            # For each entry in kvmap, send kvmsg to client
+            #if self.kvmap is None:
+            #    log.debug('Someone tried to get snapshot from us, but we do not have a kvmap')
+            #    socket.send_multipart([identity, 'IM_SLAVE'])
+            #    return
 
             # For each entry in kvmap, send kvmsg to client
             for k, v in self.kvmap.items():
@@ -826,6 +897,9 @@ class CloneServer(object):
 
     def send_hugz(self):
         """Send hugz to anyone listening on the publisher socket"""
+        if self._debug:
+            log.debug('Sending HUGZ to publisher')
+
         kvmsg = KVMsg(self.sequence)
         kvmsg.key = "HUGZ"
         kvmsg.body = ""
@@ -845,7 +919,10 @@ class CloneServer(object):
         self.slave = False
 
         # stop receiving subscriber updates while we are master
-        self.subscriber.stop_on_recv()
+        #self.subscriber.stop_on_recv()
+        #self._handle_subscriber = False
+        for peer in self.peers.values():
+            peer.subscriber.stop_on_recv()
 
         # Apply pending list to own kvmap
         while self.pending:
@@ -862,12 +939,20 @@ class CloneServer(object):
         self.master = False
         self.slave = True
 
-        self.subscriber.on_recv(self.handle_subscriber)
+        # start receivinv subscriber updates
+        #self.subscriber.on_recv(self.handle_subscriber)
+        #self._handle_subscriber = True
+        for peer in self.peers.values():
+            self.subscriber.on_recv(peer.subscriber_recv)
 
-    def handle_subscriber(self, msg):
+    def handle_subscriber(self, peer, msg):
         """Collect updates from peer (master)
         We're always slave when we get these updates
         """
+        #if not self._handle_subscriber:
+        #    log.debug('handle_subscriber called with msg=%s but we are not slave, so returning', msg)
+        #    return
+
         if self.master:
             log.warn(
                 "received subscriber message, but we are master %s", msg)
@@ -876,13 +961,17 @@ class CloneServer(object):
         # Get state snapshot if necessary
         if self.kvmap is None:
             self.kvmap = {}
-            snapshot = self.ctx.socket(zmq.DEALER)
-            snapshot.linger = 0
-            snapshot.connect("tcp://%s:%i" % (self.remote_host, self.peer))
 
-            log.info("asking for snapshot from: tcp://%s:%d",
-                     self.remote_host, self.peer)
-            snapshot.send_multipart(["ICANHAZ?", ''])
+            #snapshot = self.ctx.socket(zmq.DEALER)
+            #snapshot.linger = 0
+            #snapshot.connect("tcp://%s:%i" % (self.remote_host, self.peer))
+            #
+            #log.info("asking for snapshot from: tcp://%s:%d",
+            #         self.remote_host, self.peer)
+            #snapshot.send_multipart(["ICANHAZ?", ''])
+
+            snapshot = peer.get_snapshot()
+
             while True:
                 try:
                     kvmsg = KVMsg.recv(snapshot)

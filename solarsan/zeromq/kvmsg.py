@@ -6,6 +6,9 @@ Author: Min RK <benjaminrk@gmail.com>
 
 """
 
+from solarsan import logging
+log = logging.getLogger(__name__)
+
 import struct  # for packing integers
 import sys
 from uuid import uuid4
@@ -34,6 +37,8 @@ class KVMsg(object):
     uuid = None
     properties = None
     body = None
+
+    _debug = False
 
     def __init__(self, sequence, uuid=None, key=None, properties=None, body=None):
         assert isinstance(sequence, int)
@@ -80,6 +85,9 @@ class KVMsg(object):
     @classmethod
     def from_msg(cls, msg):
         """Construct key-value message from a multipart message"""
+        if cls._debug:
+            log.debug('msg=%s', msg)
+
         key, seq_s, uuid, prop_s, body = msg
         key = key if key else None
         seq = struct.unpack('!q', seq_s)[0]

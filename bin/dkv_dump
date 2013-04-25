@@ -18,11 +18,14 @@ from docopt import docopt
 from time import sleep
 
 from solarsan.zeromq.clonecli import get_client
+#from zmq.eventloop.ioloop import IOLoop
 
 
 def main(arguments):
     delay = int(arguments['<delay>'] or 3)
     max_iterations = int(arguments['<iterations>'] or 0)
+
+    #loop = IOLoop.instance()
 
     c = get_client()
 
