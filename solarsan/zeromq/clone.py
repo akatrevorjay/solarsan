@@ -245,6 +245,7 @@ class CloneAgent(object):
             if s.address == address and s.port == port:
                 logger.info("Disconnecting from '%s:%d'", address, port)
                 self.servers.pop(x)
+            # Has to be libzmq 3.x for this to work, is it worth leaving?
             self.publisher.disconnect("%s:%i" % (address, port + 2))
 
     def connect_via_discovery(self):

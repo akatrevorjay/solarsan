@@ -324,10 +324,6 @@ class CloneServer(object):
         """snapshot requests"""
         #log.debug('handle_snapshot: Got msg=%s', msg[1:])
 
-        #if msg[1] == 'IM_SLAVE':
-        #    log.debug('Tried to get snapshot from slave.')
-        #    return
-
         if msg[1] != "ICANHAZ?" or len(msg) != 3:
             log.error("bad request, aborting")
             dump(msg)
@@ -340,11 +336,6 @@ class CloneServer(object):
             subtree = msg[2]
             # Send state snapshot to client
             route = Route(socket, identity, subtree)
-
-            #if self.kvmap is None:
-            #    log.debug('Someone tried to get snapshot from us, but we do not have a kvmap')
-            #    socket.send_multipart([identity, 'IM_SLAVE'])
-            #    return
 
             # For each entry in kvmap, send kvmsg to client
             for k, v in self.kvmap.items():
