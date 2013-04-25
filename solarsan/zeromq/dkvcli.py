@@ -8,53 +8,53 @@ import pickle
 # import zmq
 
 try:
-    from clone import Clone
+    from dkv import Dkv
 except ImportError:
-    from .clone import Clone
+    from .dkv import Dkv
 
 #SUBTREE = "/client/"
 SUBTREE = ""
 
 
 def get_client():
-    # Create and connect clone
-    clone = Clone()
-    #clone.subtree = SUBTREE
-    #clone.subtree = '/client/'
+    # Create and connect dkv
+    dkv = Dkv()
+    #dkv.subtree = SUBTREE
+    #dkv.subtree = '/client/'
 
-    clone.connect_via_discovery()
+    dkv.connect_via_discovery()
 
-    #clone.connect("tcp://san0", 5556)
-    #clone.connect("tcp://san1", 5556)
+    #dkv.connect("tcp://san0", 5556)
+    #dkv.connect("tcp://san1", 5556)
 
-    return clone
+    return dkv
 
 
-def test(clone):
-    clone['trevorj_yup'] = 'fksdkfjksdf'
-    clone[SUBTREE + 'trevorj'] = 'woot'
-    clone[SUBTREE + 'trevorj-pickle'] = pickle.dumps(
+def test(dkv):
+    dkv['trevorj_yup'] = 'fksdkfjksdf'
+    dkv[SUBTREE + 'trevorj'] = 'woot'
+    dkv[SUBTREE + 'trevorj-pickle'] = pickle.dumps(
         {'whoa': 'yeah', 'lbh': True})
 
-    logger.debug('SHOW SERVER: %s', clone.show('SERVER'))
-    logger.debug('SHOW SERVERS: %s', clone.show('SERVERS'))
-    logger.debug('SHOW SEQ: %s', clone.show('SEQ'))
+    logger.debug('SHOW SERVER: %s', dkv.show('SERVER'))
+    logger.debug('SHOW SERVERS: %s', dkv.show('SERVERS'))
+    logger.debug('SHOW SEQ: %s', dkv.show('SEQ'))
 
 
-def test_rand_cache(clone):
+def test_rand_cache(dkv):
     # Distribute as key-value message
     key = "%d" % random.randint(1, 10000)
     value = "%d" % random.randint(1, 1000000)
-    clone.set(key, value, random.randint(0, 30))
+    dkv.set(key, value, random.randint(0, 30))
 
 
 def main():
-    clone = get_client()
-    #test(clone)
+    dkv = get_client()
+    #test(dkv)
 
     try:
         while True:
-            #test_rand_cache(clone)
+            #test_rand_cache(dkv)
             time.sleep(1)
     except KeyboardInterrupt:
         pass
