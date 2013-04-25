@@ -264,7 +264,7 @@ class Beacon(object):
 
         uid = uuid.UUID(bytes=peer_id)
 
-        log.info('Conecting to: %s at %s' % (uid, peer_addr))
+        log.debug('Conecting to: %s at %s' % (uid, peer_addr))
         sock.connect(peer_addr)
 
         sock = ZMQStream(sock, self.loop)

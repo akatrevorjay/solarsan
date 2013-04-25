@@ -35,9 +35,6 @@ class Greet:
 
 
 class Peer:
-    class STATES:
-        INITIAL = 'INITIAL'
-
     ctx = None
 
     def __init__(self, id, uuid, socket, addr, time_=None, beacon=None, clonesrv=None):
@@ -47,15 +44,12 @@ class Peer:
         self.addr = addr
         self.time = time_ or time.time()
 
-        proto, host = addr.split('://', 1)
-        host, port = host.rsplit(':', 1)
-        self.host = host
+        self.proto, host = addr.split('://', 1)
+        self.host, port = host.rsplit(':', 1)
         #self.host = self.addr.rsplit(':', 1)[0].split('://', 1)[1]
 
-        self.beacon = beacon
-        self.clonesrv = clonesrv
-
-        self.state = self.STATES.INITIAL
+        # TODO This does not belong here.
+        self.on_subscriber_recv_cb = clonesrv.handle_subscriber
 
         self.init()
 
@@ -90,7 +84,8 @@ class Peer:
     def subscriber_recv(self, msg):
         if msg[0] != 'HUGZ':
             log.debug('Peer %s: Subscriber msg=%s', self.uuid, msg)
-        self.clonesrv.handle_subscriber(self, msg)
+        if self.on_subscriber_recv_cb:
+            self.on_subscriber_recv_cb(self, msg)
 
     """
     Clone
@@ -139,14 +134,12 @@ class Peer:
 
 class GreeterBeacon(Beacon):
     _peer_cls = Peer
-
     clonesrv = None
 
     def __init__(self, *args, **kwargs):
         super(GreeterBeacon, self).__init__(*args, **kwargs)
 
         self.clonesrv = CloneServer()
-
         self._peer_init_kwargs['clonesrv'] = self.clonesrv
 
     def start(self, loop=True):
