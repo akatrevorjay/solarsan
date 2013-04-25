@@ -273,18 +273,18 @@ class Beacon(object):
 
         sock = ZMQStream(sock, self.loop)
         sock.on_recv(self._recv_peer)
-        sock.set_close_callback(partial(self._peer_socket_closed, peer_id))
+        #sock.set_close_callback(partial(self._peer_socket_closed, peer_id))
 
         peer = self.peers[peer_id] = self._peer_cls(peer_id, uid, sock, peer_addr, time.time(), **self._peer_init_kwargs)
         self._on_peer_connected(peer)
 
-    def _peer_socket_closed(self, peer_id):
-        peer = self.peers.get(peer_id)
-        if not peer:
-            return
-
-        log.debug('Peer socket closed: %s', peer.uuid)
-        self._on_peer_socket_closed(peer)
+    #def _peer_socket_closed(self, peer_id):
+    #    peer = self.peers.get(peer_id)
+    #    if not peer:
+    #        return
+    #
+    #    log.debug('Peer socket closed: %s', peer.uuid)
+    #    self._on_peer_socket_closed(peer)
 
     def handle_recv_msg(self, peer_id, *msg):
         """Override this method to customize message handling.
