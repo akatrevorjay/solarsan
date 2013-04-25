@@ -1,17 +1,9 @@
 
 from solarsan import logging, conf
 logger = logging.getLogger(__name__)
-from circuits import Component, Event, Timer
-
-import zmq.utils.jsonapi as json
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-# Temp hack
-from solarsan.zeromq.clonecli import Clone, get_client
 from solarsan.pretty import pp
+from circuits import Component, Event, Timer
+from solarsan.zeromq.dkvcli import get_client
 
 
 """
@@ -40,22 +32,22 @@ class DkvManager(Component):
 
     def __init__(self, channel=channel):
         super(DkvManager, self).__init__(channel=channel)
-        self.clone = get_client()
-        self.clone.signals.on_sub.connect(self._clone_on_sub)
+        self.dkv = get_client()
+        self.dkv.signals.on_sub.connect(self._dkv_on_sub)
 
-        DkvTest(self.clone).register(self)
+        DkvTest(self.dkv).register(self)
 
-    def _clone_on_sub(self, sender=None, key=None, value=None, **kwargs):
+    def _dkv_on_sub(self, sender=None, key=None, value=None, **kwargs):
         self.fire(DkvUpdate({key: value, 'kvmsg': sender}))
 
     def dkv_get(self, key):
-        return self.clone.get(key)
+        return self.dkv.get(key)
 
     def dkv_set(self, key, value, ttl=0):
-        return self.clone.set(key, value, ttl=ttl)
+        return self.dkv.set(key, value, ttl=ttl)
 
     #def dkv_show(self, key):
-    #    return self.clone.show(key)
+    #    return self.dkv.show(key)
 
     #def dkv_update(self, update, **kwargs):
     #    #pp('%s=%s' % (key, value))
@@ -76,9 +68,9 @@ class TestUpdate2(TestUpdate):
 class DkvTest(Component):
     channel = 'dkv_test'
 
-    def __init__(self, clone, channel=channel):
+    def __init__(self, dkv, channel=channel):
         Component.__init__(self, channel=channel)
-        self.clone = clone
+        self.dkv = dkv
 
         Timer(10.0, TestUpdate(), 'dkv_test', persist=True).register(self)
         Timer(10.0, TestUpdate2(), 'dkv_test', persist=True).register(self)
@@ -88,36 +80,36 @@ class DkvTest(Component):
 
     def test_update(self):
         logger.debug('Testing DKV One')
-        clone = self.clone
+        dkv = self.dkv
 
-        clone.set('/nodes/%s.neighbors' % conf.hostname, 'san0 san1')
-        clone.set('/nodes/%s.alive' % conf.hostname, 'yes', ttl=30)
+        dkv.set('/nodes/%s.neighbors' % conf.hostname, 'san0 san1')
+        dkv.set('/nodes/%s.alive' % conf.hostname, 'yes', ttl=30)
 
     def test_update2(self):
         logger.debug('Testing DKV Two')
-        clone = self.clone
+        dkv = self.dkv
 
-        #clone.set('/nodes/me', str(conf.hostname), ttl=30)
-        clone.set('/nodes2/%s.alive' % conf.hostname, 'yes', ttl=30)
-        clone.set('/nodes2/%s.neighbors' % conf.hostname, 'san0 san1')
+        #dkv.set('/nodes/me', str(conf.hostname), ttl=30)
+        dkv.set('/nodes2/%s.alive' % conf.hostname, 'yes', ttl=30)
+        dkv.set('/nodes2/%s.neighbors' % conf.hostname, 'san0 san1')
 
     def test(self):
         logger.debug('Testing DKV')
-        clone = self.clone
+        dkv = self.dkv
 
         self.fire(DkvSet('/test/trevorj', 'woot'))
 
-        clone['/test/trevorj_yup'] = 'fksdkfjksdf'
-        clone['/test/trevorj2'] = 'woot'
+        dkv['/test/trevorj_yup'] = 'fksdkfjksdf'
+        dkv['/test/trevorj2'] = 'woot'
 
         test_pickle = {'whoa': 'yeah', 'lbh': True}
-        clone.set('/test/trevorj-pickle2', test_pickle, pickle=True)
+        dkv.set('/test/trevorj-pickle2', test_pickle, pickle=True)
 
         test_pickle_s = pickle.dumps(test_pickle)
-        clone['/test/trevorj-pickle'] = test_pickle_s
+        dkv['/test/trevorj-pickle'] = test_pickle_s
 
-        logger.debug('SHOW SERVER: %s', clone.show('SERVER'))
-        logger.debug('SHOW SERVERS: %s', clone.show('SERVERS'))
-        logger.debug('SHOW SEQ: %s', clone.show('SEQ'))
+        logger.debug('SHOW SERVER: %s', dkv.show('SERVER'))
+        logger.debug('SHOW SERVERS: %s', dkv.show('SERVERS'))
+        logger.debug('SHOW SEQ: %s', dkv.show('SEQ'))
 
         logger.debug('Done Testing DKV')
