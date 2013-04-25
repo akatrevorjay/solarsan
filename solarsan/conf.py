@@ -24,7 +24,15 @@ rpyc_conn_config = Bunch(
 scst_config_file = '/etc/scst.conf'
 
 ports = Bunch(
+    bstar_primary=5003,
+    bstar_secondary=5004,
+
     discovery=1785,
+
+    dkv=5556,
+    dkv_publisher=5557,
+    dkv_collector=5558,
+
     #_rpc=1787,
     #_drbd_start=7800,
 )

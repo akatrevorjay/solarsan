@@ -32,7 +32,6 @@ Synchronous part, works in our application thread
 """
 
 
-
 class Clone(object):
     ctx = None          # Our Context
     pipe = None         # Pipe through to clone agent
@@ -63,24 +62,28 @@ class Clone(object):
         """
         self._subtree = None
         self.pipe.send_multipart(["SUBTREE", subtree])
+        return self.pipe.recv_multipart()
 
     def connect(self, address, port):
         """ Connect to new server endpoint
         Sends [CONNECT][address][port] to the agent
         """
         self.pipe.send_multipart(["CONNECT", address, str(port)])
+        return self.pipe.recv_multipart()
 
     def connect_via_discovery(self):
         """ Connect to new server endpoints discovered via beacon
         Sends [CONNECT_DISCOVERY] to the agent
         """
         self.pipe.send_multipart(["CONNECT_DISCOVERY"])
+        return self.pipe.recv_multipart()
 
     def disconnect(self, address, port):
         """ Disconnect to new server endpoint
         Sends [DISCONNECT][address][port] to the agent
         """
         self.pipe.send_multipart(["DISCONNECT", address, str(port)])
+        return self.pipe.recv_multipart()
 
     def set(self, key, value, ttl=_default_ttl, **kwargs):
         """ Set new value in distributed hash table.
@@ -107,6 +110,7 @@ class Clone(object):
                 raise Exception("Cannot find serializer '%s'" % serializer)
 
         self.pipe.send_multipart([cmd, key, value, str(ttl), serializer])
+        return self.pipe.recv_multipart()
 
     def get(self, key, default=None, **kwargs):
         """ Lookup value in distributed hash table
@@ -272,14 +276,17 @@ class CloneAgent(object):
             address = msg.pop(0)
             port = int(msg.pop(0))
             self.connect(address, port)
+            self.pipe.send_multipart(['OK'])
 
         elif command == 'CONNECT_DISCOVERY':
             self.connect_via_discovery()
+            self.pipe.send_multipart(['OK'])
 
         elif command == "DISCONNECT":
             address = msg.pop(0)
             port = int(msg.pop(0))
             self.disconnect(address, port)
+            self.pipe.send_multipart(['OK'])
 
         elif command == "SET":
             key, value, sttl, serializer = msg
@@ -293,6 +300,7 @@ class CloneAgent(object):
             if serializer:
                 kvmsg["serializer"] = serializer
             kvmsg.send(self.publisher)
+            self.pipe.send_multipart(['OK'])
 
         elif command == "GET":
             key = msg[0]

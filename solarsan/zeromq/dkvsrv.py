@@ -51,9 +51,8 @@ class Peer:
         self.addr = addr
         self.time = time_ or time.time()
 
-        self.proto, host = addr.split('://', 1)
-        self.host, self.broadcast_port = host.rsplit(':', 1)
-        #self.host = self.addr.rsplit(':', 1)[0].split('://', 1)[1]
+        self.transport, host = addr.split('://', 1)
+        self.host, self.beacon_router_port = host.rsplit(':', 1)
 
         # Set callbacks
         for k, v in kwargs.iteritems():
@@ -73,15 +72,10 @@ class Peer:
         self.subscriber = ZMQStream(self.subscriber)
         self.subscriber.on_recv(self._on_subscriber_recv)
 
-    dkv_port = 5556
-
-    @property
-    def collector_port(self):
-        return self.dkv_port + 2
-
-    @property
-    def publisher_port(self):
-        return self.dkv_port + 1
+    beacon_router_port = None
+    port = conf.ports.dkv
+    publisher_port = conf.ports.dkv_publisher
+    collector_port = conf.ports.dkv_collector
 
     @property
     def publisher_endpoint(self):
@@ -114,7 +108,7 @@ class Peer:
 
     @property
     def snapshot_endpoint(self):
-        return 'tcp://%s:%d' % (self.host, self.dkv_port)
+        return 'tcp://%s:%d' % (self.host, self.port)
 
     def get_snapshot(self):
         snapshot = self.ctx.socket(zmq.DEALER)
@@ -260,11 +254,11 @@ class CloneServer(object):
 
         if primary:
             self.kvmap = {}
-            bstar_local_ep = 'tcp://*:5003'
-            bstar_remote_ep = 'tcp://%s:5004' % remote_host
+            bstar_local_ep = 'tcp://*:%d' % conf.ports.bstar_primary
+            bstar_remote_ep = 'tcp://%s:%d' % (remote_host, conf.ports.bstar_secondary)
         else:
-            bstar_local_ep = 'tcp://*:5004'
-            bstar_remote_ep = 'tcp://%s:5003' % remote_host
+            bstar_local_ep = 'tcp://*:%d' % conf.ports.bstar_secondary
+            bstar_remote_ep = 'tcp://%s:%d' % (remote_host, conf.ports.bstar_primary)
 
         # Setup router socket
         #self.router = self.ctx.socket(zmq.ROUTER)
@@ -462,7 +456,7 @@ class CloneServer(object):
         """We're becoming slave"""
         log.info('Becoming slave')
 
-        self.kvmap = {}      # clear kvmap
+        self.kvmap = None     # clear kvmap
 
         self.master = False
         self.slave = True
