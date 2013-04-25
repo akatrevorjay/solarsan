@@ -62,7 +62,7 @@ class Beacon(object):
                  dead_interval=30,
                  on_recv_msg=None,
                  on_peer_connected=None,
-                 on_peer_deadbeat=None):
+                 on_peer_lost=None):
 
         self.broadcast_addr = broadcast_addr
         self.broadcast_port = broadcast_port
@@ -74,7 +74,7 @@ class Beacon(object):
 
         self.on_recv_msg_cb = on_recv_msg
         self.on_peer_connected_cb = on_peer_connected
-        self.on_peer_deadbeat_cb = on_peer_deadbeat
+        self.on_peer_lost_cb = on_peer_lost
 
         self.peers = {}
         if service_addr != '*':
@@ -196,7 +196,7 @@ class Beacon(object):
                 raise e
             return
 
-        # check for deadbeats
+        # check for losts
         now = time.time()
         for peer_id in self.peers.keys():
             peer = self.peers.get(peer_id)
@@ -204,10 +204,10 @@ class Beacon(object):
                 continue
 
             if now - peer.time > self.dead_interval:
-                log.debug('Deadbeat: %s', peer.uuid)
+                log.debug('Lost peer %s.', peer.uuid)
 
                 peer.socket.close()
-                self._on_peer_deadbeat(peer)
+                self._on_peer_lost(peer)
 
                 del self.peers[peer_id]
 
@@ -258,13 +258,18 @@ class Beacon(object):
 
         sock = ZMQStream(sock, self.loop)
         sock.on_recv(self._recv_peer)
-        sock.set_close_callback(self._peer_socket_closed)
+        sock.set_close_callback(partial(self._peer_socket_closed, peer_id))
 
         peer = self.peers[peer_id] = self._peer_cls(peer_id, uid, sock, peer_addr, time.time(), **self._peer_init_kwargs)
         self._on_peer_connected(peer)
 
-    def _peer_socket_closed(self, *args):
-        log.info('args=%s', args)
+    def _peer_socket_closed(self, peer_id):
+        peer = self.peers.get(peer_id)
+        if not peer:
+            return
+
+        log.debug('Peer socket closed: %s', peer.uuid)
+        self._on_peer_socket_closed(peer)
 
     def handle_recv_msg(self, peer_id, *msg):
         """Override this method to customize message handling.
@@ -289,7 +294,10 @@ class Beacon(object):
     def _on_peer_connected(self, peer):
         return self._callback(None, peer)
 
-    def _on_peer_deadbeat(self, peer):
+    def _on_peer_lost(self, peer):
+        return self._callback(None, peer)
+
+    def _on_peer_socket_closed(self, peer):
         return self._callback(None, peer)
 
     def _callback(self, name, *args, **kwargs):
@@ -347,6 +355,8 @@ class Peer:
 
         self.state = self.STATES.INITIAL
 
+        self.init()
+
     def init(self):
         if not self.ctx:
             self.ctx = zmq.Context.instance()
@@ -360,8 +370,6 @@ class Peer:
         # Wrap sockets in ZMQStreams for IOLoop handlers
         self.subscriber = ZMQStream(self.subscriber, self.loop)
         self.subscriber.on_recv(self.subscriber_recv)
-
-        self.clonesrv.add_peer(self)
 
     port = 5556
 
@@ -426,7 +434,7 @@ class Peer:
 
         self.greet = greet
 
-        self.init()
+        #self.init()
 
 
 class GreeterBeacon(Beacon):
@@ -466,8 +474,12 @@ class GreeterBeacon(Beacon):
         peer.send_greet_delay = DelayedCallback(peer.send_greet, self.beacon_interval * 1000, self.loop)
         peer.send_greet_delay.start()
 
-    def on_peer_deadbeat(self, peer):
+        self.clonesrv.add_peer(peer)
+
+    def on_peer_lost(self, peer):
         log.info('Peer %s: Lost.', peer.uuid)
+
+        self.clonesrv.remove_peer(peer)
 
 
 class FSMError(Exception):
@@ -506,6 +518,8 @@ class BinaryStar(object):
     master_callback = None  # Call when become master
     slave_callback = None   # Call when become slave
     heartbeat = None        # PeriodicCallback for
+
+    _debug = False
 
     def __init__(self, primary, local, remote):
         if not self.ctx:
@@ -643,7 +657,8 @@ class BinaryStar(object):
         # If server can accept input now, call appl handler
         self.event = self.EVENTS.CLIENT_REQUEST
         if self.execute_fsm():
-            log.debug("CLIENT REQUEST")
+            if self._debug:
+                log.debug("CLIENT REQUEST")
             self.voter_callback(self.voter_socket, msg)
         else:
             # Message will be ignored
@@ -698,13 +713,22 @@ class CloneServer(object):
     _debug = False
 
     def add_peer(self, peer):
-        log.info('Add peer %s to CloneServer', peer.uuid)
-        #uuid = peer.uuid
-        greet = peer.greet
-        uuid = greet.uuid
-        log.info('Peer has Cluster Peer UUID=%s', greet.uuid)
+        #if peer.id in self.peers:
+        #    return
 
+        log.info('CloneServer: Adding Peer %s.', peer.uuid)
+
+        uuid = peer.uuid
         self.peers[uuid] = peer
+
+    def remove_peer(self, peer):
+        #if peer.id not in self.peers:
+        #    return
+
+        log.info('CloneServer: Removing Peer %s.', peer.uuid)
+
+        uuid = peer.uuid
+        del self.peers[uuid]
 
     @property
     def router_endpoint(self):
@@ -733,8 +757,8 @@ class CloneServer(object):
         self.remote_host = remote_host
         self.primary = primary
 
+        self.kvmap = {}
         if primary:
-            self.kvmap = {}
             bstar_local_ep = 'tcp://*:5003'
             bstar_remote_ep = 'tcp://%s:5004' % remote_host
 
@@ -805,7 +829,7 @@ class CloneServer(object):
 
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
-        log.debug('handle_snapshot: Got msg=%s', msg)
+        log.debug('handle_snapshot: Got msg=%s', msg[1:])
 
         #if msg[1] == 'IM_SLAVE':
         #    log.debug('Tried to get snapshot from slave.')
@@ -824,7 +848,6 @@ class CloneServer(object):
             # Send state snapshot to client
             route = Route(socket, identity, subtree)
 
-            # For each entry in kvmap, send kvmsg to client
             #if self.kvmap is None:
             #    log.debug('Someone tried to get snapshot from us, but we do not have a kvmap')
             #    socket.send_multipart([identity, 'IM_SLAVE'])
@@ -934,7 +957,7 @@ class CloneServer(object):
 
     def become_slave(self):
         """We're becoming slave"""
-        self.kvmap = None       # clear kvmap
+        self.kvmap = {}      # clear kvmap
 
         self.master = False
         self.slave = True
@@ -943,7 +966,7 @@ class CloneServer(object):
         #self.subscriber.on_recv(self.handle_subscriber)
         #self._handle_subscriber = True
         for peer in self.peers.values():
-            self.subscriber.on_recv(peer.subscriber_recv)
+            peer.subscriber.on_recv(peer.subscriber_recv)
 
     def handle_subscriber(self, peer, msg):
         """Collect updates from peer (master)
