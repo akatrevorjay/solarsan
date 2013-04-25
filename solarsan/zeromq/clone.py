@@ -32,6 +32,7 @@ Synchronous part, works in our application thread
 """
 
 
+
 class Clone(object):
     ctx = None          # Our Context
     pipe = None         # Pipe through to clone agent
@@ -68,6 +69,18 @@ class Clone(object):
         Sends [CONNECT][address][port] to the agent
         """
         self.pipe.send_multipart(["CONNECT", address, str(port)])
+
+    def connect_via_discovery(self):
+        """ Connect to new server endpoints discovered via beacon
+        Sends [CONNECT_DISCOVERY] to the agent
+        """
+        self.pipe.send_multipart(["CONNECT_DISCOVERY"])
+
+    def disconnect(self, address, port):
+        """ Disconnect to new server endpoint
+        Sends [DISCONNECT][address][port] to the agent
+        """
+        self.pipe.send_multipart(["DISCONNECT", address, str(port)])
 
     def set(self, key, value, ttl=_default_ttl, **kwargs):
         """ Set new value in distributed hash table.
@@ -177,6 +190,9 @@ class CloneServer(object):
         self.subscriber.linger = 0
 
 
+from .beacon import Beacon
+
+
 class CloneAgent(object):
     """ Simple class for one background agent """
 
@@ -195,6 +211,7 @@ class CloneAgent(object):
     cur_server = 0          # If active, index of server in list
     sequence = 0            # last kvmsg procesed
     publisher = None        # Outgoing updates
+    beacon = None
 
     def __init__(self, ctx, pipe):
         self.ctx = ctx
@@ -211,6 +228,41 @@ class CloneAgent(object):
 
         self.servers = []
 
+    def connect(self, address='tcp://localhost', port=5556):
+        if len(self.servers) < SERVER_MAX:
+            self.servers.append(CloneServer(
+                self.ctx, address, port, self.subtree))
+            self.publisher.connect("%s:%i" % (address, port + 2))
+        else:
+            logger.error("too many servers (max. %i)", SERVER_MAX)
+
+    def disconnect(self, address='tcp://localhost', port=5556):
+        for x, s in enumerate(self.servers):
+            if s.address == address and s.port == port:
+                logger.info("Disconnecting from '%s:%d'", address, port)
+                self.servers.pop(x)
+            self.publisher.disconnect("%s:%i" % (address, port + 2))
+
+    def connect_via_discovery(self):
+        logger.info('Starting beacon to discover neighbors; will auto-connect to any found.')
+
+        self.beacon = Beacon()
+        self.beacon.on_peer_connected_cb = self._beacon_on_peer_connected
+        self.beacon.on_peer_lost_cb = self._beacon_on_peer_lost
+
+        #self.beacon.start(loop=False)
+        t = threading.Thread(target=self.beacon.start)
+        t.daemon = True
+        t.start()
+
+    def _beacon_on_peer_connected(self, beacon, peer):
+        logger.info('Connecting to discovered server %s', peer.addr)
+        self.connect('%s://%s' % (peer.proto, peer.host), 5556)
+
+    def _beacon_on_peer_lost(self, beacon, peer):
+        logger.info('Disconnecting from lost server %s', peer.addr)
+        self.disconnect('%s://%s' % (peer.proto, peer.host), 5556)
+
     def control_message(self):
         msg = self.pipe.recv_multipart()
         command = msg.pop(0)
@@ -219,12 +271,15 @@ class CloneAgent(object):
         if command == "CONNECT":
             address = msg.pop(0)
             port = int(msg.pop(0))
-            if len(self.servers) < SERVER_MAX:
-                self.servers.append(CloneServer(
-                    self.ctx, address, port, self.subtree))
-                self.publisher.connect("%s:%i" % (address, port + 2))
-            else:
-                logger.error("too many servers (max. %i)", SERVER_MAX)
+            self.connect(address, port)
+
+        elif command == 'CONNECT_DISCOVERY':
+            self.connect_via_discovery()
+
+        elif command == "DISCONNECT":
+            address = msg.pop(0)
+            port = int(msg.pop(0))
+            self.disconnect(address, port)
 
         elif command == "SET":
             key, value, sttl, serializer = msg

@@ -434,8 +434,6 @@ class Peer:
 
         self.greet = greet
 
-        #self.init()
-
 
 class GreeterBeacon(Beacon):
     _peer_cls = Peer

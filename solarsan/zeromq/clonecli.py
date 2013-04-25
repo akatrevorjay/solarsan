@@ -22,17 +22,7 @@ def get_client():
     #clone.subtree = SUBTREE
     #clone.subtree = '/client/'
 
-    #clone.connect("tcp://localhost", 5556)
-    #clone.connect("tcp://localhost", 5566)
-
-    host = conf.hostname
-    if host == 'san0':
-        remote_host = 'san1'
-    elif host == 'san1':
-        remote_host = 'san0'
-
-    clone.connect("tcp://%s" % host, 5556)
-    clone.connect("tcp://%s" % remote_host, 5556)
+    clone.connect_via_discovery()
 
     #clone.connect("tcp://san0", 5556)
     #clone.connect("tcp://san1", 5556)
