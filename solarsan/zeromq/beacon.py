@@ -114,7 +114,7 @@ class Beacon(object):
 
         self.router = ZMQStream(self.router, self.loop)
         self.router.on_recv(self._recv_router)
-        self.router.set_close_callback(self._peer_socket_closed)
+        #self.router.set_close_callback(self._peer_socket_closed)
 
         self.broadcaster = socket.socket(
             socket.AF_INET,
@@ -273,18 +273,18 @@ class Beacon(object):
 
         sock = ZMQStream(sock, self.loop)
         sock.on_recv(self._recv_peer)
-        sock.set_close_callback(partial(self._peer_socket_closed, peer_id))
+        #sock.set_close_callback(partial(self._peer_socket_closed, peer_id))
 
         peer = self.peers[peer_id] = self._peer_cls(peer_id, uid, sock, peer_addr, time.time(), **self._peer_init_kwargs)
         self._on_peer_connected(peer)
 
-    def _peer_socket_closed(self, peer_id):
-        peer = self.peers.get(peer_id)
-        if not peer:
-            return
-
-        log.debug('Peer socket closed: %s', peer.uuid)
-        self._on_peer_socket_closed(peer)
+    #def _peer_socket_closed(self, peer_id):
+    #    peer = self.peers.get(peer_id)
+    #    if not peer:
+    #        return
+    #
+    #    log.debug('Peer socket closed: %s', peer.uuid)
+    #    self._on_peer_socket_closed(peer)
 
     def handle_recv_msg(self, peer_id, *msg):
         """Override this method to customize message handling.
@@ -312,8 +312,8 @@ class Beacon(object):
     def _on_peer_lost(self, peer):
         return self._callback(None, peer)
 
-    def _on_peer_socket_closed(self, peer):
-        return self._callback(None, peer)
+    #def _on_peer_socket_closed(self, peer):
+    #    return self._callback(None, peer)
 
     def _callback(self, name, *args, **kwargs):
         if not name:
