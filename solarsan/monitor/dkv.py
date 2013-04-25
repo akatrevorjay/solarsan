@@ -73,7 +73,7 @@ class DkvTest(Component):
         self.dkv = dkv
 
         Timer(10.0, TestUpdate(), 'dkv_test', persist=True).register(self)
-        Timer(10.0, TestUpdate2(), 'dkv_test', persist=True).register(self)
+        #Timer(10.0, TestUpdate2(), 'dkv_test', persist=True).register(self)
 
     #def started(self, component):
     #    self.test()

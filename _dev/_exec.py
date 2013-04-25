@@ -49,3 +49,6 @@ import mongoengine
 
 # misc
 from uuid import UUID, uuid4
+
+# zeromq
+from solarsan.zeromq.dkvcli import get_client
