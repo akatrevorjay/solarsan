@@ -17,11 +17,7 @@ from zmq.eventloop.zmqstream import ZMQStream
 
 from .util import ZippedPickle
 from .beacon import Beacon
-from .dkv_bstar import BinaryStar
-
-#from . import clonesrv
-#from .bstar import BinaryStar
-from .clonesrv import Route, send_single
+from .bstar import BinaryStar
 from .kvmsg import KVMsg
 from .zhelpers import dump
 
@@ -63,7 +59,7 @@ class Peer:
             self.ctx = zmq.Context.instance()
         self.loop = IOLoop.instance()
 
-        # Set up our own clone client interface to peer
+        # Set up our own dkv client interface to peer
         self.subscriber = self.ctx.socket(zmq.SUB)
         self.subscriber.setsockopt(zmq.SUBSCRIBE, b'')
         self.subscriber.connect(self.publisher_endpoint)
@@ -103,7 +99,7 @@ class Peer:
             #meth(self, *args, **kwargs)
             self.loop.add_callback(partial(meth, self, *args, **kwargs))
     """
-    Clone
+    Dkv
     """
 
     @property
@@ -151,21 +147,21 @@ class Peer:
 
 class GreeterBeacon(Beacon):
     _peer_cls = Peer
-    clonesrv = None
+    dkvsrv = None
 
     def __init__(self, *args, **kwargs):
         super(GreeterBeacon, self).__init__(*args, **kwargs)
 
-        self.clonesrv = CloneServer()
+        self.dkvsrv = DkvServer()
 
         # Set subscriber callback
-        self._peer_init_kwargs['on_subscriber_recv_cb'] = self.clonesrv.handle_subscriber
+        self._peer_init_kwargs['on_subscriber_recv_cb'] = self.dkvsrv.handle_subscriber
 
     def start(self, loop=True):
         super(GreeterBeacon, self).start(loop=False)
-        #self.clonesrv.start(loop=False)
+        #self.dkvsrv.start(loop=False)
         if loop:
-            return self.clonesrv.start(loop=loop)
+            return self.dkvsrv.start(loop=loop)
             #return self.loop.start()
 
     def on_recv_msg(self, peer, *msg):
@@ -185,16 +181,37 @@ class GreeterBeacon(Beacon):
         peer.send_greet_delay = DelayedCallback(peer.send_greet, self.beacon_interval * 1000)
         peer.send_greet_delay.start()
 
-        self.clonesrv.add_peer(peer)
+        self.dkvsrv.add_peer(peer)
 
     def on_peer_lost(self, peer):
         log.info('Peer %s: Lost.', peer.uuid)
 
-        self.clonesrv.remove_peer(peer)
+        self.dkvsrv.remove_peer(peer)
 
 
-class CloneServer(object):
-    """ Clone Server object """
+class Route:
+    """Simple struct for routing information for a key-value snapshot"""
+    socket = None
+    identity = None
+    subtree = None
+
+    def __init__(self, socket, identity, subtree):
+        self.socket = socket        # ROUTER socket to send to
+        self.identity = identity    # Identity of peer who requested state
+        self.subtree = subtree      # Client subtree specification
+
+
+def send_single(key, kvmsg, route):
+    """Send one state snapshot key-value pair to a socket"""
+    # check front of key against subscription subtree:
+    if kvmsg.key.startswith(route.subtree):
+        # Send identity of recipient first
+        route.socket.send(route.identity, zmq.SNDMORE)
+        kvmsg.send(route.socket)
+
+
+class DkvServer(object):
+    """ Dkv Server object """
     ctx = None                  # Context wrapper
 
     kvmap = None                # Key-value store
@@ -214,13 +231,13 @@ class CloneServer(object):
     _debug = False
 
     def add_peer(self, peer):
-        log.info('CloneServer: Adding Peer %s.', peer.uuid)
+        log.info('DkvServer: Adding Peer %s.', peer.uuid)
 
         uuid = peer.uuid
         self.peers[uuid] = peer
 
     def remove_peer(self, peer):
-        log.info('CloneServer: Removing Peer %s.', peer.uuid)
+        log.info('DkvServer: Removing Peer %s.', peer.uuid)
 
         uuid = peer.uuid
         del self.peers[uuid]
@@ -275,7 +292,7 @@ class CloneServer(object):
         self.bstar.master_callback = self.become_master
         self.bstar.slave_callback = self.become_slave
 
-        # Set up our clone server sockets
+        # Set up our dkv server sockets
         self.publisher = self.ctx.socket(zmq.PUB)
         self.publisher.bind(self.publisher_endpoint)
         #self.publisher = ZMQStream(self.publisher)
@@ -308,7 +325,7 @@ class CloneServer(object):
         return 'tcp://%s:%d' % (self.service_addr, self.publisher_port)
 
     def start(self, loop=True):
-        log.debug('CloneServer %s start', self)
+        log.debug('DkvServer %s start', self)
 
         # start periodic callbacks
         self.flush_callback.start()

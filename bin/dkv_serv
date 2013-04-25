@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from solarsan.zeromq.clonesrv import main
+from solarsan.zeromq.dkvsrv import main
 
 if __name__ == '__main__':
     main()

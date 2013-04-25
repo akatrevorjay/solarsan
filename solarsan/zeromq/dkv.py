@@ -32,9 +32,9 @@ Synchronous part, works in our application thread
 """
 
 
-class Clone(object):
+class Dkv(object):
     ctx = None          # Our Context
-    pipe = None         # Pipe through to clone agent
+    pipe = None         # Pipe through to dkv agent
     agent = None        # agent in a thread
     _subtree = None     # cache of our subtree value
     _default_ttl = 0    # Default TTL
@@ -46,7 +46,7 @@ class Clone(object):
         self.ctx = zmq.Context()
         self.pipe, peer = zpipe(self.ctx)
 
-        self.agent = threading.Thread(target=clone_agent, args=(self.ctx, peer))
+        self.agent = threading.Thread(target=dkv_agent, args=(self.ctx, peer))
         self.agent.daemon = True
         self.agent.start()
 
@@ -115,7 +115,7 @@ class Clone(object):
     def get(self, key, default=None, **kwargs):
         """ Lookup value in distributed hash table
         Sends [GET][key] to the agent and waits for a value response
-        If there is no clone available, will eventually return None.
+        If there is no dkv available, will eventually return None.
         """
         allowed_serializers = {}
         if kwargs.pop('pickle', None) is True:
@@ -141,7 +141,7 @@ class Clone(object):
     def show(self, key, default=None, **kwargs):
         """ Lookup value in distributed hash table
         Sends [SHOW][key] to the agent and waits for a value response
-        If there is no clone available, will eventually return None.
+        If there is no dkv available, will eventually return None.
         """
         kwargs.update(dict(_cmd='SHOW'))
         return self.get(key, default=default, **kwargs)
@@ -154,13 +154,13 @@ class Clone(object):
 
     def __getitem__(self, key):
         """ Allows hash-like access.
-        eg: clone['/test']
+        eg: dkv['/test']
         """
         return self.get(key)
 
     def __setitem__(self, key, value):
         """ Allows hash-like sets.
-        eg: clone['/test'] = 'blah'
+        eg: dkv['/test'] = 'blah'
         """
         return self.set(key, value)
 
@@ -170,7 +170,7 @@ Asynchronous part, works in the background
 """
 
 
-class CloneServer(object):
+class DkvServer(object):
     """ Simple class for one server we talk to """
 
     address = None          # Server address
@@ -197,7 +197,7 @@ class CloneServer(object):
 from .beacon import Beacon
 
 
-class CloneAgent(object):
+class DkvAgent(object):
     """ Simple class for one background agent """
 
     class STATES:
@@ -234,7 +234,7 @@ class CloneAgent(object):
 
     def connect(self, address='tcp://localhost', port=5556):
         if len(self.servers) < SERVER_MAX:
-            self.servers.append(CloneServer(
+            self.servers.append(DkvServer(
                 self.ctx, address, port, self.subtree))
             self.publisher.connect("%s:%i" % (address, port + 2))
         else:
@@ -331,11 +331,11 @@ class CloneAgent(object):
                 self.pipe.send_multipart([kvmap_s, 'pickle'])
 
 
-def clone_agent(ctx, pipe):
+def dkv_agent(ctx, pipe):
     """ Asynchronous agent manages server pool and handles request/reply
     dialog when the application asks for it. """
 
-    agent = CloneAgent(ctx, pipe)
+    agent = DkvAgent(ctx, pipe)
     server = None
 
     while True:
@@ -418,7 +418,7 @@ def clone_agent(ctx, pipe):
 
                     """ Signal """
                     if kvmsg.key != 'HUGZ':  # Don't send signals if it's just hugz
-                        Clone.signals.on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
+                        Dkv.signals.on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
 
         else:
             """Server has died, failover to next"""
