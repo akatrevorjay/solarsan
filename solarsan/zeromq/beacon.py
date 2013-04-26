@@ -38,13 +38,13 @@ class Peer:
         self.addr = addr
         self.time = time_ or time.time()
 
-        self.proto, host = addr.split('://', 1)
+        self.transport, host = addr.split('://', 1)
         self.host, port = host.rsplit(':', 1)
         #self.host = self.addr.rsplit(':', 1)[0].split('://', 1)[1]
 
     #@property
     #def endpoint(self):
-    #    return '%s://%s:%d' % (self.proto, self.host, self.port)
+    #    return '%s://%s:%d' % (self.transport, self.host, self.port)
 
 
 class Beacon(object):

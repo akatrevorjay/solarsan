@@ -36,6 +36,28 @@ Synchronous part, works in our application thread
 """
 
 
+def get_address(host='localhost', port=None,
+                service='/dkv', transport='tcp'):
+    if not host:
+        host = 'localhost'
+    if not port:
+        port = conf.ports.dkv
+    if not transport:
+        transport = 'tcp'
+    if not service:
+        service = ''
+    return '%s://%s:%s%s' % (transport, host, port, service)
+
+
+def parse_address(address):
+    m = re.match(r'^(?P<transport>\w+)://(?P<host>[-\w\.]+)(?P<port>:\d+)?(?P<service>/.*)?$', address, re.IGNORECASE)
+    if not m:
+        raise SolarSanError('Invalid address %s', address)
+    ret = m.groupdict()
+    ret['port'] = int(ret.get('port') and ret['port'][1:] or conf.ports.dkv)
+    return ret
+
+
 class Dkv(object):
     ctx = None          # Our Context
     pipe = None         # Pipe through to dkv agent
@@ -90,11 +112,15 @@ class Dkv(object):
         self.pipe.send_multipart(["SUBTREE", subtree])
         return self.pipe.recv_multipart()
 
-    def connect(self, address, port=conf.ports.dkv, service='/dkv'):
+    def connect(self, address=None, host=None, port=conf.ports.dkv, service='/dkv', transport='tcp'):
         """ Connect to new server endpoint
         Sends [CONNECT][address] to the agent
         """
-        self.pipe.send_multipart(['CONNECT', address, host, port, service])
+        if address is None:
+            connect_kwargs = dict(transport=transport, address=address, host=host, port=port, service=service)
+            address = get_address(**connect_kwargs)
+        #self.pipe.send_multipart(['CONNECT', pipeline.dump(connect_kwargs)])
+        self.pipe.send_multipart(['CONNECT', address])
         return self.pipe.recv_multipart()
 
     def connect_via_discovery(self):
@@ -223,23 +249,30 @@ class DkvServer(object):
 
     address = None          # Server address
     port = None             # Server port
-    snapshot = None         # Snapshot socket
-    subscriber = None       # Incoming updates
     expiry = 0              # Expires at this time
     requests = 0            # How many snapshot requests made?
 
-    def __init__(self, ctx, address, port, subtree):
+    def __init__(self, ctx, subtree, address):
         self.address = address
-        self.port = port
+        #self.port = port
+        connect_kwargs = parse_address(address)
+        self.port = int(connect_kwargs['port'])
 
         self.snapshot = ctx.socket(zmq.DEALER)
         self.snapshot.linger = 0
-        self.snapshot.connect("%s:%i" % (address, port))
+        #connect_kwargs['service'] = '/dkv/snapshot'
+        connect_kwargs['port'] = conf.ports.dkv
+        snapshot_address = get_address(**connect_kwargs)
+        logger.debug('Connecting snapshot to %s', snapshot_address)
+        self.snapshot.connect(snapshot_address)
 
         self.subscriber = ctx.socket(zmq.SUB)
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, subtree)
-        self.subscriber.connect("%s:%i" % (address, port + 1))
         self.subscriber.linger = 0
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, subtree)
+        #connect_kwargs['service'] = '/dkv/pub'
+        connect_kwargs['port'] = conf.ports.dkv_publisher
+        subscriber_address = get_address(**connect_kwargs)
+        self.subscriber.connect(subscriber_address)
 
 
 class DkvAgent(object):
@@ -266,9 +299,6 @@ class DkvAgent(object):
     pipeline = pipeline
     connected_event = None
 
-    address_space = '/dkv/client'
-    port = conf.ports.dkv
-
     def __init__(self, ctx, pipe, connected_event=None, debug=False):
         self.debug = debug
         self.ctx = ctx
@@ -288,34 +318,31 @@ class DkvAgent(object):
         if connected_event:
             self.connected_event = connected_event
 
-    def get_address(cls, transport='tcp', host='localhost', port=port, service='/dkv'):
-        return '%s://%s:%s%s' % (transport, host, port, service)
-
     def connect(self, address=None):
-        if address is None:
-            address = self.get_address()
-
-        m = re.match(r'^(\w+)://([-\w\.]+)(:\d+)?(/.*)$', address, re.IGNORECASE)
-        if not m:
-            raise SolarSanError('Invalid address %s', address)
-        transport, host, port, service = m.groups()
-        host = host[1:]
-        port = port and int(port[1:]) or self.port
+        kwargs = parse_address(address)
+        kwargs['port'] = conf.ports.dkv + 2
+        address = get_address(**kwargs)
+        #connect_kwargs = parse_address(address)
 
         if len(self.servers) < SERVER_MAX:
             self.servers.append(DkvServer(
-                self.ctx, address, port, self.subtree))
-            self.publisher.connect("%s:%i" % (address, port + 2))
+                self.ctx, self.subtree, address))
+            logger.debug('Connecting publisher to %s', address)
+            #self.publisher.connect("%s:%i" % (address, self.port + 2))
+            #self.publisher.connect("%s:%i" % (address, self.port + 2))
+            self.publisher.connect(address)
         else:
             logger.error("too many servers (max. %i)", SERVER_MAX)
 
-    def disconnect(self, address='tcp://localhost', port=conf.ports.dkv):
+    def disconnect(self, address=None):
+        kwargs = parse_address(address)
         for x, s in enumerate(self.servers):
-            if s.address == address and s.port == port:
-                logger.info("Disconnecting from '%s:%d'", address, port)
+            logger.debug("Checking if I should disconnect from %s", s)
+            if s.address == address and s.port == kwargs['port']:
+                logger.info("Disconnecting from '%s:%d'", address, kwargs['port'])
                 self.servers.pop(x)
             # Has to be libzmq 3.x for this to work, is it worth leaving?
-            self.publisher.disconnect("%s:%i" % (address, port + 2))
+            self.publisher.disconnect(address)
 
     def connect_via_discovery(self):
         logger.debug('Starting beacon in background; will auto-connect to all peers.')
@@ -331,14 +358,15 @@ class DkvAgent(object):
 
     def _beacon_on_peer_connected(self, beacon, peer):
         logger.debug('Connecting to server %s', peer.addr)
-        self.connect('%s://%s' % (peer.proto, peer.host), 5556)
+        address = get_address(transport=peer.transport, host=peer.host)
+        self.connect(address)
 
         if self.connected_event and not self.connected_event.is_set():
             self.connected_event.set()
 
     def _beacon_on_peer_lost(self, beacon, peer):
         logger.warning('Disconnecting from lost server %s', peer.addr)
-        self.disconnect('%s://%s' % (peer.proto, peer.host), 5556)
+        self.disconnect('%s://%s' % (peer.transport, peer.host), conf.ports.dkv)
 
     def control_message(self):
         msg = self.pipe.recv_multipart()
@@ -349,7 +377,9 @@ class DkvAgent(object):
             pp(msg)
 
         if command == "CONNECT":
-            self.connect(*msg)
+            #connect_kwargs = pipeline.load(msg[0])
+            #self.connect(**connect_kwargs)
+            self.connect(msg[0])
             self.pipe.send_multipart(['OK'])
 
         elif command == 'CONNECT_DISCOVERY':
@@ -432,8 +462,7 @@ def dkv_agent(ctx, pipe, connected_event):
             if agent.servers:
                 server = agent.servers[agent.cur_server]
 
-                logger.debug("waiting for server at %s:%d...",
-                             server.address, server.port)
+                logger.debug("waiting for server at %s...", server.address)
 
                 if (server.requests < 2):
                     server.snapshot.send_multipart(["ICANHAZ?", agent.subtree])
@@ -471,8 +500,11 @@ def dkv_agent(ctx, pipe, connected_event):
             agent.control_message()
 
         elif server_socket in items:
-            kvmsg = KVMsg.recv(server_socket)
-
+            msg = server_socket.recv_multipart()
+            #logger.debug('server_socket=%s, msg=%s', server_socket, msg)
+            #logger.debug('msg=%s', msg)
+            #kvmsg = KVMsg.recv(server_socket)
+            kvmsg = KVMsg.from_msg(msg)
             #pp(kvmsg.__dict__)
 
             server.expiry = time.time() + SERVER_TTL    # Anything from server resets its expiry time
@@ -504,7 +536,6 @@ def dkv_agent(ctx, pipe, connected_event):
 
         else:
             """Server has died, failover to next"""
-            logger.error("server at %s:%d didn't give hugz",
-                         server.address, server.port)
+            logger.error("server at %s didn't give hugz", server.address)
             agent.cur_server = (agent.cur_server + 1) % len(agent.servers)
             agent.state = agent.STATES.INITIAL

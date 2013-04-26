@@ -21,7 +21,8 @@ from .kvmsg import KVMsg
 from .zhelpers import dump
 
 #from . import serializers
-from .serializers import Pipeline, PickleSerializer, JsonSerializer, \
+from .serializers import Pipeline, \
+    PickleSerializer, JsonSerializer, MsgPackSerializer, \
     ZippedCompressor, BloscCompressor
 
 pipeline = Pipeline()
@@ -110,8 +111,12 @@ class Peer:
     """
 
     @property
+    def snapshot_port(self):
+        return conf.ports.dkv
+
+    @property
     def snapshot_endpoint(self):
-        return 'tcp://%s:%d' % (self.host, self.port)
+        return 'tcp://%s:%d' % (self.host, self.snapshot_port)
 
     def get_snapshot(self):
         snapshot = self.ctx.socket(zmq.DEALER)
@@ -301,13 +306,17 @@ class DkvServer(object):
 
         # Set up our dkv server sockets
         self.publisher = self.ctx.socket(zmq.PUB)
-        self.publisher.bind(self.publisher_endpoint)
+        address = self.publisher_endpoint
+        log.debug('Binding publisher on %s', address)
+        self.publisher.bind(address)
         #self.publisher = ZMQStream(self.publisher)
 
         self.collector = self.ctx.socket(zmq.SUB)
         self.collector.setsockopt(zmq.SUBSCRIBE, b'')
         #self.collector.setsockopt(zmq.SUBSCRIBE, '/clients/updates')
-        self.collector.bind(self.collector_endpoint)
+        address = self.collector_endpoint
+        log.debug('Binding collector on %s', address)
+        self.collector.bind(address)
         self.collector = ZMQStream(self.collector)
         self.collector.on_recv(self.handle_collect)
 
@@ -317,22 +326,22 @@ class DkvServer(object):
 
     @property
     def collector_port(self):
-        return self.port + 2
+        return conf.ports.dkv_collector
 
     @property
     def publisher_port(self):
-        return self.port + 1
+        return conf.ports.dkv_publisher
 
     @property
     def collector_endpoint(self):
-        return 'tcp://%s:%d' % (self.service_addr, self.collector_port)
+        return 'tcp://%s:%d' % (self.service_addr, conf.ports.dkv_collector)
 
     @property
     def publisher_endpoint(self):
-        return 'tcp://%s:%d' % (self.service_addr, self.publisher_port)
+        return 'tcp://%s:%d' % (self.service_addr, conf.ports.dkv_publisher)
 
     def start(self, loop=True):
-        log.debug('DkvServer %s start', self)
+        log.debug('DkvServer starting')
 
         # start periodic callbacks
         self.flush_callback.start()
@@ -379,6 +388,9 @@ class DkvServer(object):
         If we're master, we apply these to the kvmap
         If we're slave, or unsure, we queue them on our pending list
         """
+        if self._debug:
+            log.debug('msg=%s', msg)
+
         #if len(msg) != 5:
         #    log.info('handle_collect: Got bad message %s.', msg)
         #    return
