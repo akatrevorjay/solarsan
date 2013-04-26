@@ -29,6 +29,10 @@ class DkvUpdate(Event):
     """Updates a value"""
 
 
+class DkvWaitForConnected(Event):
+    """Wait to be connected"""
+
+
 class DkvManager(Component):
     channel = 'dkv'
 
@@ -39,9 +43,13 @@ class DkvManager(Component):
 
         DkvTest(self.dkv).register(self)
 
-    def started(self, component):
+    @handler('dkv_wait_for_connected', channel='*')
+    def dkv_wait_for_connected(self):
         logger.debug('Waiting for connected.')
         self.dkv.wait_for_connected()
+
+    def started(self, component):
+        pass
 
     def _dkv_on_sub(self, sender=None, key=None, value=None, **kwargs):
         self.fire(DkvUpdate({key: value, 'kvmsg': sender}))
