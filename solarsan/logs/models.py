@@ -11,7 +11,7 @@ class Syslog(ReprMixIn, m.DynamicDocument):
     meta = {'collection': 'syslog',
             'max_size': 1024 * 1024 * 256,
             'ordering': ['-date'],
-            'indexes': ['-date', 'priority'],
+            'indexes': ['id', 'program', 'pid', 'date', 'unixtime', 'priority'],
             'allow_inheritance': False,
             }
 
