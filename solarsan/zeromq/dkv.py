@@ -1,14 +1,17 @@
 
-from solarsan import logging, signals
+from solarsan import logging, signals, conf
 logger = logging.getLogger(__name__)
+from solarsan.exceptions import SolarSanError
 from solarsan.pretty import pp
 import threading
 import time
+import re
 
 import zmq
 from zhelpers import zpipe
 from kvmsg import KVMsg
 
+from .beacon import Beacon
 #from . import serializers
 from .serializers import Pipeline, PickleSerializer, JsonSerializer, \
     ZippedCompressor, BloscCompressor
@@ -42,10 +45,12 @@ class Dkv(object):
     debug = None
     pipeline = pipeline
 
+    port = conf.ports.dkv
+
     class signals:
         on_sub = signals.signal('on_sub')
 
-    def __init__(self, debug=False, connect_discovery=True):
+    def __init__(self, debug=False, discovery=True, connect_localhost=True, wait_for_connect_timeout=0, connect=None):
         self.debug = debug
         self.ctx = zmq.Context()
         self.pipe, peer = zpipe(self.ctx)
@@ -56,9 +61,17 @@ class Dkv(object):
         self.agent.daemon = True
         self.agent.start()
 
-        if connect_discovery:
+        if connect_localhost:
+            self.connect(address='tcp://localhost:%d' % conf.ports.dkv)
+
+        if connect:
+            self.connect(*connect)
+
+        if discovery:
             self.connect_via_discovery()
-            self.wait_for_connected(timeout=10)
+
+        if (connect or discovery) and wait_for_connect_timeout > 0:
+            self.wait_for_connected(timeout=wait_for_connect_timeout)
 
     def wait_for_connected(self, timeout=None):
         return self.connected_event.wait(timeout=timeout)
@@ -77,11 +90,11 @@ class Dkv(object):
         self.pipe.send_multipart(["SUBTREE", subtree])
         return self.pipe.recv_multipart()
 
-    def connect(self, address, port):
+    def connect(self, address, port=conf.ports.dkv, service='/dkv'):
         """ Connect to new server endpoint
-        Sends [CONNECT][address][port] to the agent
+        Sends [CONNECT][address] to the agent
         """
-        self.pipe.send_multipart(["CONNECT", address, str(port)])
+        self.pipe.send_multipart(['CONNECT', address, host, port, service])
         return self.pipe.recv_multipart()
 
     def connect_via_discovery(self):
@@ -229,9 +242,6 @@ class DkvServer(object):
         self.subscriber.linger = 0
 
 
-from .beacon import Beacon
-
-
 class DkvAgent(object):
     """ Simple class for one background agent """
 
@@ -256,6 +266,9 @@ class DkvAgent(object):
     pipeline = pipeline
     connected_event = None
 
+    address_space = '/dkv/client'
+    port = conf.ports.dkv
+
     def __init__(self, ctx, pipe, connected_event=None, debug=False):
         self.debug = debug
         self.ctx = ctx
@@ -275,7 +288,20 @@ class DkvAgent(object):
         if connected_event:
             self.connected_event = connected_event
 
-    def connect(self, address='tcp://localhost', port=5556):
+    def get_address(cls, transport='tcp', host='localhost', port=port, service='/dkv'):
+        return '%s://%s:%s%s' % (transport, host, port, service)
+
+    def connect(self, address=None):
+        if address is None:
+            address = self.get_address()
+
+        m = re.match(r'^(\w+)://([-\w\.]+)(:\d+)?(/.*)$', address, re.IGNORECASE)
+        if not m:
+            raise SolarSanError('Invalid address %s', address)
+        transport, host, port, service = m.groups()
+        host = host[1:]
+        port = port and int(port[1:]) or self.port
+
         if len(self.servers) < SERVER_MAX:
             self.servers.append(DkvServer(
                 self.ctx, address, port, self.subtree))
@@ -283,7 +309,7 @@ class DkvAgent(object):
         else:
             logger.error("too many servers (max. %i)", SERVER_MAX)
 
-    def disconnect(self, address='tcp://localhost', port=5556):
+    def disconnect(self, address='tcp://localhost', port=conf.ports.dkv):
         for x, s in enumerate(self.servers):
             if s.address == address and s.port == port:
                 logger.info("Disconnecting from '%s:%d'", address, port)
@@ -323,9 +349,7 @@ class DkvAgent(object):
             pp(msg)
 
         if command == "CONNECT":
-            address = msg.pop(0)
-            port = int(msg.pop(0))
-            self.connect(address, port)
+            self.connect(*msg)
             self.pipe.send_multipart(['OK'])
 
         elif command == 'CONNECT_DISCOVERY':

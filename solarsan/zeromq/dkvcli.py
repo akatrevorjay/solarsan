@@ -12,11 +12,14 @@ from .dkv import Dkv
 SUBTREE = ""
 
 
-def get_client(debug=False):
+def get_client(debug=True, discovery=True, connect_localhost=True, **kwargs):
     """Create and connect dkv"""
-    dkv = Dkv(debug=debug)
+    kwargs['debug'] = debug
+    kwargs['discovery'] = discovery
+    if connect_localhost:
+        kwargs['connect'] = ('tcp://localhost', 5556)
+    dkv = Dkv(**kwargs)
     #dkv.subtree = SUBTREE
-    #dkv.connect_via_discovery()
     return dkv
 
 

@@ -253,7 +253,7 @@ class DkvServer(object):
     def router_endpoint(self):
         return 'tcp://%s:%d' % (self.service_addr, self.port)
 
-    def __init__(self, service_addr='*', port=5556):
+    def __init__(self, service_addr='*', port=conf.ports.dkv):
         self.service_addr = service_addr
         self.port = port
 
