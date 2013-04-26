@@ -189,8 +189,18 @@ class Pipeline(PriorityQueueDictionary, _SocketHelperMixIn):
 
     def dump(self, what):
         """Dumps 'what' into serialized format"""
-        return self(None, what, False)
+        #if self._debug:
+        #    logger.debug('pipeline predump=%s', what)
+        what = self(None, what, False)
+        #if self._debug:
+        #    logger.debug('pipeline dump=%s', what)
+        return what
 
     def load(self, what):
         """Loads 'what' from serialized format"""
-        return self(None, what, False)
+        #if self._debug:
+        #    logger.debug('pipeline preload=%s', what)
+        what = self(None, what, False)
+        #if self._debug:
+        #    logger.debug('pipeline load=%s', what)
+        return what

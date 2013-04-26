@@ -16,7 +16,7 @@ def get_client(debug=False):
     """Create and connect dkv"""
     dkv = Dkv(debug=debug)
     #dkv.subtree = SUBTREE
-    dkv.connect_via_discovery()
+    #dkv.connect_via_discovery()
     return dkv
 
 

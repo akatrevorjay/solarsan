@@ -38,17 +38,17 @@ class Monitor(Component):
             #Debugger(logger=logger, prefix="\ndebugger").register(self)
             Debugger(logger=logger).register(self)
 
-        PeerManager().register(self)
-        Discovery().register(self)
-        DeviceManager().register(self)
-        FloatingIPManager().register(self)
-        ResourceManager().register(self)
-        TargetManager().register(self)
-        # TODO Finish this
-        #AutoSnapshotManager().register(self)
-        # TODO Finish this
-        #BackupManager().register(self)
-        LogWatchManager().register(self)
+        #PeerManager().register(self)
+        #Discovery().register(self)
+        #DeviceManager().register(self)
+        #FloatingIPManager().register(self)
+        #ResourceManager().register(self)
+        #TargetManager().register(self)
+        ## TODO Finish this
+        ##AutoSnapshotManager().register(self)
+        ## TODO Finish this
+        ##BackupManager().register(self)
+        #LogWatchManager().register(self)
         DkvManager().register(self)
 
         self._check_timer = Timer(self.check_every,

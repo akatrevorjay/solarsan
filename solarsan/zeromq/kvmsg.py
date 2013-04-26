@@ -116,24 +116,24 @@ class KVMsg(object):
     def __str__(self):
         return str(self.dump())
 
-    @property
-    def body(self):
-        body = getattr(self, '_body', None)
-        if not body:
-            return
+    #@property
+    #def body(self):
+    #    body = getattr(self, '_body', None)
+    #    if not body:
+    #        return
 
-        #if pipeline and pipeline in self.allowed_serializers:
-        #    body = self.allowed_serializers[serializer].load(body)
-        if pipeline:
-            body = pipeline.load(body)
+    #    #if pipeline and pipeline in self.allowed_serializers:
+    #    #    body = self.allowed_serializers[serializer].load(body)
+    #    #if pipeline:
+    #    #    body = pipeline.load(body)
 
-        return body
+    #    return body
 
-    @body.setter
-    def body(self, value):
-        if pipeline:
-            value = pipeline.dump(value)
-        self._body = value
+    #@body.setter
+    #def body(self, value):
+    #    #if pipeline:
+    #    #    value = pipeline.dump(value)
+    #    self._body = value
 
     #serializer = pipeline
 

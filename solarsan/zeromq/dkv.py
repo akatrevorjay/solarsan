@@ -45,14 +45,23 @@ class Dkv(object):
     class signals:
         on_sub = signals.signal('on_sub')
 
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, connect_discovery=True):
         self.debug = debug
         self.ctx = zmq.Context()
         self.pipe, peer = zpipe(self.ctx)
 
-        self.agent = threading.Thread(target=dkv_agent, args=(self.ctx, peer))
+        self.connected_event = threading.Event()
+
+        self.agent = threading.Thread(target=dkv_agent, args=(self.ctx, peer, self.connected_event))
         self.agent.daemon = True
         self.agent.start()
+
+        if connect_discovery:
+            self.connect_via_discovery()
+            self.wait_for_connected(timeout=10)
+
+    def wait_for_connected(self, timeout=None):
+        return self.connected_event.wait(timeout=timeout)
 
     @property
     def subtree(self):
@@ -112,10 +121,12 @@ class Dkv(object):
         #        value = allowed_serializers[serializer](value)
         #    else:
         #        raise Exception("Cannot find serializer '%s'" % serializer)
+        #
+        #serializer = pipeline
+        #if serializer:
+        #    value = serializer.dump(value)
 
-        serializer = self.pipeline
-        if serializer:
-            value = serializer.dump(value)
+        value = pipeline.dump(value)
 
         cmd = kwargs.pop('_cmd', 'SET')
         #self.pipe.send_multipart([cmd, key, value, str(ttl), serializer])
@@ -154,9 +165,11 @@ class Dkv(object):
             value = reply[0]
             #serializer = reply[1]
 
-        serializer = self.pipeline
-        if serializer:
-            value = serializer.load(value)
+        #serializer = pipeline
+        #if serializer:
+        #    value = serializer.load(value)
+
+        value = pipeline.load(value)
 
         return value or default
 
@@ -241,8 +254,9 @@ class DkvAgent(object):
 
     debug = None
     pipeline = pipeline
+    connected_event = None
 
-    def __init__(self, ctx, pipe, debug=False):
+    def __init__(self, ctx, pipe, connected_event=None, debug=False):
         self.debug = debug
         self.ctx = ctx
 
@@ -257,6 +271,9 @@ class DkvAgent(object):
         self.router = ctx.socket(zmq.ROUTER)
 
         self.servers = []
+
+        if connected_event:
+            self.connected_event = connected_event
 
     def connect(self, address='tcp://localhost', port=5556):
         if len(self.servers) < SERVER_MAX:
@@ -289,6 +306,9 @@ class DkvAgent(object):
     def _beacon_on_peer_connected(self, beacon, peer):
         logger.debug('Connecting to server %s', peer.addr)
         self.connect('%s://%s' % (peer.proto, peer.host), 5556)
+
+        if self.connected_event and not self.connected_event.is_set():
+            self.connected_event.set()
 
     def _beacon_on_peer_lost(self, beacon, peer):
         logger.warning('Disconnecting from lost server %s', peer.addr)
@@ -323,6 +343,8 @@ class DkvAgent(object):
             key, value, sttl = msg
             ttl = int(sttl)
 
+            value = pipeline.load(value)
+
             # Send key-value pair on to server
             kvmsg = KVMsg(0, key=key, body=value)
             kvmsg.store(self.kvmap)
@@ -341,7 +363,10 @@ class DkvAgent(object):
                 body = value.body
                 #serializer = str(value.properties.get('serializer', ''))
             else:
-                body, serializer = ('', '')
+                body = ''
+                #serializer = ''
+
+            body = pipeline.dump(body)
 
             #self.pipe.send_multipart([body, serializer])
             self.pipe.send_multipart([body])
@@ -360,15 +385,15 @@ class DkvAgent(object):
             elif key == 'KVMAP':
                 #kvmap_s = pickle.dumps(self.kvmap)
                 #self.pipe.send_multipart([kvmap_s, 'pickle'])
-                kvmap_s = self.pipeline.dump(self.kvmap)
+                kvmap_s = pipeline.dump(self.kvmap)
                 self.pipe.send_multipart([kvmap_s])
 
 
-def dkv_agent(ctx, pipe):
+def dkv_agent(ctx, pipe, connected_event):
     """ Asynchronous agent manages server pool and handles request/reply
     dialog when the application asks for it. """
 
-    agent = DkvAgent(ctx, pipe)
+    agent = DkvAgent(ctx, pipe, connected_event)
     server = None
 
     while True:

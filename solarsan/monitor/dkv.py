@@ -39,6 +39,9 @@ class DkvManager(Component):
 
         DkvTest(self.dkv).register(self)
 
+    def started(self, component):
+        self.dkv.wait_for_connected()
+
     def _dkv_on_sub(self, sender=None, key=None, value=None, **kwargs):
         self.fire(DkvUpdate({key: value, 'kvmsg': sender}))
 
@@ -74,8 +77,9 @@ class DkvTest(Component):
         Component.__init__(self, channel=channel)
         self.dkv = dkv
 
-        Timer(10.0, TestUpdate(), 'dkv_test', persist=True).register(self)
-        #Timer(10.0, TestUpdate2(), 'dkv_test', persist=True).register(self)
+        self.fire(TestUpdate())
+        Timer(5.0, TestUpdate(), 'dkv_test', persist=True).register(self)
+        ##Timer(10.0, TestUpdate2(), 'dkv_test', persist=True).register(self)
 
     #def started(self, component):
     #    self.test()
@@ -86,18 +90,18 @@ class DkvTest(Component):
 
         node_base = '/nodes/%s' % conf.hostname
 
-        dkv.set('%s.alive' % node_base, 'yes', ttl=30)
+        dkv.set('%s.alive' % node_base, 'yes', ttl=10)
 
         neighbors = Peer.objects.filter(last_seen__gt=datetime.now() - timedelta(days=1))
         #dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors], pickle=True)
-        dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors])
+        dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors], ttl=10)
 
     def test_update2(self):
         logger.debug('Testing DKV Two')
         dkv = self.dkv
 
-        #dkv.set('/nodes/me', str(conf.hostname), ttl=30)
-        dkv.set('/nodes2/%s.alive' % conf.hostname, 'yes', ttl=30)
+        #dkv.set('/nodes/me', str(conf.hostname), ttl=10)
+        dkv.set('/nodes2/%s.alive' % conf.hostname, 'yes', ttl=10)
 
     def test(self):
         logger.debug('Testing DKV')
