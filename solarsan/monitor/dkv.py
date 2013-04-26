@@ -92,9 +92,9 @@ class DkvTest(Component):
 
         dkv.set('%s.alive' % node_base, 'yes', ttl=10)
 
-        neighbors = Peer.objects.filter(last_seen__gt=datetime.now() - timedelta(days=1))
-        #dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors], pickle=True)
-        dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors], ttl=10)
+        #neighbors = Peer.objects.filter(last_seen__gt=datetime.now() - timedelta(days=1))
+        ##dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors], pickle=True)
+        #dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors], ttl=10)
 
     def test_update2(self):
         logger.debug('Testing DKV Two')

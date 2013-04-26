@@ -186,16 +186,21 @@ LOGGING = {
             'level': 'DEBUG',
             'handlers': ['console'],
         },
-        #'solarsan.zeromq.beacon': {
-        #    'propagate': False,
-        #    'level': 'INFO',
-        #    'handlers': ['console'],
-        #},
-        #'solarsan.zeromq.dkv': {
-        #    'propagate': False,
-        #    'level': 'INFO',
-        #    'handlers': ['console'],
-        #},
+        'solarsan.zeromq.beacon': {
+            'propagate': False,
+            'level': 'DEBUG',
+            'handlers': ['console'],
+        },
+        'solarsan.zeromq.dkv': {
+            'propagate': False,
+            'level': 'DEBUG',
+            'handlers': ['console'],
+        },
+        'solarsan.zeromq.dkvsrv': {
+            'propagate': False,
+            'level': 'DEBUG',
+            'handlers': ['console'],
+        },
         'butler': {
             'propagate': False,
             'level': 'INFO',
