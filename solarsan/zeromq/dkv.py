@@ -9,12 +9,13 @@ import zmq
 from zhelpers import zpipe
 from kvmsg import KVMsg
 
-# Serializers
-import zmq.utils.jsonapi as json
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+#from . import serializers
+from .serializers import Pipeline, PickleSerializer, JsonSerializer, \
+    ZippedCompressor, BloscCompressor
+
+pipeline = Pipeline()
+pipeline.add(PickleSerializer())
+pipeline.add(ZippedCompressor())
 
 
 """
@@ -38,11 +39,14 @@ class Dkv(object):
     agent = None        # agent in a thread
     _subtree = None     # cache of our subtree value
     _default_ttl = 0    # Default TTL
+    debug = None
+    pipeline = pipeline
 
     class signals:
         on_sub = signals.signal('on_sub')
 
-    def __init__(self):
+    def __init__(self, debug=False):
+        self.debug = debug
         self.ctx = zmq.Context()
         self.pipe, peer = zpipe(self.ctx)
 
@@ -85,31 +89,37 @@ class Dkv(object):
         self.pipe.send_multipart(["DISCONNECT", address, str(port)])
         return self.pipe.recv_multipart()
 
+    def reset(self):
+        raise NotImplemented()
+
+    def request_snapshot(self, sequence=-1, peer=None):
+        raise NotImplemented()
+
     def set(self, key, value, ttl=_default_ttl, **kwargs):
         """ Set new value in distributed hash table.
         Sends [SET][key][value][ttl][serializer] to the agent
         """
-        serializer = kwargs.pop('serializer', '')
+        #serializer = kwargs.pop('serializer', '')
+        #serializers = ['pickle', 'json', 'zipped', 'blosck']
+        #if kwargs.pop('pickle', None) is True:
+        #    if not serializer:
+        #        serializer = 'pickle'
+        #if kwargs.pop('json', None) is True:
+        #    if not serializer:
+        #        serializer = 'json'
+        #if serializer:
+        #    if serializer in allowed_serializers:
+        #        value = allowed_serializers[serializer](value)
+        #    else:
+        #        raise Exception("Cannot find serializer '%s'" % serializer)
 
-        allowed_serializers = {}
-        if kwargs.pop('pickle', None) is True:
-            allowed_serializers['pickle'] = pickle.dumps
-            if not serializer:
-                serializer = 'pickle'
-        if kwargs.pop('json', None) is True:
-            allowed_serializers['json'] = json.dumps
-            if not serializer:
-                serializer = 'json'
+        serializer = self.pipeline
+        if serializer:
+            value = serializer.dump(value)
 
         cmd = kwargs.pop('_cmd', 'SET')
-
-        if serializer:
-            if serializer in allowed_serializers:
-                value = allowed_serializers[serializer](value)
-            else:
-                raise Exception("Cannot find serializer '%s'" % serializer)
-
-        self.pipe.send_multipart([cmd, key, value, str(ttl), serializer])
+        #self.pipe.send_multipart([cmd, key, value, str(ttl), serializer])
+        self.pipe.send_multipart([cmd, key, value, str(ttl)])
         return self.pipe.recv_multipart()
 
     def get(self, key, default=None, **kwargs):
@@ -117,11 +127,22 @@ class Dkv(object):
         Sends [GET][key] to the agent and waits for a value response
         If there is no dkv available, will eventually return None.
         """
-        allowed_serializers = {}
-        if kwargs.pop('pickle', None) is True:
-            allowed_serializers['pickle'] = pickle.loads
-        if kwargs.pop('json', None) is True:
-            allowed_serializers['json'] = json.loads
+        #serializer = kwargs.pop('serializer', '')
+        #serializers = ['pickle', 'json', 'zipped', 'blosck']
+        #if kwargs.pop('pickle', None) is True:
+        #    if not serializer:
+        #        serializer = 'pickle'
+        #if kwargs.pop('json', None) is True:
+        #    if not serializer:
+        #        serializer = 'json'
+        #allowed_serializers = {}
+        #if kwargs.pop('pickle', None) is True:
+        #    allowed_serializers['pickle'] = pickle.loads
+        #if kwargs.pop('json', None) is True:
+        #    allowed_serializers['json'] = json.loads
+        #if serializer in allowed_serializers:
+        #    value = allowed_serializers[serializer](value)
+
         cmd = kwargs.pop('_cmd', 'GET')
 
         self.pipe.send_multipart([cmd, key])
@@ -131,10 +152,11 @@ class Dkv(object):
             return default
         else:
             value = reply[0]
-            serializer = reply[1]
+            #serializer = reply[1]
 
-        if serializer in allowed_serializers:
-            value = allowed_serializers[serializer](value)
+        serializer = self.pipeline
+        if serializer:
+            value = serializer.load(value)
 
         return value or default
 
@@ -217,7 +239,11 @@ class DkvAgent(object):
     publisher = None        # Outgoing updates
     beacon = None
 
-    def __init__(self, ctx, pipe):
+    debug = None
+    pipeline = pipeline
+
+    def __init__(self, ctx, pipe, debug=False):
+        self.debug = debug
         self.ctx = ctx
 
         self.pipe = pipe
@@ -249,7 +275,7 @@ class DkvAgent(object):
             self.publisher.disconnect("%s:%i" % (address, port + 2))
 
     def connect_via_discovery(self):
-        logger.info('Starting beacon to discover neighbors; will auto-connect to any found.')
+        logger.debug('Starting beacon in background; will auto-connect to all peers.')
 
         self.beacon = Beacon(send_beacon=False)
         self.beacon.on_peer_connected_cb = self._beacon_on_peer_connected
@@ -261,17 +287,20 @@ class DkvAgent(object):
         t.start()
 
     def _beacon_on_peer_connected(self, beacon, peer):
-        logger.info('Connecting to discovered server %s', peer.addr)
+        logger.debug('Connecting to server %s', peer.addr)
         self.connect('%s://%s' % (peer.proto, peer.host), 5556)
 
     def _beacon_on_peer_lost(self, beacon, peer):
-        logger.info('Disconnecting from lost server %s', peer.addr)
+        logger.warning('Disconnecting from lost server %s', peer.addr)
         self.disconnect('%s://%s' % (peer.proto, peer.host), 5556)
 
     def control_message(self):
         msg = self.pipe.recv_multipart()
         command = msg.pop(0)
-        #logger.debug('cmd=%s msg=%s', command, msg)
+
+        if self.debug:
+            logger.debug('cmd=%s msg=%s', command, msg)
+            pp(msg)
 
         if command == "CONNECT":
             address = msg.pop(0)
@@ -290,7 +319,8 @@ class DkvAgent(object):
             self.pipe.send_multipart(['OK'])
 
         elif command == "SET":
-            key, value, sttl, serializer = msg
+            #key, value, sttl, serializer = msg
+            key, value, sttl = msg
             ttl = int(sttl)
 
             # Send key-value pair on to server
@@ -298,8 +328,8 @@ class DkvAgent(object):
             kvmsg.store(self.kvmap)
             if ttl:
                 kvmsg["ttl"] = ttl
-            if serializer:
-                kvmsg["serializer"] = serializer
+            #if serializer:
+            #    kvmsg["serializer"] = serializer
             kvmsg.send(self.publisher)
             self.pipe.send_multipart(['OK'])
 
@@ -309,11 +339,12 @@ class DkvAgent(object):
 
             if value:
                 body = value.body
-                serializer = str(value.properties.get('serializer', ''))
+                #serializer = str(value.properties.get('serializer', ''))
             else:
                 body, serializer = ('', '')
 
-            self.pipe.send_multipart([body, serializer])
+            #self.pipe.send_multipart([body, serializer])
+            self.pipe.send_multipart([body])
 
         elif command == "SHOW":
             key = msg[0].upper()
@@ -327,8 +358,10 @@ class DkvAgent(object):
             elif key == 'STATUS':
                 self.pipe.send_multipart([str(self.cur_status), ''])
             elif key == 'KVMAP':
-                kvmap_s = pickle.dumps(self.kvmap)
-                self.pipe.send_multipart([kvmap_s, 'pickle'])
+                #kvmap_s = pickle.dumps(self.kvmap)
+                #self.pipe.send_multipart([kvmap_s, 'pickle'])
+                kvmap_s = self.pipeline.dump(self.kvmap)
+                self.pipe.send_multipart([kvmap_s])
 
 
 def dkv_agent(ctx, pipe):

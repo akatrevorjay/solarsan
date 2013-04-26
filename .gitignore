@@ -10,6 +10,8 @@
 .zfs
 tmp
 
+pizco_test.py
+
 _dev/
 _dev_lib/
 _*

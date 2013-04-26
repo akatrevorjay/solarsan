@@ -1,26 +1,20 @@
-"""
-=====================================================================
-kvmsg - key-value message class for example applications
-
-Author: Min RK <benjaminrk@gmail.com>
-
-"""
 
 from solarsan import logging
 log = logging.getLogger(__name__)
+from solarsan.utils.stack import get_current_func_name
 
 import struct  # for packing integers
 import sys
 from uuid import uuid4
 
 import zmq
-# zmq.jsonapi ensures bytes, instead of unicode:
-import zmq.utils.jsonapi as json
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+from .serializers import Pipeline, PickleSerializer, JsonSerializer, NullSerializer, \
+    ZippedCompressor, BloscCompressor, NullCompressor
+
+pipeline = Pipeline()
+pipeline.add(PickleSerializer)
+pipeline.add(ZippedCompressor)
 
 
 class KVMsg(object):
@@ -56,6 +50,7 @@ class KVMsg(object):
 
     def __setitem__(self, k, v):
         self.properties[k] = v
+        #if pipeline and pipeline in self.allowed_serializers:
 
     def get(self, k, default=None):
         return self.properties.get(k, default)
@@ -73,8 +68,11 @@ class KVMsg(object):
         key = '' if self.key is None else self.key
         seq_s = struct.pack('!q', self.sequence)
         body = '' if self.body is None else self.body
+        if body:
+            body = pipeline.dump(body)
         #body_s = json.dumps(body)
-        prop_s = json.dumps(self.properties)
+        #prop_s = json.dumps(self.properties)
+        prop_s = pipeline.dump(self.properties)
         socket.send_multipart([key, seq_s, self.uuid, prop_s, body])
 
     @classmethod
@@ -91,8 +89,11 @@ class KVMsg(object):
         key = key if key else None
         seq = struct.unpack('!q', seq_s)[0]
         body = body if body else None
+        if body:
+            body = pipeline.load(body)
         #body = json.loads(body_s)
-        prop = json.loads(prop_s)
+        #prop = json.loads(prop_s)
+        prop = pipeline.load(prop_s)
         return cls(seq, uuid=uuid, key=key, properties=prop, body=body)
 
     def dump(self):
@@ -107,23 +108,42 @@ class KVMsg(object):
             # uuid=hexlify(self.uuid),
             key=self.key,
             size=size,
-            props=json.dumps(self.properties),
+            #props=json.dumps(self.properties),
+            props=pipeline.dump(self.properties),
             data=data,
         )
 
     def __str__(self):
         return str(self.dump())
 
-    def get_body(self):
-        body = getattr(self, 'body', None)
+    @property
+    def body(self):
+        body = getattr(self, '_body', None)
         if not body:
             return
 
-        serializer = self.properties.get('serializer')
-        if serializer and serializer in self.allowed_serializers:
-            body = self.allowed_serializers[serializer].load(body)
+        #if pipeline and pipeline in self.allowed_serializers:
+        #    body = self.allowed_serializers[serializer].load(body)
+        if pipeline:
+            body = pipeline.load(body)
 
         return body
+
+    @body.setter
+    def body(self, value):
+        if pipeline:
+            value = pipeline.dump(value)
+        self._body = value
+
+    #serializer = pipeline
+
+    #@property
+    #def serializer(self):
+    #    return self.properties.get(get_current_func_name())
+
+    #@serializer.setter
+    #def serializer(self, value):
+    #    self.properties[get_current_func_name()] = value
 
     def __repr__(self):
         data = {}

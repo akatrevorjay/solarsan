@@ -5,28 +5,18 @@ from solarsan.pretty import pp
 import random
 import time
 import pickle
-# import zmq
-
-try:
-    from dkv import Dkv
-except ImportError:
-    from .dkv import Dkv
+#import zmq
+from .dkv import Dkv
 
 #SUBTREE = "/client/"
 SUBTREE = ""
 
 
-def get_client():
-    # Create and connect dkv
-    dkv = Dkv()
+def get_client(debug=False):
+    """Create and connect dkv"""
+    dkv = Dkv(debug=debug)
     #dkv.subtree = SUBTREE
-    #dkv.subtree = '/client/'
-
     dkv.connect_via_discovery()
-
-    #dkv.connect("tcp://san0", 5556)
-    #dkv.connect("tcp://san1", 5556)
-
     return dkv
 
 

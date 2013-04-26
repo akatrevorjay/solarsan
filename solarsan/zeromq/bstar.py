@@ -1,22 +1,18 @@
 
-from solarsan import logging, conf
+from solarsan import logging
 log = logging.getLogger(__name__)
-from solarsan.utils.stack import get_last_func_name
-from solarsan.pretty import pp
-import solarsan.cluster.models as cmodels
+#from solarsan.utils.stack import get_last_func_name
+#from solarsan.pretty import pp
+#import solarsan.cluster.models as cmodels
 
 import time
-import threading
-from functools import partial
+#import threading
+#from functools import partial
 
 import zmq
 #from zmq import ZMQError
-from zmq.eventloop.ioloop import IOLoop, DelayedCallback, PeriodicCallback
+from zmq.eventloop.ioloop import IOLoop, PeriodicCallback  # DelayedCallback
 from zmq.eventloop.zmqstream import ZMQStream
-#import zmq.utils.jsonapi as json
-
-from .util import ZippedPickle
-from .beacon import Beacon
 
 
 class FSMError(Exception):

@@ -15,11 +15,18 @@ from zmq.eventloop.ioloop import IOLoop, DelayedCallback, PeriodicCallback
 from zmq.eventloop.zmqstream import ZMQStream
 #import zmq.utils.jsonapi as json
 
-from .util import ZippedPickle
 from .beacon import Beacon
 from .bstar import BinaryStar
 from .kvmsg import KVMsg
 from .zhelpers import dump
+
+#from . import serializers
+from .serializers import Pipeline, PickleSerializer, JsonSerializer, \
+    ZippedCompressor, BloscCompressor
+
+pipeline = Pipeline()
+pipeline.add(PickleSerializer())
+pipeline.add(ZippedCompressor())
 
 
 class Greet:
@@ -123,7 +130,7 @@ class Peer:
     def send_greet(self):
         log.debug('Peer %s: Sending Greet', self.uuid)
         greet = Greet.gen_from_local()
-        greet = ZippedPickle.dump(greet)
+        greet = pipeline.dump(greet)
         #greet = json.dumps(greet.__dict__)
         self.socket.send_multipart(['GREET', greet])
 
@@ -133,7 +140,7 @@ class Peer:
             delattr(self, 'send_greet_delay')
 
     def _on_greet(self, serialized_obj):
-        greet = ZippedPickle.load(serialized_obj)
+        greet = pipeline.load(serialized_obj)
         #greet = Greet()
         #greet.__dict__ = json.loads(serialized_obj)
 

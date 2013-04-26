@@ -43,21 +43,17 @@ class _Base(object, _SocketHelperMixIn):
                 name = short
         return name
 
-    @classmethod
     def can_dump(self, what):
         """Returns bool if we can dump 'what'"""
         raise NotImplemented
 
-    @classmethod
     def can_load(self, what):
         """Returns bool if we can load 'what'"""
         raise NotImplemented
 
-    @classmethod
     def dump(self, what):
         raise NotImplemented
 
-    @classmethod
     def load(self, what):
         raise NotImplemented
 
@@ -75,11 +71,9 @@ class _Compressor(_Base):
 
 
 class _NullMixIn:
-    @classmethod
     def dump(self, what):
         return what
 
-    @classmethod
     def load(self, what):
         return what
 
@@ -97,23 +91,19 @@ class PickleSerializer(_Serializer):
     """Pickle serializer"""
     protocol = -1
 
-    @classmethod
-    def dump(self, obj):
+    def dump(self, what):
         """pickle an object, and zip the pickle"""
-        return pickle.dumps(obj, self.protocol)
+        return pickle.dumps(what, self.protocol)
 
-    @classmethod
     def load(self, what):
         """Inverse of dump"""
         return pickle.loads(what)
 
 
 class JsonSerializer(_Serializer):
-    @classmethod
     def dump(self, what):
         return json.dumps(what)
 
-    @classmethod
     def load(self, what):
         return json.loads(what)
 
@@ -197,10 +187,10 @@ class Pipeline(PriorityQueueDictionary, _SocketHelperMixIn):
         else:
             return what
 
-    def dump(self, what, *args, **kwargs):
+    def dump(self, what):
         """Dumps 'what' into serialized format"""
-        return self(None, what, False, *args, **kwargs)
+        return self(None, what, False)
 
-    def load(self, what, *args, **kwargs):
+    def load(self, what):
         """Loads 'what' from serialized format"""
-        return self(None, what, False, *args, **kwargs)
+        return self(None, what, False)

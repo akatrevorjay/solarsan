@@ -186,11 +186,16 @@ LOGGING = {
             'level': 'DEBUG',
             'handlers': ['console'],
         },
-        #'solarsan.zeromq.clone': {
-        #    'propagate': False,
-        #    'level': 'INFO',
-        #    'handlers': ['console'],
-        #},
+        'solarsan.zeromq.beacon': {
+            'propagate': False,
+            'level': 'INFO',
+            'handlers': ['console'],
+        },
+        'solarsan.zeromq.dkv': {
+            'propagate': False,
+            'level': 'INFO',
+            'handlers': ['console'],
+        },
         'butler': {
             'propagate': False,
             'level': 'INFO',

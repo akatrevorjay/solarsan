@@ -36,7 +36,7 @@ def main(arguments):
             kvmap = c.dump_kvmap()
             if kvmap is not None:
                 logger.debug("KVMap @%ds (%d/%d):", delay, iterations, max_iterations)
-                pp(kvmap)
+                pp(kvmap.values())
 
             sleep(delay)
             iterations += 1
