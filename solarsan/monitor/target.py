@@ -8,6 +8,7 @@ import random
 import weakref
 from .resource import get_resource
 #from .peer import get_peer
+from .dkv import DkvSet
 
 
 """
@@ -259,6 +260,8 @@ class TargetMonitor(Component):
             #self.stop_timer()
             return
 
+        self.fire(DkvSet('/storage/targets/%s/%s/starting', self.uuid, ttl=30))
+
         if attempt > 0:
             ret, missing_luns = self.target_check_luns(fire=False)
             if ret:
@@ -283,6 +286,7 @@ class TargetMonitor(Component):
         if uuid != self.uuid:
             return
         self.stop_timer()
+        self.fire(DkvSet('/storage/targets/%s/%s/started', self.uuid))
 
     #def start(self, attempt=0):
     #    if attempt == 0 and self._start_timer:

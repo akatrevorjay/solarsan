@@ -2,7 +2,7 @@
 from solarsan import logging, conf
 logger = logging.getLogger(__name__)
 from solarsan.pretty import pp
-from circuits import Component, Event, Timer
+from circuits import Component, Event, Timer, handler
 from solarsan.zeromq.dkvcli import get_client
 from solarsan.cluster.models import Peer
 from datetime import timedelta, datetime
@@ -21,8 +21,8 @@ class DkvSet(Event):
     """Sets a value"""
 
 
-#class DkvShow(Event):
-#    """Shows a value"""
+class DkvShow(Event):
+    """Shows a value"""
 
 
 class DkvUpdate(Event):
@@ -40,6 +40,7 @@ class DkvManager(Component):
         DkvTest(self.dkv).register(self)
 
     def started(self, component):
+        logger.debug('Waiting for connected.')
         self.dkv.wait_for_connected()
 
     def _dkv_on_sub(self, sender=None, key=None, value=None, **kwargs):
@@ -48,11 +49,12 @@ class DkvManager(Component):
     def dkv_get(self, key):
         return self.dkv.get(key)
 
-    def dkv_set(self, key, value, ttl=0):
+    @handler('dkv_set', channel='*')
+    def _on_dkv_set(self, key, value, ttl=0):
         return self.dkv.set(key, value, ttl=ttl)
 
-    #def dkv_show(self, key):
-    #    return self.dkv.show(key)
+    def dkv_show(self, key):
+        return self.dkv.show(key)
 
     #def dkv_update(self, update, **kwargs):
     #    #pp('%s=%s' % (key, value))

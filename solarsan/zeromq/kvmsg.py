@@ -151,6 +151,9 @@ class KVMsg(object):
             v = getattr(self, prop, None)
             if v:
                 data[prop] = v
+        key = data.pop('key', None)
+        body = data.pop('body', None)
+        data[key] = body
         return '<%s %s>' % (self.__class__.__name__, data)
 
         # append = ''
