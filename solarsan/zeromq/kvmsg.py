@@ -114,6 +114,17 @@ class KVMsg(object):
     def __str__(self):
         return str(self.dump())
 
+    def get_body(self):
+        body = getattr(self, 'body', None)
+        if not body:
+            return
+
+        serializer = self.properties.get('serializer')
+        if serializer and serializer in self.allowed_serializers:
+            body = self.allowed_serializers[serializer].load(body)
+
+        return body
+
     def __repr__(self):
         data = {}
         for prop in ['key', 'properties', 'body', 'sequence']:

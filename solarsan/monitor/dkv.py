@@ -4,6 +4,8 @@ logger = logging.getLogger(__name__)
 from solarsan.pretty import pp
 from circuits import Component, Event, Timer
 from solarsan.zeromq.dkvcli import get_client
+from solarsan.cluster.models import Peer
+from datetime import timedelta, datetime
 
 
 """
@@ -82,8 +84,12 @@ class DkvTest(Component):
         logger.debug('Testing DKV One')
         dkv = self.dkv
 
-        dkv.set('/nodes/%s.neighbors' % conf.hostname, 'san0 san1')
-        dkv.set('/nodes/%s.alive' % conf.hostname, 'yes', ttl=30)
+        node_base = '/nodes/%s' % conf.hostname
+
+        dkv.set('%s.alive' % node_base, 'yes', ttl=30)
+
+        neighbors = Peer.objects.filter(last_seen__gt=datetime.now() - timedelta(days=1))
+        dkv.set('%s.neighbors' % node_base, [p.hostname for p in neighbors], pickle=True)
 
     def test_update2(self):
         logger.debug('Testing DKV Two')
@@ -91,7 +97,6 @@ class DkvTest(Component):
 
         #dkv.set('/nodes/me', str(conf.hostname), ttl=30)
         dkv.set('/nodes2/%s.alive' % conf.hostname, 'yes', ttl=30)
-        dkv.set('/nodes2/%s.neighbors' % conf.hostname, 'san0 san1')
 
     def test(self):
         logger.debug('Testing DKV')
@@ -104,9 +109,6 @@ class DkvTest(Component):
 
         test_pickle = {'whoa': 'yeah', 'lbh': True}
         dkv.set('/test/trevorj-pickle2', test_pickle, pickle=True)
-
-        test_pickle_s = pickle.dumps(test_pickle)
-        dkv['/test/trevorj-pickle'] = test_pickle_s
 
         logger.debug('SHOW SERVER: %s', dkv.show('SERVER'))
         logger.debug('SHOW SERVERS: %s', dkv.show('SERVERS'))
