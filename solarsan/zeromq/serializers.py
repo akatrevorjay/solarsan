@@ -9,8 +9,8 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
-
 import zmq.utils.jsonapi as json
+import msgpack
 import zlib
 import blosc
 
@@ -106,6 +106,14 @@ class JsonSerializer(_Serializer):
 
     def load(self, what):
         return json.loads(what)
+
+
+class MsgPackSerializer(_Serializer):
+    def dump(self, what):
+        return msgpack.packb(what)
+
+    def load(self, what):
+        return msgpack.unpackb(what)
 
 
 """
