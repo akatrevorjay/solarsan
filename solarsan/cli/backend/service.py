@@ -7,11 +7,11 @@ from .root import CliRoot
 
 
 class CLIService(rpyc.Service, AutomagicNode):
-    def on_connect(self):
-        logger.debug('Client connected.')
+    #def on_connect(self):
+    #    logger.debug('Client connected.')
 
-    def on_disconnect(self):
-        logger.debug('Client disconnected.')
+    #def on_disconnect(self):
+    #    logger.debug('Client disconnected.')
 
     #def ping(self):
     #    return True
