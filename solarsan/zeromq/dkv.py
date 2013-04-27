@@ -480,7 +480,7 @@ def dkv_agent(ctx, pipe, connected_event):
             if agent.servers:
                 server = agent.servers[agent.cur_server]
 
-                logger.debug("waiting for server at %s...", server.address)
+                logger.debug("Asking for snapshot from %s...", server.address)
 
                 if (server.requests < 2):
                     server.snapshot.send_multipart(["ICANHAZ?", agent.subtree])
@@ -530,13 +530,14 @@ def dkv_agent(ctx, pipe, connected_event):
             if agent.state == agent.STATES.SYNCING:
                 """Store in snapshot until we're finished"""
                 server.requests = 0
+                #logger.debug('Syncing state msg=%s', msg)
                 if kvmsg.key == "KTHXBAI":
                     agent.sequence = kvmsg.sequence
                     agent.state = agent.STATES.ACTIVE
-                    logger.debug("received from %s snapshot=%d",
-                                 server.address, agent.sequence)
+                    logger.debug("Synced snapshot=%s from %s", agent.sequence, server.address)
                     connected_event.set()
                 else:
+                    logger.debug("Syncing update=%s from %s", kvmsg.sequence, server.address)
                     kvmsg.store(agent.kvmap)
 
             elif agent.state == agent.STATES.ACTIVE:
@@ -555,6 +556,6 @@ def dkv_agent(ctx, pipe, connected_event):
 
         else:
             """Server has died, failover to next"""
-            logger.error("server at %s didn't give hugz", server.address)
+            logger.error("Giving up on server at %s; didn't give hugz.", server.address)
             agent.cur_server = (agent.cur_server + 1) % len(agent.servers)
             agent.state = agent.STATES.INITIAL
