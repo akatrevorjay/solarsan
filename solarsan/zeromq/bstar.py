@@ -100,18 +100,18 @@ class BinaryStar(object):
             # Primary server is waiting for peer to connect
             # Accepts self.EVENTS.CLIENT_REQUEST events in this state
             if (self.event == self.EVENTS.PEER_BACKUP):
-                log.info("connected to backup (slave), ready as master")
+                log.info("Connected to backup (slave), ready as master")
                 self.state = self.STATES.ACTIVE
                 if (self.master_callback):
                     self.loop.add_callback(self.master_callback)
             elif (self.event == self.EVENTS.PEER_ACTIVE):
-                log.info("connected to backup (master), ready as slave")
+                log.info("Connected to backup (master), ready as slave")
                 self.state = self.STATES.PASSIVE
                 if (self.slave_callback):
                     self.loop.add_callback(self.slave_callback)
             elif (self.event == self.EVENTS.CLIENT_REQUEST):
                 if (time.time() >= self.peer_expiry):
-                    log.info("request from client, ready as master")
+                    log.info("Request from client, ready as master")
                     self.state = self.STATES.ACTIVE
                     if (self.master_callback):
                         self.loop.add_callback(self.master_callback)
@@ -124,7 +124,7 @@ class BinaryStar(object):
             # Backup server is waiting for peer to connect
             # Rejects self.EVENTS.CLIENT_REQUEST events in this state
             if (self.event == self.EVENTS.PEER_ACTIVE):
-                log.info("connected to primary (master), ready as slave")
+                log.info("Connected to primary (master), ready as slave")
                 self.state = self.STATES.PASSIVE
                 if (self.slave_callback):
                     self.loop.add_callback(self.slave_callback)
@@ -136,22 +136,22 @@ class BinaryStar(object):
             # The only way out of ACTIVE is death
             if (self.event == self.EVENTS.PEER_ACTIVE):
                 # Two masters would mean split-brain
-                log.error("fatal error - dual masters, aborting")
+                log.error("Fatal error - dual masters, aborting")
                 raise FSMError("Dual Masters")
         elif (self.state == self.STATES.PASSIVE):
             # Server is passive
             # self.EVENTS.CLIENT_REQUEST events can trigger failover if peer looks dead
             if (self.event == self.EVENTS.PEER_PRIMARY):
                 # Peer is restarting - become active, peer will go passive
-                log.info("primary (slave) is restarting, ready as master")
+                log.info("Primary (slave) is restarting, ready as master")
                 self.state = self.STATES.ACTIVE
             elif (self.event == self.EVENTS.PEER_BACKUP):
                 # Peer is restarting - become active, peer will go passive
-                log.info("backup (slave) is restarting, ready as master")
+                log.info("Backup (slave) is restarting, ready as master")
                 self.state = self.STATES.ACTIVE
             elif (self.event == self.EVENTS.PEER_PASSIVE):
                 # Two passives would mean cluster would be non-responsive
-                log.error("fatal error - dual slaves, aborting")
+                log.error("Fatal error - dual slaves, aborting")
                 raise FSMError("Dual slaves")
             elif (self.event == self.EVENTS.CLIENT_REQUEST):
                 # Peer becomes master if timeout has passed
@@ -159,7 +159,7 @@ class BinaryStar(object):
                 assert (self.peer_expiry > 0)
                 if (time.time() >= self.peer_expiry):
                     # If peer is dead, switch to the active state
-                    log.info("failover successful, ready as master")
+                    log.info("Failover successful, ready as master")
                     self.state = self.STATES.ACTIVE
                 else:
                     # If peer is alive, reject connections
