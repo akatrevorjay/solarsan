@@ -9,14 +9,21 @@ from uuid import uuid4
 
 import zmq
 
-from .serializers import Pipeline, PickleSerializer, JsonSerializer, NullSerializer, \
-    ZippedCompressor, BloscCompressor, NullCompressor
+from .serializers import Pipeline, \
+    PickleSerializer, JsonSerializer, MsgPackSerializer, \
+    ZippedCompressor, BloscCompressor
 
 pipeline = Pipeline()
-pipeline.add(PickleSerializer)
-pipeline.add(ZippedCompressor)
+pipeline.add(PickleSerializer())
+pipeline.add(ZippedCompressor())
+#pipeline.add(MsgPackSerializer(use_list=False))
+#pipeline.add(BloscCompressor())
 
 
+from bunch import Bunch
+
+
+#class KVMsg(Bunch):
 class KVMsg(object):
     """
     Message is formatted on wire as 5 frames:

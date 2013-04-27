@@ -34,6 +34,10 @@ class _Base(object, _SocketHelperMixIn):
     """Base for both serializers and compressors"""
     _remove_name_ending = None
 
+    def __init__(self, **kwargs):
+        for k, v in kwargs.iteritems():
+            setattr(self, k, v)
+
     @property
     def name(self):
         name = str(self.__class__.__name__)
@@ -108,12 +112,37 @@ class JsonSerializer(_Serializer):
         return json.loads(what)
 
 
+from uuid import UUID
+
+
 class MsgPackSerializer(_Serializer):
+    use_list = None
+
     def dump(self, what):
-        return msgpack.packb(what)
+        return msgpack.packb(what, default=self._default)
+
+    def _default(self, what):
+        from .kvmsg import KVMsg
+
+        #logger.debug('what=%s', what)
+        cls = what.__class__.__name__
+        state = getattr(what, '__dict__', None)
+        if state:
+            return (cls, state)
+        return what
 
     def load(self, what):
-        return msgpack.unpackb(what)
+        return msgpack.unpackb(what, object_hook=self._object_hook, list_hook=self._list_hook, use_list=self.use_list)
+
+    def _object_hook(self, what):
+        from .kvmsg import KVMsg
+
+        #logger.debug('what=%s', what)
+        return what
+
+    def _list_hook(self, what):
+        #logger.debug('what=%s', what)
+        return what
 
 
 """

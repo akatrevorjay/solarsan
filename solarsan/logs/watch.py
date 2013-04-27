@@ -3,7 +3,6 @@ from solarsan import logging, signals
 logger = logging.getLogger(__name__)
 from .models import Syslog
 from . import policies
-from time import time
 import mongoengine as m
 
 
@@ -15,7 +14,7 @@ class MongoLogWatcher(object):
 
     def __init__(self):
         super(MongoLogWatcher, self).__init__()
-        self._last_ts = time()
+        self._last_pk = None
 
     def run_once(self):
         logs = self._next()
@@ -32,13 +31,14 @@ class MongoLogWatcher(object):
     def _next(self, _retry=False):
         logs = None
         try:
-            logs = Syslog.objects.filter(unixtime__gt=str(self._last_ts))
+            if not self._last_pk:
+                self._last_pk = Syslog.objects.first().pk
+            logs = Syslog.objects.filter(pk__gt=self._last_pk)
         except m.document.InvalidCollectionError as e:
             logger.error("Monlog collection is invalid, ie is not capped. Dropping existing collection to re-initialize as such: %s", e)
             Syslog.drop_collection()
             if not _retry:
                 return self._next(_retry=True)
-        self._last_ts = time()
         return logs
 
     def _check(self, log):

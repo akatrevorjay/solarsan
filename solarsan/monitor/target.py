@@ -9,6 +9,7 @@ import weakref
 from .resource import get_resource
 #from .peer import get_peer
 from .dkv import DkvSet
+from .peer import get_peer
 
 
 """
@@ -260,7 +261,8 @@ class TargetMonitor(Component):
             #self.stop_timer()
             return
 
-        self.fire(DkvSet('/storage/targets/%s/%s/starting', self.uuid, ttl=30))
+        local = get_peer(local=True)
+        self.fire(DkvSet('/storage/targets/%s/%s/starting' % (target.driver, self.uuid), local.uuid, ttl=30))
 
         if attempt > 0:
             ret, missing_luns = self.target_check_luns(fire=False)
@@ -286,7 +288,9 @@ class TargetMonitor(Component):
         if uuid != self.uuid:
             return
         self.stop_timer()
-        self.fire(DkvSet('/storage/targets/%s/%s/started', self.uuid))
+        target = self.target
+        local = get_peer(local=True)
+        self.fire(DkvSet('/storage/targets/%s/%s/started' % (target.driver, self.uuid), local.uuid))
 
     #def start(self, attempt=0):
     #    if attempt == 0 and self._start_timer:

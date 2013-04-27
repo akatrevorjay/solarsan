@@ -6,6 +6,7 @@ from circuits import Component, Event, Timer, handler
 from solarsan.zeromq.dkvcli import get_client
 from solarsan.cluster.models import Peer
 from datetime import timedelta, datetime
+import sys
 
 
 """
@@ -44,9 +45,21 @@ class DkvManager(Component):
         DkvTest(self.dkv).register(self)
 
     @handler('dkv_wait_for_connected', channel='*')
-    def dkv_wait_for_connected(self):
+    def dkv_wait_for_connected(self, timeout=None):
         logger.debug('Waiting for connected.')
-        self.dkv.wait_for_connected()
+        event = self.dkv.connected_event
+        try:
+            count = 0
+            while count < timeout:
+                event.wait(timeout=1)
+                if event.is_set():
+                    break
+                count += 1
+            if count > timeout:
+                logger.error('Could not conect to Dkv in specified timeout=%d', timeout)
+                sys.exit(1)
+        except (KeyboardInterrupt, SystemExit):
+            raise
 
     def started(self, component):
         pass

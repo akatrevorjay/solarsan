@@ -16,8 +16,6 @@ def get_client(debug=True, discovery=True, connect_localhost=True, **kwargs):
     """Create and connect dkv"""
     kwargs['debug'] = debug
     kwargs['discovery'] = discovery
-    if connect_localhost:
-        kwargs['connect'] = ('tcp://localhost', 5556)
     dkv = Dkv(**kwargs)
     #dkv.subtree = SUBTREE
     return dkv

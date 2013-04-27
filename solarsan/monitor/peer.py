@@ -94,8 +94,11 @@ class PeerStillOffline(Event):
     """Peer is *still* offline"""
 
 
-def get_peer(uuid):
-    return Peer.objects.get(uuid=uuid)
+def get_peer(uuid=None, local=False):
+    if local:
+        return Peer.get_local()
+    else:
+        return Peer.objects.get(uuid=uuid)
 
 
 class PeerMonitor(Component):

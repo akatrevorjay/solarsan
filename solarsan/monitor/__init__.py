@@ -42,11 +42,10 @@ class Monitor(Component):
                 logger=logger.getChild('events'),
                 IgnoreChannels=('discovery', 'peer', 'log_watch'),
                 IgnoreEvents=('registered', 'resource_health_check', 'managers_check', 'target_check_luns')).register(self)
-            #Debugger(logger=logger).register(self)
 
         self.dkv = DkvManager().register(self)
-        self.dkv.dkv.wait_for_connected()
-        #self.fire(DkvWaitForConnected())
+        #self.dkv.dkv.wait_for_connected(timeout=30)
+        self.fire(DkvWaitForConnected(timeout=30))
 
         Inner().register(self)
 

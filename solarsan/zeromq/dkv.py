@@ -13,12 +13,15 @@ from kvmsg import KVMsg
 
 from .beacon import Beacon
 #from . import serializers
-from .serializers import Pipeline, PickleSerializer, JsonSerializer, \
+from .serializers import Pipeline, \
+    PickleSerializer, JsonSerializer, MsgPackSerializer, \
     ZippedCompressor, BloscCompressor
 
 pipeline = Pipeline()
 pipeline.add(PickleSerializer())
 pipeline.add(ZippedCompressor())
+#pipeline.add(MsgPackSerializer())
+#pipeline.add(BloscCompressor())
 
 
 """
@@ -65,14 +68,13 @@ class Dkv(object):
     _subtree = None     # cache of our subtree value
     _default_ttl = 0    # Default TTL
     debug = None
-    pipeline = pipeline
 
     port = conf.ports.dkv
 
     class signals:
         on_sub = signals.signal('on_sub')
 
-    def __init__(self, debug=False, discovery=True, connect_localhost=True, wait_for_connect_timeout=0, connect=None):
+    def __init__(self, debug=False, discovery=True, connect_localhost=True):
         self.debug = debug
         self.ctx = zmq.Context()
         self.pipe, peer = zpipe(self.ctx)
@@ -86,14 +88,8 @@ class Dkv(object):
         if connect_localhost:
             self.connect(address='tcp://localhost:%d' % conf.ports.dkv)
 
-        if connect:
-            self.connect(*connect)
-
         if discovery:
             self.connect_via_discovery()
-
-        if (connect or discovery) and wait_for_connect_timeout > 0:
-            self.wait_for_connected(timeout=wait_for_connect_timeout)
 
     def wait_for_connected(self, timeout=None):
         return self.connected_event.wait(timeout=timeout)
@@ -296,7 +292,6 @@ class DkvAgent(object):
     beacon = None
 
     debug = None
-    pipeline = pipeline
     connected_event = None
 
     def __init__(self, ctx, pipe, connected_event=None, debug=False):
@@ -515,8 +510,8 @@ def dkv_agent(ctx, pipe, connected_event):
                 if kvmsg.key == "KTHXBAI":
                     agent.sequence = kvmsg.sequence
                     agent.state = agent.STATES.ACTIVE
-                    logger.debug("received from %s:%d snapshot=%d",
-                                 server.address, server.port, agent.sequence)
+                    logger.debug("received from %s snapshot=%d",
+                                 server.address, agent.sequence)
                 else:
                     kvmsg.store(agent.kvmap)
 
@@ -527,8 +522,8 @@ def dkv_agent(ctx, pipe, connected_event):
                     kvmsg.store(agent.kvmap)
                     action = "update" if kvmsg.body else "delete"
 
-                    logger.debug("received from %s:%d %s=%d",
-                                 server.address, server.port, action, agent.sequence)
+                    logger.debug("received from %s %s=%d",
+                                 server.address, action, agent.sequence)
 
                     """ Signal """
                     if kvmsg.key != 'HUGZ':  # Don't send signals if it's just hugz
