@@ -203,6 +203,9 @@ class RwDevices(Devices):
     }
 
 
+from solarsan.cli.events import CliEvent, RawInputEvent
+
+
 class PoolsNode(AutomagicNode):
     def ui_children_factory_pool_list(self):
         return [p for p in Pool.list(ret=dict, ret_obj=False)]
@@ -216,7 +219,9 @@ class PoolsNode(AutomagicNode):
         return list(devices)
 
     def ui_command_create(self, name):
-        raise NotImplementedError
+        #return self.service._conn.root.raw_input()
+        return RawInputEvent.__call__
+        #raise NotImplementedError
 
 
 class VolumeNode(DatasetNode):

@@ -12,10 +12,21 @@ import types
 #from functools import wraps, update_wrapper, partial
 import inspect
 from decorator import FunctionMaker
+import rpyc
+
+from .events import CliEvent
+
+
+class ClientService(rpyc.Service):
+    def exposed_print(self, arg):
+        print arg
+
+    def exposed_raw_input(self, prompt=None):
+        return raw_input(prompt)
 
 
 def get_services_cli():
-    return Peer.get_local().get_service('cli')
+    return Peer.get_local().get_service('cli', client_service=ClientService)
 
 
 class ServiceConfigNode(ConfigNode):
@@ -275,6 +286,9 @@ class ServiceConfigNode(ConfigNode):
         if isinstance(ret, types.GeneratorType):
             for line in ret:
                 print line
+
+        elif isinstance(ret, CliEvent):
+            ret = CliEvent()
 
         elif isinstance(ret, basestring):
             ret = str(ret)

@@ -77,17 +77,22 @@ class Peer(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
                 self._is_online = False
         return self._is_online
 
-    def get_service(self, name, default='exception', cache=True):
+    def get_service(self, name, default='exception', cache=True, client_service=None):
         """Looks for service on Peer. Returns an existing one if possible, otherwise instantiates one."""
         NAME = str(name).upper()
         check_service = None
         if cache:
             check_service = self._services.get(NAME)
+        if not client_service:
+            client_Service = rpyc.VoidService
         if not check_service or check_service.closed:
             service = None
             try:
-                service = rpyc.connect_by_service(NAME, host=self.cluster_addr)
-                                                  #config=conf.rpyc_conn_config)
+                service = rpyc.connect_by_service(NAME,
+                                                  host=self.cluster_addr,
+                                                  service=client_service,
+                                                  #config=conf.rpyc_conn_config,
+                                                  )
 
                 # Remove existing aliases to old service
                 if cache:
