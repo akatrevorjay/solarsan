@@ -34,13 +34,20 @@ class DkvWaitForConnected(Event):
     """Wait to be connected"""
 
 
+class DkvNodeInfo(Event):
+    """Marks local node as alive"""
+
+
 class DkvManager(Component):
     channel = 'dkv'
 
     def __init__(self, channel=channel):
         super(DkvManager, self).__init__(channel=channel)
         self.dkv = get_client()
-        self.dkv.signals.on_sub.connect(self._dkv_on_sub)
+        self.dkv.signals.on_sub.connect(self._sub_cb)
+
+        self.fire(DkvNodeInfo())
+        Timer(10.0, DkvNodeInfo(), self.channel, persist=True).register(self)
 
         #DkvTest(self.dkv).register(self)
 
@@ -51,7 +58,7 @@ class DkvManager(Component):
     def started(self, component):
         pass
 
-    def _dkv_on_sub(self, sender=None, key=None, value=None, **kwargs):
+    def _sub_cb(self, sender=None, key=None, value=None, **kwargs):
         self.fire(DkvUpdate({key: value, 'kvmsg': sender}))
 
     def dkv_get(self, key):
@@ -70,6 +77,24 @@ class DkvManager(Component):
 
     #def started(self, component):
     #    pass
+
+    _local_peer = None
+
+    def dkv_node_info(self):
+        dkv = self.dkv
+
+        if not self._local_peer:
+            self._local_peer = Peer.get_local()
+        local = self._local_peer
+
+        node = '/nodes/%s' % (local.uuid)
+        ttl = 20
+        dkv.set('%s/alive' % node, 'yes', ttl=ttl)
+
+        if not dkv.get('%s/hostname' % node, None):
+            logger.info('Node info is not in Dkv; adding..')
+            dkv.set('%s/hostname' % node, local.hostname)
+            dkv.set('%s/cluster_iface' % node, local.cluster_iface)
 
 
 class TestUpdate(Event):

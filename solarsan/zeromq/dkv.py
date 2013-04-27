@@ -103,18 +103,19 @@ class Dkv(object):
         if discovery:
             self.connect_via_discovery()
 
-    def wait_for_connected(self, timeout=None):
+    def wait_for_connected(self, timeout=0):
         logger.debug('Waiting for connection..')
         event = self.connected_event
         try:
             count = 0
-            while count < timeout:
+            while timeout == 0 or count < timeout:
                 event.wait(timeout=1)
                 if event.is_set():
-                    break
+                    return True
                 count += 1
+
             if count > timeout:
-                raise DkvTimeoutExceeded('Could not conect to Dkv in specified timeout=%d', timeout)
+                raise DkvTimeoutExceeded('Could not conect to Dkv in specified timeout=%s', timeout)
         except (KeyboardInterrupt, SystemExit):
             raise
 
@@ -189,7 +190,7 @@ class Dkv(object):
 
         cmd = kwargs.pop('_cmd', 'SET')
         #self.pipe.send_multipart([cmd, key, value, str(ttl), serializer])
-        self.pipe.send_multipart([cmd, key, value, str(ttl)])
+        self.pipe.send_multipart([cmd, str(key), str(value), str(ttl)])
         return self.pipe.recv_multipart()
 
     def get(self, key, default=None, **kwargs):
@@ -215,7 +216,7 @@ class Dkv(object):
 
         cmd = kwargs.pop('_cmd', 'GET')
 
-        self.pipe.send_multipart([cmd, key])
+        self.pipe.send_multipart([cmd, str(key)])
         try:
             reply = self.pipe.recv_multipart()
         except KeyboardInterrupt:
