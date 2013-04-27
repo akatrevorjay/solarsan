@@ -42,22 +42,22 @@ class LogsNode(AutomagicNode):
         except (KeyboardInterrupt, SystemExit):
             raise
 
-    def ui_command_monlog_tail(self):
+    def ui_command_tail(self):
         """Tails and follows monlog"""
         return self.monlog_tail()
 
-    def ui_command_monlog_tail_grep(self, grep):
-        """Tails and follows monlog"""
-        return self.monlog_tail(grep=grep)
+    #def ui_command_tail_grep(self, grep):
+    #    """Tails and follows monlog"""
+    #    return self.monlog_tail(grep=grep)
 
-    def ui_command_tail(self):
-        '''
-        tail - Tails (and follows) syslog
-        '''
-        return self.tail()
+    #def ui_command_tail(self):
+    #    '''
+    #    tail - Tails (and follows) syslog
+    #    '''
+    #    return self.tail()
 
-    def ui_command_tail_grep(self, grep):
-        '''
-        tail - Tails (and follows) syslog, only showing lines that match
-        '''
-        return self.tail(grep=grep)
+    #def ui_command_tail_grep(self, grep):
+    #    '''
+    #    tail - Tails (and follows) syslog, only showing lines that match
+    #    '''
+    #    return self.tail(grep=grep)
