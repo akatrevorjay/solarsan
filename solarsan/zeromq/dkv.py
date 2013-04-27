@@ -117,7 +117,6 @@ class Dkv(object):
                 raise DkvTimeoutExceeded('Could not conect to Dkv in specified timeout=%d', timeout)
         except (KeyboardInterrupt, SystemExit):
             raise
-        logger.debug('Connected.')
 
     @property
     def subtree(self):
@@ -376,7 +375,7 @@ class DkvAgent(object):
         t.start()
 
     def _beacon_on_peer_connected(self, beacon, peer):
-        logger.debug('Connecting to server %s', peer.addr)
+        logger.info('Connecting to server %s', peer.addr)
         address = get_address(transport=peer.transport, host=peer.host)
         self.connect(address)
 
@@ -534,7 +533,8 @@ def dkv_agent(ctx, pipe, connected_event):
                 if kvmsg.key == "KTHXBAI":
                     agent.sequence = kvmsg.sequence
                     agent.state = agent.STATES.ACTIVE
-                    logger.debug("Synced snapshot=%s from %s", agent.sequence, server.address)
+                    logger.info("Synced snapshot=%s from %s", agent.sequence, server.address)
+                    logger.info("Connected to %s", server.address)
                     connected_event.set()
                 else:
                     logger.debug("Syncing update=%s from %s", kvmsg.sequence, server.address)
@@ -547,8 +547,7 @@ def dkv_agent(ctx, pipe, connected_event):
                     kvmsg.store(agent.kvmap)
                     action = "update" if kvmsg.body else "delete"
 
-                    logger.debug("received from %s %s=%d",
-                                 server.address, action, agent.sequence)
+                    logger.debug("Received %s=%d from %s", action, agent.sequence, server.address)
 
                     """ Signal """
                     if kvmsg.key != 'HUGZ':  # Don't send signals if it's just hugz

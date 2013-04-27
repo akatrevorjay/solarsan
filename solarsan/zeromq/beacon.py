@@ -103,6 +103,7 @@ class Beacon(object):
         #self._peer_init_kwargs['beacon'] = self
 
     def init(self):
+        log.info('Starting beacon..')
         if not self.ctx:
             self.ctx = zmq.Context.instance()
 
@@ -307,6 +308,7 @@ class Beacon(object):
         return self._callback(None, peer, *msg)
 
     def _on_peer_connected(self, peer):
+        log.info('Discovered peer %s.', peer.uuid)
         return self._callback(None, peer)
 
     def _on_peer_lost(self, peer):

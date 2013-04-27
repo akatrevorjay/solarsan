@@ -188,7 +188,8 @@ LOGGING = {
         },
         'solarsan.zeromq.beacon': {
             'propagate': False,
-            'level': 'DEBUG',
+            'level': 'INFO',
+            #'level': 'DEBUG',
             'handlers': ['console'],
         },
         'solarsan.zeromq.dkv': {
