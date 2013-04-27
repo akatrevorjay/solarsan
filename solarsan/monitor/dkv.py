@@ -42,7 +42,7 @@ class DkvManager(Component):
         self.dkv = get_client()
         self.dkv.signals.on_sub.connect(self._dkv_on_sub)
 
-        DkvTest(self.dkv).register(self)
+        #DkvTest(self.dkv).register(self)
 
     @handler('dkv_wait_for_connected', channel='*')
     def dkv_wait_for_connected(self, timeout=None):

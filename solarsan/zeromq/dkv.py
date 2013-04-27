@@ -98,7 +98,7 @@ class Dkv(object):
         self.agent.start()
 
         if connect_localhost:
-            self.connect(address='tcp://localhost:%d' % conf.ports.dkv)
+            self.connect(address='tcp://localhost:%d' % self.port)
 
         if discovery:
             self.connect_via_discovery()
@@ -479,7 +479,7 @@ def dkv_agent(ctx, pipe, connected_event):
             if agent.servers:
                 server = agent.servers[agent.cur_server]
 
-                logger.debug("Asking for snapshot from %s...", server.address)
+                logger.debug("Asking for snapshot from %s attempt=%d..", server.address, server.requests)
 
                 if (server.requests < 2):
                     server.snapshot.send_multipart(["ICANHAZ?", agent.subtree])
@@ -555,6 +555,13 @@ def dkv_agent(ctx, pipe, connected_event):
 
         else:
             """Server has died, failover to next"""
-            logger.error("Giving up on server at %s; didn't give hugz.", server.address)
+            if agent.state == agent.STATES.ACTIVE:
+                level = logging.ERROR
+                server_state = 'active'
+            else:
+                level = logging.WARNING
+                server_state = 'non-active'
+            logger.log(level, "Did not receive heartbeat from %s server at %s; failing over.",
+                       server_state, server.address)
             agent.cur_server = (agent.cur_server + 1) % len(agent.servers)
             agent.state = agent.STATES.INITIAL

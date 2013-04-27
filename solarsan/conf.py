@@ -186,6 +186,12 @@ LOGGING = {
             'level': 'DEBUG',
             'handlers': ['console'],
         },
+        'solarsan.monitor.discovery': {
+            'propagate': False,
+            'level': 'INFO',
+            #'level': 'DEBUG',
+            'handlers': ['console'],
+        },
         'solarsan.zeromq.beacon': {
             'propagate': False,
             'level': 'INFO',

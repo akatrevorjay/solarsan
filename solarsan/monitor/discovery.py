@@ -1,6 +1,7 @@
 
 from solarsan import logging
 logger = logging.getLogger(__name__)
+from solarsan.exceptions import SolarSanError
 from solarsan.cluster.models import Peer
 from circuits import Component, Timer, Event
 from datetime import datetime
@@ -25,6 +26,10 @@ class PeerDiscovered(Event):
     """Peer Discovered Event"""
 
 
+class DiscoveryError(SolarSanError):
+    pass
+
+
 class Discovery(Component):
     channel = 'discovery'
 
@@ -43,7 +48,7 @@ class Discovery(Component):
     """
 
     def discover_peers(self):
-        logger.debug("Discovering nearby peers..")
+        logger.info("Discovering nearby peers..")
         try:
             for host, port in rpyc.discover('storage'):
                 self.fire(ProbePeer(host))
@@ -69,11 +74,11 @@ class Discovery(Component):
             addrs = dict([(y['addr'], y['netmask']) for x in ifaces.values() for y in x])
 
             if None in [hostname, uuid, ifaces, addrs, cluster_iface]:
-                raise Exception("Peer discovery probe has invalid data.")
+                raise DiscoveryError("Failed to probe discovered peer host=%s: Probe has invalid data.", host)
 
-            logger.debug("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
+            logger.debug("Discovered peer host=%s; hostname=%s.", host, hostname)
         except Exception, e:
-            logger.error("Peer discovery (host='%s') failed: %s", host, e)
+            logger.error("Failed to probe discovered peer host=%s: %s", host, e)
             return
         finally:
             try:

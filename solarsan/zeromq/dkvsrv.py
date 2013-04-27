@@ -44,6 +44,17 @@ class Greet:
         peer = cmodels.Peer.get_local()
         return cls._gen_from_peer(peer)
 
+    def __str__(self):
+        d = self.__dict__
+        data = ''
+        for k in ['hostname', 'uuid']:
+            v = d.get(k)
+            if v:
+                data += '%s=%s; ' % (k, v)
+        if data:
+            data = data[:-2]
+        return '<Greet %s>' % data
+
 
 class Peer:
     ctx = None
@@ -149,8 +160,7 @@ class Peer:
         #greet = Greet()
         #greet.__dict__ = json.loads(serialized_obj)
 
-        log.debug('Peer %s: Got Greet', self.uuid)
-        pp(greet.__dict__)
+        log.debug('Peer %s: Got GREET: %s', self.uuid, greet)
 
         self.greet = greet
 
@@ -178,7 +188,7 @@ class GreeterBeacon(Beacon):
 
     def on_recv_msg(self, peer, *msg):
         cmd = msg[0]
-        log.info('Peer %s: %s.', peer.uuid, cmd)
+        log.debug('Peer %s: %s.', peer.uuid, cmd)
 
         if cmd == 'GREET':
             peer._on_greet(msg[1])
