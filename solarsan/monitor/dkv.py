@@ -46,20 +46,7 @@ class DkvManager(Component):
 
     @handler('dkv_wait_for_connected', channel='*')
     def dkv_wait_for_connected(self, timeout=None):
-        logger.debug('Waiting for connected.')
-        event = self.dkv.connected_event
-        try:
-            count = 0
-            while count < timeout:
-                event.wait(timeout=1)
-                if event.is_set():
-                    break
-                count += 1
-            if count > timeout:
-                logger.error('Could not conect to Dkv in specified timeout=%d', timeout)
-                sys.exit(1)
-        except (KeyboardInterrupt, SystemExit):
-            raise
+        self.dkv.wait_for_connected(timeout=timeout)
 
     def started(self, component):
         pass

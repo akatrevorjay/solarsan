@@ -40,7 +40,7 @@ Synchronous part, works in our application thread
 
 
 def get_address(host='localhost', port=None,
-                service='/dkv', transport='tcp'):
+                service='', transport='tcp'):
     if not host:
         host = 'localhost'
     if not port:
@@ -59,6 +59,18 @@ def parse_address(address):
     ret = m.groupdict()
     ret['port'] = int(ret.get('port') and ret['port'][1:] or conf.ports.dkv)
     return ret
+
+
+class DkvError(SolarSanError):
+    pass
+
+
+class DkvTimeoutExceeded(DkvError):
+    pass
+
+
+#class DkvNotConnected(DkvError):
+#    pass
 
 
 class Dkv(object):
@@ -92,7 +104,20 @@ class Dkv(object):
             self.connect_via_discovery()
 
     def wait_for_connected(self, timeout=None):
-        return self.connected_event.wait(timeout=timeout)
+        logger.debug('Waiting for connection..')
+        event = self.connected_event
+        try:
+            count = 0
+            while count < timeout:
+                event.wait(timeout=1)
+                if event.is_set():
+                    break
+                count += 1
+            if count > timeout:
+                raise DkvTimeoutExceeded('Could not conect to Dkv in specified timeout=%d', timeout)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        logger.debug('Connected.')
 
     @property
     def subtree(self):
@@ -108,7 +133,7 @@ class Dkv(object):
         self.pipe.send_multipart(["SUBTREE", subtree])
         return self.pipe.recv_multipart()
 
-    def connect(self, address=None, host=None, port=conf.ports.dkv, service='/dkv', transport='tcp'):
+    def connect(self, address=None, host=None, port=conf.ports.dkv, service='', transport='tcp'):
         """ Connect to new server endpoint
         Sends [CONNECT][address] to the agent
         """
@@ -294,7 +319,7 @@ class DkvAgent(object):
     debug = None
     connected_event = None
 
-    def __init__(self, ctx, pipe, connected_event=None, debug=False):
+    def __init__(self, ctx, pipe, connected_event, debug=False):
         self.debug = debug
         self.ctx = ctx
 
@@ -310,8 +335,7 @@ class DkvAgent(object):
 
         self.servers = []
 
-        if connected_event:
-            self.connected_event = connected_event
+        self.connected_event = connected_event
 
     def connect(self, address=None):
         kwargs = parse_address(address)
@@ -356,8 +380,7 @@ class DkvAgent(object):
         address = get_address(transport=peer.transport, host=peer.host)
         self.connect(address)
 
-        if self.connected_event and not self.connected_event.is_set():
-            self.connected_event.set()
+        #self.connected_event.set()
 
     def _beacon_on_peer_lost(self, beacon, peer):
         logger.warning('Disconnecting from lost server %s', peer.addr)
@@ -512,6 +535,7 @@ def dkv_agent(ctx, pipe, connected_event):
                     agent.state = agent.STATES.ACTIVE
                     logger.debug("received from %s snapshot=%d",
                                  server.address, agent.sequence)
+                    connected_event.set()
                 else:
                     kvmsg.store(agent.kvmap)
 

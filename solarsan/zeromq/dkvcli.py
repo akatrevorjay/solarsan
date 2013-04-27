@@ -12,11 +12,9 @@ from .dkv import Dkv
 SUBTREE = ""
 
 
-def get_client(debug=True, discovery=True, connect_localhost=True, **kwargs):
+def get_client(debug=True, discovery=True, connect_localhost=True):
     """Create and connect dkv"""
-    kwargs['debug'] = debug
-    kwargs['discovery'] = discovery
-    dkv = Dkv(**kwargs)
+    dkv = Dkv(debug=debug, discovery=discovery, connect_localhost=connect_localhost)
     #dkv.subtree = SUBTREE
     return dkv
 

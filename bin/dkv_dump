@@ -28,9 +28,8 @@ def main(arguments):
     #loop = IOLoop.instance()
 
     c = get_client()
-    c.wait_for_connected()
-
-    c.set('dkv-dump', 'running')
+    c.wait_for_connected(timeout=30)
+    #c.set('dkv-dump', 'running')
 
     try:
         iterations = 0
