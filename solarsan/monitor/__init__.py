@@ -41,7 +41,13 @@ class Monitor(Component):
             Debugger(
                 logger=logger.getChild('events'),
                 IgnoreChannels=('discovery', 'peer', 'log_watch'),
-                IgnoreEvents=('registered', 'resource_health_check', 'managers_check', 'target_check_luns', 'dkv_update'),
+                IgnoreEvents=(
+                    'registered', 'unregistered',
+                    'prepare_unregister', 'prepare_unregister_complete',
+                    'managers_check',
+                    'resource_health_check', 'target_check_luns',
+                    'dkv_update'
+                ),
             ).register(self)
 
         self.dkv = DkvManager().register(self)

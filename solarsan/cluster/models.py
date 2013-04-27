@@ -84,7 +84,7 @@ class Peer(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         if cache:
             check_service = self._services.get(NAME)
         if not client_service:
-            client_Service = rpyc.VoidService
+            client_service = rpyc.VoidService
         if not check_service or check_service.closed:
             service = None
             try:
