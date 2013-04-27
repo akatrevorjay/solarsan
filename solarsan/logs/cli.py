@@ -3,7 +3,7 @@ from solarsan import logging
 logger = logging.getLogger(__name__)
 from solarsan.cli.backend import AutomagicNode
 #from .models import Syslog
-#from .watch import MongoLogWatcher
+from .watch import BaseMongoLogWatcher
 #from datetime import timedelta
 import errno
 import time
@@ -31,8 +31,20 @@ class LogsNode(AutomagicNode):
                 continue
             yield line.rstrip("\n")
 
-    #def monlog_tail(self, grep=None):
-    #    watcher = MongoLogWatcher()
+    def monlog_tail(self, last=10, grep=None):
+        watcher = BaseMongoLogWatcher(last=last)
+
+        try:
+            while True:
+                for log in watcher:
+                    yield str(log)
+                time.sleep(1)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+
+    def ui_command_monlog_tail(self):
+        """Tails and follows monlog"""
+        return self.monlog_tail()
 
     def ui_command_tail(self):
         '''

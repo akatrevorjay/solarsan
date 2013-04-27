@@ -6,40 +6,44 @@ from . import policies
 import mongoengine as m
 
 
-class MongoLogWatcher(object):
-    class signals:
-        check_log_entry = signals.check_log_entry
-
+class BaseMongoLogWatcher(object):
     _debug = False
 
-    def __init__(self):
-        super(MongoLogWatcher, self).__init__()
-        self._last_pk = None
+    def __init__(self, last=0):
+        self._last_count = last
 
-    def run_once(self):
-        logs = self._next()
-        count = logs.count()
-        if count == 0:
-            return
-        if self._debug:
-            logger.debug('Found %s monlogs to eat.', count)
-        for log in logs:
-            if self._debug:
-                logger.debug('Checking monlog: %s', log)
-            self._check(log)
+        for x in xrange(last):
+            x = last - (x + 1)
+            try:
+                self._last = Syslog.objects.order_by('-pk')[last]
+                break
+            except Syslog.DoesNotExist:
+                pass
 
-    def _next(self, _retry=False):
-        logs = None
+    def __iter__(self):
         try:
-            if not self._last_pk:
-                self._last_pk = Syslog.objects.first().pk
-            logs = Syslog.objects.filter(pk__gt=self._last_pk)
+            ret = Syslog.objects.filter(pk__gt=self._last.pk)
+
+            try:
+                self._last = Syslog.objects.order_by('-pk')[0]
+            except Syslog.DoesNotExist:
+                return
+
+            return ret
         except m.document.InvalidCollectionError as e:
             logger.error("Monlog collection is invalid, ie is not capped. Dropping existing collection to re-initialize as such: %s", e)
             Syslog.drop_collection()
-            if not _retry:
-                return self._next(_retry=True)
-        return logs
+
+
+class MongoLogWatcher(BaseMongoLogWatcher):
+    class signals:
+        check_log_entry = signals.check_log_entry
+
+    def run_once(self):
+        for log in self():
+            if self._debug:
+                logger.debug('Checking monlog: %s', log)
+            self._check(log)
 
     def _check(self, log):
         try:
