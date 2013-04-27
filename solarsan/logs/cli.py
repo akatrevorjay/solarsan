@@ -46,6 +46,10 @@ class LogsNode(AutomagicNode):
         """Tails and follows monlog"""
         return self.monlog_tail()
 
+    def ui_command_monlog_tail_grep(self, grep):
+        """Tails and follows monlog"""
+        return self.monlog_tail(grep=grep)
+
     def ui_command_tail(self):
         '''
         tail - Tails (and follows) syslog
