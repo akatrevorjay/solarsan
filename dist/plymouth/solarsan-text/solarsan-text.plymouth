@@ -1,0 +1,11 @@
+[Plymouth Theme]
+Name=SolarSan Text
+Description=Text mode theme for SolarSan
+ModuleName=ubuntu-text
+
+[solarsan-text]
+title=SolarSan
+black=0x000000
+white=0xffffff
+brown=0xdcd005
+blue=0xff4012
