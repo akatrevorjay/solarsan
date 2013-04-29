@@ -1,0 +1,3 @@
+exclude *.pyc
+exclude *.swp
+#exclude /etc/
