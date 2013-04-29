@@ -1,8 +1,0 @@
-# circuits
-mercurial
-
-# python-ethtool
-pkg-config libnl-dev
-
-# augeas
-python-augeas augeas-tools

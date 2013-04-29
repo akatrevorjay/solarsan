@@ -1,0 +1,8 @@
+ppa:chris-lea/mongodb-drivers
+ppa:chris-lea/nginx-devel
+ppa:chris-lea/node.js
+ppa:chris-lea/python-greenlet
+ppa:chris-lea/redis-server
+ppa:chris-lea/zeromq
+ppa:saltstack/salt
+ppa:zfs-native/daily

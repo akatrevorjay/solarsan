@@ -27,22 +27,17 @@ pushd /opt/solarsan/dist/
 
 ### All of this crap below and probably alot of the above should be in salt. ###
 
-# TODO PPAs
-#echo "[$0] Installing PPAs.."
-#cp -v pkgs/ppas/*.list /etc/apt/sources.list.d/
+echo "[$0] Installing PPAs.."
+pushd ppas && ./install.sh; popd
 
-# TODO install collectd
-#apt-get -y install collectd collectd-utils
-#cp -v collectd/*.conf /etc/collectd/
+echo "[$0] Installing configs.."
+cp -v collectd/*.conf /etc/collectd/
 
-# TODO install nginx (not needed yet)
-#apt-get -y install nginx-extras
-#ln -s nginx/*.conf /etc/nginx/conf.d/solarsan.conf
-#rm -f /etcc/nginx/sites-available/*
+cp -v nginx/*.conf /etc/nginx/conf.d/
+#rm -f /etc/nginx/sites-enabled/*
 
 # TODO put scst in DKMS as a pkg in locsol solarsan apt repo
-#svn checkout blah ~/build/scst
-#cp -v scst/scst.conf /etc/scst.conf
+cp -v scst/scst.conf /etc/scst.conf
 
 popd
 

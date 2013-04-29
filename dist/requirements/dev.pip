@@ -57,10 +57,9 @@ threadpool
 #-e git+git://fedorapeople.org/home/fedora/dsommers/public_git/python-ethtool.git#egg=ethtool
 #netifaces
 
-#ethtool
-#configshell
-#rtslib
-#targetcli
+#configshell-fb
+#rtslib-fb
+#targetcli-fb
 
 
 
