@@ -291,28 +291,13 @@ class DkvServer(object):
         self.remote_host = remote_host
         self.primary = primary
 
-        if primary:
-            self.kvmap = {}
-            bstar_local_ep = 'tcp://*:%d' % conf.ports.bstar_primary
-            bstar_remote_ep = 'tcp://%s:%d' % (remote_host, conf.ports.bstar_secondary)
-        else:
-            bstar_local_ep = 'tcp://*:%d' % conf.ports.bstar_secondary
-            bstar_remote_ep = 'tcp://%s:%d' % (remote_host, conf.ports.bstar_primary)
+        self.kvmap = {}
 
         # Setup router socket
-        #self.router = self.ctx.socket(zmq.ROUTER)
-        #self.router.bind(self.router_endpoint)
-        #self.router = ZMQStream(self.router)
-        #self.router.on_recv_stream(self.handle_snapshot)
-
-        self.bstar = BinaryStar(primary, bstar_local_ep, bstar_remote_ep)
-        self.bstar.register_voter(self.router_endpoint,
-                                  zmq.ROUTER,
-                                  self.handle_snapshot)
-
-        # Register state change handlers
-        self.bstar.master_callback = self.become_master
-        self.bstar.slave_callback = self.become_slave
+        self.router = self.ctx.socket(zmq.ROUTER)
+        self.router.bind(self.router_endpoint)
+        self.router = ZMQStream(self.router)
+        self.router.on_recv_stream(self.handle_snapshot)
 
         # Set up our dkv server sockets
         self.publisher = self.ctx.socket(zmq.PUB)
@@ -358,10 +343,10 @@ class DkvServer(object):
         self.hugz_callback.start()
 
         # Start bstar reactor until process interrupted
-        self.bstar.start(loop=loop)
+        #self.bstar.start(loop=loop)
 
-        #if loop:
-        #    self.loop.start()
+        if loop:
+            self.loop.start()
 
     def handle_snapshot(self, socket, msg):
         """snapshot requests"""
@@ -477,9 +462,9 @@ class DkvServer(object):
         self.master = True
         self.slave = False
 
-        # stop receiving subscriber updates while we are master
-        for peer in self.peers.values():
-            peer.subscriber.stop_on_recv()
+        ## stop receiving subscriber updates while we are master
+        #for peer in self.peers.values():
+        #    peer.subscriber.stop_on_recv()
 
         # Apply pending list to own kvmap
         while self.pending:
@@ -498,19 +483,19 @@ class DkvServer(object):
         self.master = False
         self.slave = True
 
-        # start receiving subscriber updates
-        for peer in self.peers.values():
-            peer.subscriber.on_recv(peer._on_subscriber_recv)
+        ## start receiving subscriber updates
+        #for peer in self.peers.values():
+        #    peer.subscriber.on_recv(peer._on_subscriber_recv)
 
     def handle_subscriber(self, peer, msg):
         """Collect updates from peer (master)
         We're always slave when we get these updates
         """
-        if self.master:
-            if msg[0] != 'HUGZ':
-                log.warn(
-                    "Received subscriber message, but we are master msg=%s from_peer=%s", msg, peer.uuid)
-                return
+        #if self.master:
+        #    if msg[0] != 'HUGZ':
+        #        log.warn(
+        #            "Received subscriber message, but we are master msg=%s from_peer=%s", msg, peer.uuid)
+        #        return
 
         # Get state snapshot if necessary
         if self.kvmap is None:
