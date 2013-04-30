@@ -1,4 +1,6 @@
 
+from solarsan import logging
+logger = logging.getLogger(__name__)
 from solarsan.cluster.models import Peer
 from solarsan.pretty import pp
 from configshell import ConfigNode
@@ -7,6 +9,9 @@ import sys
 import types
 #import errno
 #import time
+#from functools import wraps, update_wrapper, partial
+import inspect
+from decorator import FunctionMaker
 
 
 def get_services_cli():
@@ -47,21 +52,43 @@ class ServiceConfigNode(ConfigNode):
     """
     Generation
     """
-    # TODO Generate attributes and parameters!
 
     def generate_ui_commands(self):
         self._generated_ui_commands = {}
         if not getattr(self.service, 'get_ui_commands', None):
             return
-        for cmd_name, cmd in self.service.get_ui_commands().iteritems():
-            self.generate_ui_command(cmd_name, cmd)
+        for cmd_name, cmd in self.service.get_ui_commands():
+            self.generate_ui_command(cmd_name, **cmd)
 
-    def generate_ui_command(self, display_name, command):
-        name = command.get('name', display_name)
+    def generate_ui_command(self, display_name, name=None, argspec=None, method=None, function=None):
+        if name is None:
+            name = display_name
+
+        if argspec.args[0] == 'self':
+            argspec.args.pop(0)
+
+        signature = '%s(self, %s)' % (
+            name,
+            inspect.formatargspec(
+                formatvalue=lambda val: "",
+                *argspec)[1:-1]
+        )
+        #logger.error('sig=%s', signature)
 
         def func(self, *args, **kwargs):
-            self(_meth=name, *args, **kwargs)
+            command = func.__command__
+            return self(_meth=command, *args, **kwargs)
+
+        func = FunctionMaker.create(
+            signature,
+            #"return _func_(self, command, %(shortsignature)s)",
+            "return _func_(%(shortsignature)s)",
+            dict(_func_=func),
+            __command__=name,
+        )
+
         func = types.MethodType(func, self)
+
         setattr(self, name, func)
         self._generated_ui_commands[name] = func
 
@@ -69,7 +96,7 @@ class ServiceConfigNode(ConfigNode):
         self._generated_ui_children = {}
         if not getattr(self.service, 'get_ui_children', None):
             return
-        for child_name, child in self.service.get_ui_children().iteritems():
+        for child_name, child in self.service.get_ui_children():
             self.generate_ui_child(child_name, child)
 
     def generate_ui_child(self, display_name, service_config):
@@ -197,8 +224,14 @@ class ServiceConfigNode(ConfigNode):
             cls_name = str(self.__class__.__name__).lower()
 
             factory = None
+            args = []
+            kwargs = {}
+
             if self._service_config:
                 factory = self._service_config.get('factory')
+
+                args.extend(self._service_config.get('args', []))
+                kwargs.update(self._service_config.get('factory_kwargs', {}))
 
             if factory:
                 name = factory
@@ -213,18 +246,18 @@ class ServiceConfigNode(ConfigNode):
             else:
                 raise Exception('No service found for "%s"' % cls_name)
 
-            args = []
             if factory:
                 real_name = None
                 if self._service_config:
                     real_name = self._service_config.get('name')
                 if not real_name:
                     real_name = cls_name
-                args.append(real_name)
+                args.insert(0, real_name)
+
             #if hasattr(self, '_obj'):
             #    args.append(self._obj)
 
-            self._service = meth(*args)
+            self._service = meth(*args, **kwargs)
         return self._service
 
     def __call__(self, *args, **kwargs):

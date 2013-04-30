@@ -28,7 +28,16 @@ reboot = signal('reboot')
 
 pre_start = signal('pre_start')
 pre_stop = signal('pre_stop')
+start = signal('start')
+stop = signal('stop')
 post_start = signal('post_start')
 post_stop = signal('post_stop')
 
 check_log_entry = signal('check_log_entry')
+
+resource_status_update = signal('resource_status_update')
+resource_connection_state_update = signal('resource_connection_state_update')
+resource_disk_state_update = signal('resource_disk_state_update')
+resource_role_update = signal('resource_role_update')
+resource_remote_disk_state_update = signal('resource_remote_disk_state_update')
+resource_remote_role_update = signal('resource_remote_role_update')

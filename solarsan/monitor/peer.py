@@ -32,25 +32,18 @@ class PeersCheck(Event):
 
 
 class PeerManager(Component):
+    channel = 'peer'
     heartbeat_every = 5.0
     pool_health_every = 300.0
-    check_every = 300.0
 
     def __init__(self):
         super(PeerManager, self).__init__()
         self.monitors = {}
 
-        self.peers_check()
+        Timer(self.heartbeat_every, PeerHeartbeat(), self.channel, persist=True).register(self)
+        #Timer(self.pool_health_every, PeerPoolHealthCheck(), self.channel, persist=True).register(self)
 
-        Timer(self.heartbeat_every, PeerHeartbeat(), persist=True).register(self)
-        Timer(self.pool_health_every, PeerPoolHealthCheck(), persist=True).register(self)
-
-        self._check_timer = Timer(self.check_every,
-                                  PeersCheck(),
-                                  persist=True,
-                                  ).register(self)
-
-    def peers_check(self):
+    def managers_check(self):
         uuids = []
         for peer in Peer.objects.all():
             uuids.append(peer.uuid)
@@ -60,15 +53,19 @@ class PeerManager(Component):
                 self.monitors[uuid].unregister()
                 self.monitors.pop(uuid)
 
-    def peer_discovered(self, uuid, created=None):
+        self.fire(PeerPoolHealthCheck())
+
+    @handler('peer_discovered', channel='discovery')
+    def _on_peer_discovered(self, uuid, created=None, **kwargs):
+        if uuid in self.monitors:
+            return
         peer = get_peer(uuid)
         self.add_peer(peer)
-        return True
 
     def add_peer(self, peer):
         if peer.uuid in self.monitors:
             return
-        logger.info("Monitoring Peer '%s'.", peer.hostname)
+        #self.monitors[peer.uuid] = PeerMonitor(peer.uuid, channel='peer-%s' % peer.uuid).register(self)
         self.monitors[peer.uuid] = PeerMonitor(peer.uuid).register(self)
 
 
@@ -97,21 +94,28 @@ class PeerStillOffline(Event):
     """Peer is *still* offline"""
 
 
-def get_peer(uuid):
-    return Peer.objects.get(uuid=uuid)
+def get_peer(uuid=None, local=False):
+    if local:
+        return Peer.get_local()
+    else:
+        return Peer.objects.get(uuid=uuid)
 
 
 class PeerMonitor(Component):
+    channel = 'peer'
     heartbeat_timeout_after = 2
 
     uuid = None
 
-    def __init__(self, uuid):
+    def __init__(self, uuid, channel=channel):
         self.uuid = uuid
-        super(PeerMonitor, self).__init__()
+        super(PeerMonitor, self).__init__(channel=channel)
+
         self._heartbeat_timeout_count = None
 
         peer = self.peer
+        logger.info("Monitoring Peer '%s'.", peer.hostname)
+
         if peer.is_offline:
             logger.warning('Peer "%s" is already marked as offline. Marking online to ensure this is ' +
                            'still true.', peer.hostname)
@@ -121,6 +125,19 @@ class PeerMonitor(Component):
         return get_peer(self.uuid)
 
     _peer = None
+
+    #@property
+    #def peer(self):
+    #    if self._peer:
+    #        #self._peer.reload()
+    #        pass
+    #    else:
+    #        try:
+    #            self._peer = self.get_peer()
+    #        except Peer.DoesNotExist:
+    #            logger.error('Peer with uuid=%s does not exist anymore', self.uuid)
+    #            self.unregister()
+    #    return self._peer
 
     @property
     def peer(self):
@@ -141,8 +158,7 @@ class PeerMonitor(Component):
         return event
 
     def fire_this(self, event):
-        event.args.insert(0, self.uuid)
-        return self.fire(event)
+        return self.fire(self.get_event(event), self.channel)
 
     def peer_heartbeat(self):
         # This is done so the first try is always attempted, even if the Peer
@@ -202,7 +218,7 @@ class PeerMonitor(Component):
         peer = self.peer
         peer.is_offline = True
         peer.save()
-        self._offline_timer = Timer(60.0, self.get_event(PeerStillOffline()), persist=True).register(self)
+        self._offline_timer = Timer(60.0, self.get_event(PeerStillOffline()), self.channel, persist=True).register(self)
         self.fire_this(PeerFailover())
 
     # nagnagnagnagnagnag
@@ -212,15 +228,14 @@ class PeerMonitor(Component):
         peer = self.peer
         logger.warning("Peer '%s' is STILL offline!", peer.hostname)
 
-    #@handler('peer_discovered', channel='*')
-    def peer_discovered(self, uuid, created=False):
+    @handler('peer_discovered', channel='discovery')
+    def _on_peer_discovered(self, uuid, created=False, **kwargs):
         if uuid != self.uuid:
             return
         peer = self.peer
         #logger.info('Discovered peer "%s"', peer)
         if peer.is_offline:
             self.fire_this(PeerOnline())
-        return True
 
     def peer_pool_health_check(self):
         peer = self.peer
@@ -254,7 +269,6 @@ class PeerMonitor(Component):
 
         #signal.alarm(0)          # Disable the alarm
         #return retval
-        return True
 
     def peer_pool_not_healthy(self, uuid, pool):
         if uuid != self.uuid:

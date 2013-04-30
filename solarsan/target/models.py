@@ -68,9 +68,19 @@ class Backstore(ReprMixIn, m.Document):
             self.name = self.get_default_name()
         super(Backstore, self).save(*args, **kwargs)
 
+    @property
+    def device(self):
+        raise NotImplementedError
+
+    def detach(self):
+        pass
+
+    def attach(self):
+        pass
+
 
 class VolumeBackstore(Backstore):
-    _repr_vars = ['name', 'volume_name']
+    _repr_vars = ['name', 'volume_name', 'device']
     volume_name = m.StringField()
 
     def get_default_name(self):
@@ -103,9 +113,13 @@ class VolumeBackstore(Backstore):
     def device(self):
         return '/dev/zvol/%s' % self.volume_name
 
+    def is_available(self):
+        # TODO Should really check if it's RW if not self.is_active I suppose
+        return os.path.exists(self.device)
+
 
 class DrbdResourceBackstore(Backstore):
-    _repr_vars = ['name', 'resource']
+    _repr_vars = ['name', 'resource', 'device']
     #resource = m.ReferenceField(DrbdResource)
     resource = m.GenericReferenceField()
 
@@ -120,6 +134,21 @@ class DrbdResourceBackstore(Backstore):
     @property
     def device(self):
         return self.resource.device
+
+    def is_available(self):
+        # TODO Is this needed?
+        self.resource.reload()
+        return self.resource.role == 'Primary'
+
+    def detach(self):
+        self.resource.reload()
+        if self.resource.role == 'Primary':
+            self.resource.local.service.secondary()
+
+    def attach(self):
+        self.resource.reload()
+        if self.resource.role == 'Secondary':
+            self.resource.local.service.primary()
 
 
 """
@@ -160,9 +189,10 @@ class Acl(ReprMixIn, m.EmbeddedDocument):
 
     def stop(self, target=None, group=None):
         logger.debug('Stopping Acl %s for Group %s for Target %s', self, group, target)
-        #for initiator in self.allow:
-        #    scstadmin.rem_init(initiator, target.driver, target.name, group.name)
-        scstadmin.clear_inits(target.driver, target.name, group.name)
+        if scstadmin.does_target_ini_group_exist(target.name, target.driver, group.name):
+            #for initiator in self.allow:
+            #    scstadmin.rem_init(initiator, target.driver, target.name, group.name)
+            scstadmin.clear_inits(target.driver, target.name, group.name)
 
     def __unicode__(self):
         return self.__repr__()
@@ -190,6 +220,11 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
     def _target(self):
         return self._instance
 
+    def is_active(self, target=None):
+        if not target:
+            target = self._target
+        return scstadmin.does_target_ini_group_exist(target.name, target.driver, self.name)
+
     def start(self, target=None):
         if not target:
             target = self._target
@@ -202,7 +237,7 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
         return True
 
     def _add_group(self, target=None):
-        if not scstadmin.does_target_ini_group_exist(target.name, target.driver, self.name):
+        if not self.is_active(target=target):
             logger.debug('Adding group %s for Target %s', self, target)
             scstadmin.add_group(self.name, target.driver, target.name)
         return True
@@ -247,16 +282,18 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
                 logger.debug('Stopping backstore %s for Group %s Target %s', backstore, self, target)
                 backstore.stop(target=target, group=self)
 
-        # Clear out luns for group, to be safe
-        scstadmin.clear_luns(target.driver, target.name, self.name)
+        if self.is_active(target=target):
+            # Clear out luns for group, to be safe
+            scstadmin.clear_luns(target.driver, target.name, self.name)
 
     def _rem_acl(self, target=None):
         logger.debug('Removing Acl %s for Group %s for Target %s', self.acl, self, target)
         return self.acl.stop(target=target, group=self)
 
     def _rem_group(self, target=None):
-        logger.debug('Removing Group %s for Target %s', self, target)
-        return scstadmin.del_group(self.name, target.driver, target.name)
+        if self.is_active(target=target):
+            logger.debug('Removing Group %s for Target %s', self, target)
+            return scstadmin.del_group(self.name, target.driver, target.name)
 
     def __unicode__(self):
         return self.__repr__()
@@ -268,13 +305,47 @@ Targets
 
 
 class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
-    meta = dict(abstract=True)
+    meta = dict(allow_inheritance=True)
 
     class signals:
+        start = signals.start
         pre_start = signals.pre_start
         post_start = signals.post_start
+
+        stop = signals.stop
         pre_stop = signals.pre_stop
         post_stop = signals.post_stop
+
+    def __init__(self, *args, **kwargs):
+        super(Target, self).__init__(*args, **kwargs)
+
+        #DrbdResource.signals.status_change.connect(self.on_drbd_status_change)
+
+    def get_all_luns(self):
+        for group in self.groups:
+            for lun in group.luns:
+                yield lun
+
+    def get_all_lun_devices(self):
+        devices = []
+        for lun in self.get_all_luns():
+            dev = lun.device
+            if dev not in devices:
+                devices.append(dev)
+                yield dev
+
+    def get_all_unavailable_luns(self):
+        for lun in self.get_all_luns():
+            if not lun.is_available():
+                yield lun
+
+    # TODO Temp hack
+    @property
+    def devices(self):
+        for lun in self.get_all_luns():
+            # TODO what about volume backstores?
+            dev = lun.resource
+            yield dev
 
     name = m.StringField()
     floating_ip = m.ReferenceField(FloatingIP, dbref=False)
@@ -373,6 +444,18 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         return self.__repr__()
 
 
+@signals.start.connect
+def _on_start(self, **kwargs):
+    if issubclass(self.__class__, Target):
+        return self.start()
+
+
+@signals.stop.connect
+def _on_stop(self, **kwargs):
+    if issubclass(self.__class__, Target):
+        return self.stop()
+
+
 @signals.post_start.connect
 def _on_post_start(self):
     if issubclass(self.__class__, Target):
@@ -390,7 +473,6 @@ def _on_pre_stop(self):
 
 
 class iSCSITarget(Target):
-    #meta = {'allow_inheritance': True}
     driver = 'iscsi'
     #portal_port = m.IntField()
 
@@ -409,5 +491,4 @@ class iSCSITarget(Target):
 
 
 class SRPTarget(Target):
-    #meta = {'allow_inheritance': True}
     driver = 'srpt'

@@ -1,0 +1,6 @@
+#!/bin/bash
+if [[ "$VIRTUAL_ENV" != "solarsan" ]]; then
+    workon solarsan
+    . ~/.vim/repos/powerline/powerline/bindings/bash/powerline.sh
+fi
+[[ "$PATH" = */opt/solarsan/bin* ]] || export PATH="/opt/solarsan/bin:$PATH"

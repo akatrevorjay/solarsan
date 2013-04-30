@@ -14,16 +14,19 @@ class LogWatchRun(Event):
     """ Checks any logs if they need parsed """
 
 
-class LogManager(Component):
+class LogWatchManager(Component):
+    channel = 'log_watch'
+
     #run_every = 300.0
     run_every = 10.0
 
-    def __init__(self):
-        super(LogManager, self).__init__()
+    def __init__(self, channel=channel):
+        super(LogWatchManager, self).__init__(channel=channel)
         self.monlog = MongoLogWatcher()
 
         self._run_timer = Timer(self.run_every,
                                 LogWatchRun(),
+                                self.channel,
                                 persist=True,
                                 ).register(self)
 

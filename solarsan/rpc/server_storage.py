@@ -14,11 +14,11 @@ import rpyc
 
 
 class StorageService(rpyc.Service):
-    def on_connect(self):
-        logger.debug('Client connected.')
+    #def on_connect(self):
+    #    logger.debug('Client connected.')
 
-    def on_disconnect(self):
-        logger.debug('Client disconnected.')
+    #def on_disconnect(self):
+    #    logger.debug('Client disconnected.')
 
     def ping(self):
         return True
@@ -66,8 +66,6 @@ class StorageService(rpyc.Service):
 
     def peer_get_cluster_iface(self):
         """Gets Cluster IP"""
-        if 'cluster_iface' not in conf.config:
-            conf.config['cluster_iface'] = 'eth1'
         iface = conf.config['cluster_iface']
         nic = Nic(str(iface))
         #nic_config = nic.config._data

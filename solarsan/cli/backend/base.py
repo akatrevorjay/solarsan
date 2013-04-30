@@ -1,19 +1,29 @@
 
 
+import inspect
+from decorator import getfullargspec
+
+
 class AutomagicNode(object):
     def summary(self):
         return (None, None)
 
     def get_ui_commands(self):
-        ret = {}
         for attr in dir(self):
             if not attr.startswith('ui_command_'):
                 continue
-            ret[attr] = {}
-        return ret
+            val = getattr(self, attr)
+            argspec = getfullargspec(val)
+            yield (
+                attr,
+                dict(
+                    argspec=argspec,
+                    method=inspect.ismethod(val),
+                    function=inspect.isfunction(val),
+                )
+            )
 
     def get_ui_children(self):
-        ret = {}
         for attr in dir(self):
             if attr.startswith('ui_children_factory_'):
                 if attr.endswith('_list'):
@@ -21,18 +31,19 @@ class AutomagicNode(object):
 
                     func = getattr(self, attr)
                     for name in func():
-                        ret[name] = dict(factory=factory)
+                        service_config = dict(factory=factory)
+                        yield (name, service_config)
                 elif attr.endswith('_dict'):
                     factory = attr.rpartition('_dict')[0]
 
                     func = getattr(self, attr)
                     for display_name, service_config in func().iteritems():
                         service_config['factory'] = factory
-                        ret[display_name] = service_config
+                        yield (display_name, service_config)
+
             elif attr.startswith('ui_child_'):
                 name = attr.partition('ui_child_')[2]
-                ret[name] = {}
-        return ret
+                yield (name, {})
 
     _config_group_params = {}
 

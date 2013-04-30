@@ -1,16 +1,48 @@
 
+""" Basics """
+
+from bunch import Bunch
 import socket
+
 hostname = socket.gethostname()
 
-
 SOLARSAN_ROOT = '/opt/solarsan'
-SERVER_ID = hostname
+#SERVER_ID = hostname
 
+rpyc_conn_config = Bunch(
+    allow_exposed_attrs=False,
+    allow_public_attrs=True,
+    allow_all_attrs=True,
+    allow_setattr=True,
+    allow_delattr=True,
+    allow_pickle=False,
+    #exposed_prefix=,
+    include_local_traceback=True,
+    #include_local_traceback=False,
+)
+
+scst_config_file = '/etc/scst.conf'
+
+ports = Bunch(
+    bstar_primary=5003,
+    bstar_secondary=5004,
+
+    discovery=1785,
+
+    dkv=5556,
+    dkv_publisher=5557,
+    dkv_collector=5558,
+
+    #_rpc=1787,
+    #_drbd_start=7800,
+)
+
+""" Config """
 
 import os
-
-
 from config import Config as _BaseConfig
+
+
 CONFIG_FILE = os.path.join(SOLARSAN_ROOT, 'etc', 'solarsan', 'solarsan.conf')
 
 
@@ -24,6 +56,7 @@ class Config(_BaseConfig):
         super(Config, self).save(f)
 
 
+_config_updated = None
 config = Config()
 
 
@@ -31,13 +64,11 @@ config = Config()
 if not 'uuid' in config:
     from uuid import uuid1
     config['uuid'] = uuid1()
-    config.save()
-
+    _config_updated = True
 
 if not 'cluster_iface' in config:
     config['cluster_iface'] = 'eth1'
-    config.save()
-
+    _config_updated = True
 
 if not 'auto_snap' in config:
     config['auto_snap'] = {
@@ -48,10 +79,14 @@ if not 'auto_snap' in config:
             'interval': 3600,
         },
     }
+    _config_updated = True
+
+if _config_updated:
+    del _config_updated
     config.save()
 
+""" Logging """
 
-# logging
 LOGGING = {
     'version': 1,
     #'disable_existing_loggers': True,
@@ -71,10 +106,18 @@ LOGGING = {
         #},
         #'solarsan_standard': {
         'standard': {
-            'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(message)s',
+            #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(message)s',
+            #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(processName)s[%(process)d] {%(thread)d} %(message)s',
+            #'format': '%(asctime)s %(levelname)8s %(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d} %(message)s',
+            #'format': '>> %(asctime)s %(levelname)8s %(name)20s@%(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d}\n%(message)s\n',
+            #'format': '%(asctime)s %(name)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
+            'format': '%(asctime)s %(name)s[%(process)d]: [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d',
+            #'format': '%(asctime)s %(name)s[%(process)d] {%(thread)d}: %(message)s @%(funcName)s:%(lineno)d',
         },
         'verbose': {
-            'format': '%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s'
+            #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(processName)s[%(process)d] {%(thread)d} %(message)s',
+            #'format': '%(asctime)s %(name)s/%(processName)s[%(process)d]: %(message)s {%(thread)d} @%(funcName)s:%(lineno)d',
+            'format': '%(asctime)s %(name)s[%(process)d] {%(thread)d}: %(message)s @%(funcName)s:%(lineno)d',
         },
         'syslog': {
             #'format': '<22>%(asctime)s ' + SERVER_NAME + ' %(name)s[%(process)d]: %(message)s',
@@ -143,21 +186,37 @@ LOGGING = {
             'level': 'DEBUG',
             'handlers': ['console'],
         },
+        'solarsan.monitor.discovery': {
+            'propagate': False,
+            'level': 'INFO',
+            #'level': 'DEBUG',
+            'handlers': ['console'],
+        },
+        'solarsan.zeromq.beacon': {
+            'propagate': False,
+            'level': 'INFO',
+            #'level': 'DEBUG',
+            'handlers': ['console'],
+        },
+        'solarsan.zeromq.dkv': {
+            'propagate': False,
+            'level': 'DEBUG',
+            'handlers': ['console'],
+        },
+        'solarsan.zeromq.dkvsrv': {
+            'propagate': False,
+            'level': 'DEBUG',
+            'handlers': ['console'],
+        },
+        'butler': {
+            'propagate': False,
+            'level': 'INFO',
+            'handlers': ['console'],
+        },
+        'pizco': {
+            'propagate': False,
+            'level': 'INFO',
+            'handlers': ['console'],
+        },
     }
 }
-
-
-rpyc_conn_config = {
-    'allow_exposed_attrs': False,
-    'allow_public_attrs': True,
-    'allow_all_attrs': True,
-    'allow_setattr': True,
-    'allow_delattr': True,
-    #'allow_pickle': False,
-    #'exposed_prefix': '',
-    'include_local_traceback': True,
-    #'include_local_traceback': False,
-}
-
-
-scst_config_file = '/etc/scst.conf'

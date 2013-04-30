@@ -11,10 +11,12 @@ Device Manager
 
 
 class DeviceManager(Component):
-    def __init__(self):
-        super(DeviceManager, self).__init__()
+    channel = 'device'
 
-        UDev().register(self)
+    def __init__(self, channel=channel):
+        super(DeviceManager, self).__init__(channel=channel)
+
+        UDev(channel=channel).register(self)
 
     def device_add(self, device):
         logger.debug('Device added: %s', device)

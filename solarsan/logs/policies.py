@@ -99,5 +99,5 @@ class TargetLogPolicy(object):
         pass
 
 
-target_log_policy = TargetLogPolicy()
-signals.check_log_entry.connect(target_log_policy)
+#target_log_policy = TargetLogPolicy()
+#signals.check_log_entry.connect(target_log_policy)

@@ -1,17 +1,54 @@
 
+import sh
+
+from solarsan.cli.backend import AutomagicNode
+from solarsan.target.cli import TargetsNode
+
+
+class Storage(AutomagicNode):
+    def ui_child_pools(self):
+        return PoolsNode()
+
+    #def ui_child_resources(self):
+    #    return ResourcesNode()
+
+    def ui_child_targets(self):
+        return TargetsNode()
+
+    def ui_command_create_pool(self, name):
+        '''
+        create - Creates a storage Pool
+        '''
+        raise NotImplemented
+
+    def ui_command_lsscsi(self):
+        '''
+        lsscsi - list SCSI devices (or hosts) and their attributes
+        '''
+        return sh.lsscsi()
+
+    def ui_command_df(self):
+        '''
+        df - report file system disk space usage
+        '''
+        return sh.df('-h')
+
+    def ui_command_lsblk(self):
+        return sh.lsblk()
+
+
 from solarsan.exceptions import ZfsError
 from solarsan.storage.utils import clean_name
 from django.template.defaultfilters import capfirst
 import os
 
 from solarsan.cli.backend import AutomagicNode
-from .drbd import ResourceNode
 
-from ..drbd import DrbdResource
-from ..pool import Pool
+from .drbd import DrbdResource
+from .pool import Pool
 #from .filesystem import Filesystem
-from ..volume import Volume
-from ..snapshot import Snapshot
+from .volume import Volume
+from .snapshot import Snapshot
 
 
 class DatasetPropsMixIn:
@@ -155,7 +192,7 @@ class DatasetNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
         return (capfirst(self.obj.type), True)
 
 
-from ..device import Device, Devices
+from .device import Device, Devices
 
 
 class RwDevices(Devices):
@@ -343,3 +380,34 @@ class PoolNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
     ## TODO Attribute
     #def ui_command_is_clustered(self):
     #    return self.obj.is_clustered
+
+
+#from solarsan.exceptions import ZfsError
+from solarsan.cli.backend import AutomagicNode
+from solarsan.storage.drbd import DrbdResource
+
+
+class ResourcesNode(AutomagicNode):
+    def ui_children_factory_resource_list(self):
+        return [res.name for res in DrbdResource.objects.all()]
+
+    def ui_children_factory_resource(self, name):
+        return ResourceNode(name)
+
+    def ui_command_create(self, name=None):
+        # TODO Create Floating IP wizard
+        raise NotImplemented
+
+
+class ResourceNode(AutomagicNode):
+    def __init__(self, name, display_name=None):
+        if display_name:
+            self.display_name = display_name
+        self.obj = DrbdResource.objects.get(name=name)
+        super(ResourceNode, self).__init__()
+
+    def summary(self):
+        return ('%s %s %s' % (self.obj.connection_state,
+                              self.obj.role,
+                              self.obj.disk_state,
+                              ), True)

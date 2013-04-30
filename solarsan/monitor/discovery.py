@@ -1,6 +1,7 @@
 
 from solarsan import logging
 logger = logging.getLogger(__name__)
+from solarsan.exceptions import SolarSanError
 from solarsan.cluster.models import Peer
 from circuits import Component, Timer, Event
 from datetime import datetime
@@ -25,26 +26,34 @@ class PeerDiscovered(Event):
     """Peer Discovered Event"""
 
 
+class DiscoveryError(SolarSanError):
+    pass
+
+
 class Discovery(Component):
+    channel = 'discovery'
+
     discover_every = 60.0
 
     def __init__(self):
         super(Discovery, self).__init__()
 
+        Timer(self.discover_every, DiscoverPeers(), self.channel, persist=True).register(self)
+
+    def managers_check(self):
         self.fire(DiscoverPeers())
-        Timer(self.discover_every, DiscoverPeers(), persist=True).register(self)
 
     """
     Discovery
     """
 
     def discover_peers(self):
-        logger.debug("Discovering nearby peers..")
+        logger.info("Discovering nearby peers..")
         try:
             for host, port in rpyc.discover('storage'):
                 self.fire(ProbePeer(host))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error('Got error while discovering nearby peers: %s', e)
 
     def probe_peer(self, host):
         """Probes a discovered node for info"""
@@ -65,11 +74,11 @@ class Discovery(Component):
             addrs = dict([(y['addr'], y['netmask']) for x in ifaces.values() for y in x])
 
             if None in [hostname, uuid, ifaces, addrs, cluster_iface]:
-                raise Exception("Peer discovery probe has invalid data.")
+                raise DiscoveryError("Failed to probe discovered peer host=%s: Probe has invalid data.", host)
 
-            logger.debug("Peer discovery (host='%s'): Hostname is '%s'.", host, hostname)
+            logger.debug("Discovered peer host=%s; hostname=%s.", host, hostname)
         except Exception, e:
-            logger.error("Peer discovery (host='%s') failed: %s", host, e)
+            logger.error("Failed to probe discovered peer host=%s: %s", host, e)
             return
         finally:
             try:
