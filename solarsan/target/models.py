@@ -405,18 +405,17 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     recent_denied_initiators = m.ListField(m.StringField())
     #recent_allowed_initiators = m.ListField(m.StringField())
 
-    _dev_handler = 'vdisk_blockio'
-
     def start(self):
         logger.info('Starting Target %s', self)
         self.signals.pre_start.send(self)
 
         self._add_target()
-        #self._add_devices()
-        self.enabled = True
 
         for group in self.groups:
             group.start(target=self)
+
+        self.enabled = True
+        self.driver_enabled = True
 
         self.signals.post_start.send(self)
 
@@ -429,8 +428,8 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
                 group.stop(target=self)
 
             self.enabled = False
-            #self._del_devices()
             self._del_target()
+            self.driver_enabled = False
 
         self.signals.post_stop.send(self)
 
@@ -478,6 +477,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         logger.debug('Adding %s', self)
         if not self.is_added:
             drv = get_driver(self.driver)
+
             parameters = self.parameters
             if parameters:
                 logger.debug('Parameters for %s: %s', self, parameters)
@@ -519,8 +519,10 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     def enabled(self, value):
         if not self.added:
             return
+        if value == self.enabled:
+            return
         tgt = get_target(self.driver, self.name)
-        if value and not self.enabled:
+        if value:
             logger.debug('Enabling Target %s', self)
         else:
             logger.debug('Disabling Target %s', self)
@@ -528,6 +530,9 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         if tgt.enabled != value:
             tgt.enabled = value
 
+    is_enabled = enabled
+
+    # TODO This does not belong here, it belongs in a Driver class.
     @property
     def driver_enabled(self):
         drv = get_driver(self.driver)
@@ -535,14 +540,29 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
             return False
         return bool(int(drv.enabled))
 
+    # TODO This does not belong here, it belongs in a Driver class.
     @driver_enabled.setter
     def driver_enabled(self, value):
         drv = get_driver(self.driver)
         if not drv:
             return False
-        drv.enabled = int(bool(value))
 
-    is_enabled = enabled
+        value = int(bool(value))
+        if value == self.driver_enabled:
+            return
+
+        for root, dirs, files in os.walk(drv._path_):
+            break
+        drv_subdir_count = len(dirs)
+
+        if not value and drv_subdir_count:
+            logger.info('Not disabling driver %s as it is currently in use.', self.driver)
+            return
+        elif not value:
+            logger.info('Disabling driver %s as it is no longer in use.', self.driver)
+        else:
+            logger.info('Enabling driver %s.', self.driver)
+        drv.enabled = value
 
     def __unicode__(self):
         return self.__repr__()
