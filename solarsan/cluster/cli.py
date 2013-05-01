@@ -41,9 +41,9 @@ class PeerNode(AutomagicNode):
 
     def summary(self):
         if self.obj.is_online:
-            return ('Online', True)
+            return ('online', True)
         else:
-            return ('Offline', False)
+            return ('offline', False)
 
     @property
     def service(self):

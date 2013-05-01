@@ -2,33 +2,23 @@
 from solarsan import logging
 logger = logging.getLogger(__name__)
 from solarsan import conf
-#from solarsan.template import quick_template
-#from solarsan.storage.drbd import DrbdResource
-#from solarsan.storage.volume import Volume
-from .models import iSCSITarget, SRPTarget
 import sh
-#import random
-
-#from . import scstadmin
-
 import sysfs
 
 
-class Node(sysfs.Node):
-    pass
-
-sys = Node()
+scstsys = sysfs.Node('/sys/kernel/scst_tgt/')
 
 
-scst = sys.kernel.scst_tgt
+def drivers(self):
+    return scstsys.drivers
 
 
 def has_driver(driver):
-    return driver in scst.targets
+    return driver in scstsys.targets
 
 
 def get_driver(driver):
-    return getattr(scst.targets, driver, None)
+    return getattr(scstsys.targets, driver, None)
 
 
 def is_driver_enabled(driver):
@@ -36,6 +26,33 @@ def is_driver_enabled(driver):
     if not driver:
         return
     return bool(driver.enabled)
+
+
+def handlers(self):
+    return list(scstsys.handlers)
+
+
+def sessions(self):
+    # TODO
+    #return list(scstsys.sessions)
+    pass
+
+
+#def add_target
+'''
+In [46]: print scst.targets.iscsi.mgmt
+Usage: echo "add_target target_name [parameters]" >mgmt
+       echo "del_target target_name" >mgmt
+       echo "add_attribute <attribute> <value>" >mgmt
+       echo "del_attribute <attribute> <value>" >mgmt
+       echo "add_target_attribute target_name <attribute> <value>" >mgmt
+       echo "del_target_attribute target_name <attribute> <value>" >mgmt
+
+where parameters are one or more param_name=value pairs separated by ';'
+
+The following target driver attributes available: IncomingUser, OutgoingUser
+The following target attributes available: IncomingUser, OutgoingUser, allowed_portal
+'''
 
 
 def has_target(target, driver):

@@ -1,0 +1,3 @@
+#!/bin/bash -e
+SOLARSAN_DIR=/opt/solarsan
+exec $SOLARSAN_DIR/bin/pyenv $SOLARSAN_DIR/bin/reloader.py -p $SOLARSAN_DIR/solarsan -i '*.sw*' '*.pyc' -s 10 "$@"

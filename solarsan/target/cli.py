@@ -257,11 +257,11 @@ class TargetNode(AutomagicNode):
 
     def summary(self):
         if self.obj.is_enabled:
-            return ('Active', True)
+            return ('active', True)
         elif self.obj.is_added:
-            return ('Added', True)
+            return ('added', True)
         else:
-            return ('Inactive', False)
+            return ('inactive', False)
 
     def ui_command_delete(self):
         self.obj.delete()

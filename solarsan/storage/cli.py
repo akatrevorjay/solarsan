@@ -9,7 +9,7 @@ class Storage(AutomagicNode):
         return PoolsNode()
 
     #def ui_child_resources(self):
-    #    return ResourcesNode()
+    #    return DrbdResourcesNode()
 
     def ui_command_create_pool(self, name):
         '''
@@ -35,7 +35,7 @@ class Storage(AutomagicNode):
 
 from solarsan.exceptions import ZfsError
 from solarsan.storage.utils import clean_name
-from django.template.defaultfilters import capfirst
+#from django.template.defaultfilters import capfirst
 import os
 
 from solarsan.cli.backend import AutomagicNode
@@ -185,7 +185,7 @@ class DatasetNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
     def summary(self):
         # TODO Check disk usage percentage, generic self.obj.errors/warnings
         # interface perhaps?
-        return (capfirst(self.obj.type), True)
+        return (self.obj.type, True)
 
 
 from .device import Device, Devices
@@ -229,19 +229,21 @@ class VolumeNode(DatasetNode):
         ret = {}
         try:
             # TODO Look up by device path
-            res = DrbdResource.objects.get(name=self.obj.basename)
+            #res = DrbdResource.objects.get(
+            name = self.obj.basename
+            res = DrbdResource.objects.get(name=name)
             peer_hostname = res.remote.hostname
-            ret['replicated resource with %s' % peer_hostname] = dict(name=self.obj.basename)
+            ret['drbd:%s@%s' % (name, peer_hostname)] = dict(name=name)
         except DrbdResource.DoesNotExist:
             pass
         return ret
 
     def ui_children_factory_resource(self, name):
-            return ResourceNode(name)
+            return DrbdResourceNode(name)
 
     def summary(self):
-        return ('%s %s/%s' % (
-            capfirst(self.obj.type),
+        return ('%s usage=%s/%s' % (
+            self.obj.type,
             str(self.obj.properties['used']),
             str(self.obj.properties['volsize']),
         ), True)
@@ -249,12 +251,12 @@ class VolumeNode(DatasetNode):
 
 class PoolNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
     def summary(self):
-        return ('%s usage=%s/%s; health=%s' % (
-            capfirst(self.obj.type),
+        return (str('%s usage=%s/%s; health=%s' % (
+            self.obj.type,
             str(self.obj.properties['alloc']),
             str(self.obj.properties['size']),
             str(self.obj.properties['health']),
-        ), self.obj.is_healthy())
+        )).lower(), self.obj.is_healthy())
 
     def _get_dataset(self):
         return self.obj.get_filesystem()
@@ -317,6 +319,7 @@ class PoolNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
     def ui_children_factory_volume_dict(self):
         ret = {}
         for vol in self.obj.volumes():
+            #display_name = 'volume:%s' % vol.basename
             display_name = vol.basename
 
             ## TODO Keep track of this shit better, this is stupid.
@@ -387,27 +390,26 @@ class PoolNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
 from solarsan.cli.backend import AutomagicNode
 
 
-class ResourcesNode(AutomagicNode):
-    def ui_children_factory_resource_list(self):
-        return [res.name for res in DrbdResource.objects.all()]
+#class DrbdResourcesNode(AutomagicNode):
+#    def ui_children_factory_resource_list(self):
+#        return [res.name for res in DrbdResource.objects.all()]
+#
+#    def ui_children_factory_resource(self, name):
+#        return DrbdResourceNode(name)
+#
+#    def ui_command_create(self, name=None):
+#        raise NotImplemented
 
-    def ui_children_factory_resource(self, name):
-        return ResourceNode(name)
 
-    def ui_command_create(self, name=None):
-        # TODO Create Floating IP wizard
-        raise NotImplemented
-
-
-class ResourceNode(AutomagicNode):
+class DrbdResourceNode(AutomagicNode):
     def __init__(self, name, display_name=None):
         if display_name:
             self.display_name = display_name
         self.obj = DrbdResource.objects.get(name=name)
-        super(ResourceNode, self).__init__()
+        super(DrbdResourceNode, self).__init__()
 
     def summary(self):
-        return ('%s %s %s' % (self.obj.connection_state,
-                              self.obj.role,
-                              self.obj.disk_state,
-                              ), True)
+        return (str('%s; %s; %s' % (self.obj.disk_state,
+                                    self.obj.connection_state,
+                                    self.obj.role)
+                    ).lower(), True)

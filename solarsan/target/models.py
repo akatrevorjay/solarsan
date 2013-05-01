@@ -4,8 +4,10 @@ logger = logging.getLogger(__name__)
 import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from solarsan.ha.models import FloatingIP
-from .utils import generate_wwn, is_valid_wwn
+from .rtsutils import generate_wwn, is_valid_wwn
 from . import scstadmin
+from .scst import scstsys
+
 from solarsan.storage.volume import Volume
 #from solarsan.storage.drbd import DrbdResource
 from uuid import uuid4
@@ -15,6 +17,14 @@ import os
 """
 Backstore
 """
+
+
+def get_handler(handler):
+    return getattr(scstsys.handlers, handler, None)
+
+
+def dictattrs(**attrs):
+    return ';'.join(['%s=%s' % (k, v) for k, v in attrs.iteritems()])
 
 
 class Backstore(ReprMixIn, m.Document):
@@ -28,9 +38,21 @@ class Backstore(ReprMixIn, m.Document):
 
     @property
     def active(self):
-        return scstadmin.does_device_exist(self.name)
+        return bool(str(self.name) in scstsys.devices)
 
     is_active = active
+
+    @property
+    def _hnd(self):
+        return get_handler(self.handler)
+
+    @property
+    def _dev(self):
+        return getattr(scstsys.devices, self.name, None)
+
+    @property
+    def attributes(self):
+        return dictattrs(filename=self.resource.device)
 
     def start(self, target=None, group=None):
         logger.debug('Starting backstore %s for Group %s Target %s', self, group, target)
@@ -40,24 +62,24 @@ class Backstore(ReprMixIn, m.Document):
         logger.debug('Stopping backstore %s for Group %s Target %s', self, group, target)
 
         # TODO What about a backstore that's used in multiple groups or targets?
-        #return self.close()
+        return self.close()
 
     def open(self):
         if not self.is_active:
             logger.debug('Opening backstore device %s', self)
-            scstadmin.open_dev(self.name, self.handler, filename=self.device)
+            self._hnd.mgmt = 'add_device {0.name} {0.attributes}'.format(self)
         return True
 
     def close(self):
         if self.is_active:
             logger.debug('Closing backstore device %s', self)
-            scstadmin.close_dev(self.name, self.handler, force=True)
+            self._hnd.mgmt = 'del_device {0.name}'.format(self)
         return True
 
     def resync_size(self):
         if self.is_active:
             logger.debug('Resyncing backstore device %s', self)
-            scstadmin.resync_dev(self.device)
+            self._dev.resync_size = 0
         return True
 
     def __unicode__(self):
@@ -177,22 +199,48 @@ Acl
 """
 
 
+def get_target(driver, target):
+    driver = getattr(scstsys.targets, driver, None)
+    if driver:
+        return getattr(driver, target, None)
+
+
+def get_ini_group(driver, target, group):
+    tgt = get_target(driver, target)
+    if tgt:
+        return getattr(tgt.ini_groups, group, None)
+
+
 class Acl(ReprMixIn, m.EmbeddedDocument):
-    allow = m.ListField()
-    deny = m.ListField()
-    #default_allow = m.BooleanField()
+    initiators = m.ListField(m.StringField())
+    #allow = m.ListField()
+    #insecure = m.BooleanField()
+
+    #chap = m.BooleanField()
+    #chap_user = m.StringField()
+    #chap_pass = m.StringField()
 
     def start(self, target=None, group=None):
-        logger.debug('Starting Acl %s for Group %s for Target %s', self, group, target)
-        for initiator in self.allow:
-            scstadmin.add_init(initiator, target.driver, target.name, group.name)
+        logger.debug('Starting %s for %s for %s', self, group, target)
+
+        # TODO insecure option
+        # TODO chap auth
+
+        ini_group = get_ini_group(target.driver, target.name, group.name)
+        if ini_group:
+            for initiator in self.initiators:
+                logger.debug('Adding intiator %s for %s for %s for %s', initiator, self, group, target)
+                ini_group.initiators.mgmt = 'add %s' % initiator
 
     def stop(self, target=None, group=None):
-        logger.debug('Stopping Acl %s for Group %s for Target %s', self, group, target)
-        if scstadmin.does_target_ini_group_exist(target.name, target.driver, group.name):
-            #for initiator in self.allow:
-            #    scstadmin.rem_init(initiator, target.driver, target.name, group.name)
-            scstadmin.clear_inits(target.driver, target.name, group.name)
+        logger.debug('Stopping %s for %s for %s', self, group, target)
+        ini_group = get_ini_group(target.driver, target.name, group.name)
+        if ini_group:
+            for initiator in self.initiators:
+                logger.debug('Removing initiator %s for %s for %s for %s', initiator, self, group, target)
+                ini_group.initiators.mgmt = 'del %s' % initiator
+            logger.debug('Clearing all initiators for %s for %s for %s', self, group, target)
+            ini_group.initiators.mgmt = 'clear'
 
     def __unicode__(self):
         return self.__repr__()
@@ -223,7 +271,8 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
     def is_active(self, target=None):
         if not target:
             target = self._target
-        return scstadmin.does_target_ini_group_exist(target.name, target.driver, self.name)
+        tgt = get_target(target.driver, target.name)
+        return tgt and self.name in tgt.ini_groups
 
     def start(self, target=None):
         if not target:
@@ -239,25 +288,29 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
     def _add_group(self, target=None):
         if not self.is_active(target=target):
             logger.debug('Adding group %s for Target %s', self, target)
-            scstadmin.add_group(self.name, target.driver, target.name)
+            tgt = get_target(target.driver, target.name)
+            if not tgt:
+                raise Exception('Could not get target {0.name}'.format(target))
+            tgt.ini_groups.mgmt = 'create %s' % self.name
         return True
 
     def _add_acl(self, target=None):
         return self.acl.start(target=target, group=self)
 
     def _add_luns(self, target=None):
-        # Add luns
+        ini_group = get_ini_group(target.driver, target.name, self.name)
+
         for lun, backstore in enumerate(self.luns):
             lun += 1
 
             if not backstore.is_active:
-                logger.debug('Starting backstore %s for Group %s Target %s', backstore, self, target)
+                logger.debug('Starting backstore %s for %s for %s', backstore, self, target)
                 backstore.start(target=target, group=self)
 
-            if not scstadmin.does_target_lun_exist(target.name, target.driver, lun, self.name):
-                logger.debug('Adding lun %d with backstore %s for Group %s Target %s', lun, backstore, self, target)
-                # Definition: scstadmin.add_lun(lun, driver, target, device, group=None, **attributes)
-                scstadmin.add_lun(lun, target.driver, target.name, backstore.name, self.name)
+            if not str(lun) in ini_group.luns:
+                logger.debug('Adding lun %d with backstore %s for %s for %s', lun, backstore, self, target)
+                """parameters: read_only"""
+                ini_group.luns.mgmt = 'add {0.name} {1}'.format(backstore, lun)
 
     def stop(self, target=None):
         if not target:
@@ -271,12 +324,14 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
         return True
 
     def _rem_luns(self, target=None):
+        ini_group = get_ini_group(target.driver, target.name, self.name)
+
         for lun, backstore in enumerate(self.luns):
             lun += 1
 
-            if scstadmin.does_target_lun_exist(target.name, target.driver, lun):
-                logger.debug('Removing lun %d with backstore %s for Group %s Target %s', lun, backstore, self, target)
-                scstadmin.rem_lun(lun, target.driver, target.name, self.name)
+            if str(lun) in ini_group.luns:
+                logger.debug('Removing lun %d with backstore %s for %s for %s', lun, backstore, self, target)
+                ini_group.luns.mgmt = 'del {0}'.format(lun)
 
             if backstore.is_active:
                 logger.debug('Stopping backstore %s for Group %s Target %s', backstore, self, target)
@@ -293,7 +348,10 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
     def _rem_group(self, target=None):
         if self.is_active(target=target):
             logger.debug('Removing Group %s for Target %s', self, target)
-            return scstadmin.del_group(self.name, target.driver, target.name)
+            tgt = get_target(target.driver, target.name)
+            if not tgt:
+                raise Exception('Could not get target {0.name}'.format(target))
+            tgt.ini_groups.mgmt = 'del %s' % self.name
 
     def __unicode__(self):
         return self.__repr__()

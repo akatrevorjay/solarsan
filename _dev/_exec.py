@@ -29,10 +29,11 @@ from solarsan.ha.models import FloatingIP
 from solarsan.target.models import Backstore, VolumeBackstore, DrbdResourceBackstore
 from solarsan.target.models import PortalGroup, Acl
 from solarsan.target.models import Target, iSCSITarget, SRPTarget
+from solarsan.target.models import get_handler, get_target, get_ini_group
 
 import solarsan.target.scst
-from solarsan.target import scstadmin, scst
-import solarsan.target.utils
+from solarsan.target.scst import scstsys
+import solarsan.target.rtsutils
 
 # devices
 from solarsan.storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partition, Partitions
