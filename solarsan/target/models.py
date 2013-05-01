@@ -302,6 +302,31 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
                 """parameters: read_only"""
                 ini_group.luns.mgmt = 'add {0.name} {1}'.format(backstore, lun)
 
+    #@property
+    #def attributes(self):
+    #    """The following target driver attributes available: IncomingUser, OutgoingUser
+    #    The following target attributes available: IncomingUser, OutgoingUser, allowed_portal
+    #    """
+    #    # How to require chap auth for discovery:
+    #    #422 echo "192.168.1.16 AccessControl" >/sys/kernel/scst_tgt/targets/iscsi/iSNSServer
+    #    #423 echo "add_attribute IncomingUser joeD 12charsecret" >/sys/kernel/scst_tgt/targets/iscsi/mgmt
+    #    #424 echo "add_attribute OutgoingUser jackD 12charsecret1" >/sys/kernel/scst_tgt/targets/iscsi/mgmt
+    #    return dict(
+    #        #IncomingUser='test testtesttesttest',
+    #        #IncomingUser1='test1 testtesttesttest1',
+    #        #OutgoingUser='test testtesttesttest',
+    #    )
+    #
+    #def _add_group_attrs(self):
+    #    ini_group = get_ini_group(target.driver, target.name, self.name)
+    #
+    #    #logger.debug('Adding %s attributes.', self)
+    #    attributes = self.attributes
+    #    if attributes:
+    #        logger.debug('Adding attribute to %s: %s', self, attributes)
+    #        for k, v in self.attributes.iteritems():
+    #            ini_group.mgmt = 'add_target_attribute {0.name} {1} {2}'.format(self, k, v)
+
     def stop(self, target=None):
         if not target:
             target = self._target
@@ -406,7 +431,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     #recent_allowed_initiators = m.ListField(m.StringField())
 
     def start(self):
-        logger.info('Starting Target %s', self)
+        logger.info('Starting %s', self)
         self.signals.pre_start.send(self)
 
         self._add_target()
@@ -420,7 +445,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         self.signals.post_start.send(self)
 
     def stop(self):
-        logger.info('Stopping Target %s', self)
+        logger.info('Stopping %s', self)
         self.signals.pre_stop.send(self)
 
         if self.added:
@@ -439,9 +464,16 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
         super(Target, self).save(*args, **kwargs)
 
     @property
+    def _drv(self):
+        #if not hasattr(self, '_drv_cache') or self._drv_cache_verify != self.driver:
+        #    self._drv_cache = get_driver(self.driver)
+        #    self._drv_cache_verify = self.driver
+        #return self._drv_cache
+        return get_driver(self.driver)
+
+    @property
     def added(self):
-        drv = get_driver(self.driver)
-        return self.name in drv
+        return self.name in self._drv
 
     @added.setter
     def added(self, value):
@@ -454,11 +486,6 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 
     is_added = added
 
-    """
-    The following target driver attributes available: IncomingUser, OutgoingUser
-    The following target attributes available: IncomingUser, OutgoingUser, allowed_portal
-    """
-
     @property
     def parameters(self):
         return dictattrs(
@@ -466,17 +493,10 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
             #read_only=int(False),
         )
 
-    @property
-    def attributes(self):
-        return dict(
-            #IncomingUser='test testtesttesttest',
-            #OutgoingUser='test testtesttesttest',
-        )
-
     def _add_target(self):
         logger.debug('Adding %s', self)
         if not self.is_added:
-            drv = get_driver(self.driver)
+            drv = self._drv
 
             parameters = self.parameters
             if parameters:
@@ -485,28 +505,47 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 
             self._add_target_attrs()
 
+    @property
+    def attributes(self):
+        """The following target driver attributes available: IncomingUser, OutgoingUser
+        The following target attributes available: IncomingUser, OutgoingUser, allowed_portal
+        """
+        # How to require chap auth for discovery:
+        #422 echo "192.168.1.16 AccessControl" >/sys/kernel/scst_tgt/targets/iscsi/iSNSServer
+        #423 echo "add_attribute IncomingUser joeD 12charsecret" >/sys/kernel/scst_tgt/targets/iscsi/mgmt
+        #424 echo "add_attribute OutgoingUser jackD 12charsecret1" >/sys/kernel/scst_tgt/targets/iscsi/mgmt
+        return dict(
+            #IncomingUser='test testtesttesttest',
+            #IncomingUser1='test1 testtesttesttest1',
+            #OutgoingUser='test testtesttesttest',
+        )
+
     def _add_target_attrs(self):
         #logger.debug('Adding %s attributes.', self)
         attributes = self.attributes
         if attributes:
             logger.debug('Adding attribute to %s: %s', self, attributes)
             for k, v in self.attributes.iteritems():
-                drv.mgmt = 'add_target_attribute {0.name} {1} {2}'.format(self, k, v)
+                self._drv.mgmt = 'add_target_attribute {0.name} {1} {2}'.format(self, k, v)
 
     def _del_target(self):
         logger.debug('Removing Target %s', self)
         if self.is_added:
             self._del_target_attrs()
-            drv = get_driver(self.driver)
+            drv = self._drv
             drv.mgmt = 'del_target {0.name}'.format(self)
 
     def _del_target_attrs(self):
         logger.debug('Removing %s attributes.', self)
         attributes = self.attributes
         if attributes:
+            drv = self._drv
             logger.debug('Removing attribute to %s: %s', self, attributes)
             for k, v in self.attributes.iteritems():
-                drv.mgmt = 'del_target_attribute {0.name} {1} {2}'.format(self, k, v)
+                try:
+                    drv.mgmt = 'del_target_attribute {0.name} {1} {2}'.format(self, k, v)
+                except IOError:
+                    pass
 
     @property
     def enabled(self):
@@ -555,6 +594,11 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
             break
         drv_subdir_count = len(dirs)
 
+        # TODO Driver class that handles it's own parameters and shit
+        if value:
+            logger.info('Enabling iSNS server with access control.')
+            drv.iSNSServer = 'localhost AccessControl'
+
         if not value and drv_subdir_count:
             logger.info('Not disabling driver %s as it is currently in use.', self.driver)
             return
@@ -562,6 +606,7 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
             logger.info('Disabling driver %s as it is no longer in use.', self.driver)
         else:
             logger.info('Enabling driver %s.', self.driver)
+
         drv.enabled = value
 
     def __unicode__(self):
