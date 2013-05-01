@@ -1,11 +1,27 @@
 
 from solarsan import logging, signals
 logger = logging.getLogger(__name__)
+import re
 
 
 """
 SCST Log Policy
 """
+
+
+@signals.check_log_entry.connect
+def target_denied_initiator(self, log):
+    """Initiator iqn.1993-08.org.debian:01:6dba4f771a2e not allowed to connect to target
+    iqn.2012-01.net.locsol.solarsan.san0.x8664:sn.1e9962ceb019"""
+    m = re.match(r'^\s*Initiator (?P<initiator>[^\s]+) not allowed to connect to target (?P<target>[^\s]+)\s*$',
+                 log.message, re.IGNORECASE)
+    if not m:
+        return
+    initiator, target = m.groups()
+
+    # TODO record this in the target (the 10 most recently denied)
+    logger.error('Initiator %s tried to connect to Target %s but was denied.', initiator, target)
+
 
 '''
 stop:
@@ -35,13 +51,6 @@ browse portal:
     Apr 16 19:53:33 san0 iscsi-scstd: [info] Connect from 10.90.90.1:46602 to 10.90.90.50:3260
 
 '''
-
-
-@signals.check_log_entry.connect
-def test_scst_log_policy(self, log):
-    if not 'scst' in log.message:
-        return
-    print 'SCST Log: %s' % log
 
 
 '''
