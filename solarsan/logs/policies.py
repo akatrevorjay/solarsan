@@ -1,6 +1,7 @@
 
 from solarsan import logging, signals
 logger = logging.getLogger(__name__)
+from solarsan.target.models import Target
 import re
 
 
@@ -17,10 +18,14 @@ def target_denied_initiator(self, log):
                  log.message, re.IGNORECASE)
     if not m:
         return
-    initiator, target = m.groups()
+    initiator_iqn, target_iqn = m.groups()
 
-    # TODO record this in the target (the 10 most recently denied)
-    logger.error('Initiator %s tried to connect to Target %s but was denied.', initiator, target)
+    logger.error('Target "%s": Initiator "%s" tried to connect but was denied.',
+                 target_iqn, initiator_iqn)
+
+    target = Target.search_hard(name=target_iqn)
+    if target:
+        target.update(recent_denied_initiators__push=initiator_iqn)
 
 
 '''

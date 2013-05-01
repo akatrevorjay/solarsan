@@ -5,7 +5,6 @@ import mongoengine as m
 from solarsan.models import CreatedModifiedDocMixIn, ReprMixIn
 from solarsan.ha.models import FloatingIP
 from .rtsutils import generate_wwn, is_valid_wwn
-from . import scstadmin
 from .scst import scstsys
 
 from solarsan.storage.volume import Volume
@@ -19,12 +18,30 @@ Backstore
 """
 
 
+def dictattrs(**attrs):
+    return '; '.join(['%s=%s' % (k, v) for k, v in attrs.iteritems()])
+
+
 def get_handler(handler):
     return getattr(scstsys.handlers, handler, None)
 
 
-def dictattrs(**attrs):
-    return ';'.join(['%s=%s' % (k, v) for k, v in attrs.iteritems()])
+def get_driver(driver):
+    return getattr(scstsys.targets, driver, None)
+
+
+def get_target(driver, target):
+    driver = get_driver(driver)
+    if not driver:
+        return
+    return getattr(driver, target, None)
+
+
+def get_ini_group(driver, target, group):
+    tgt = get_target(driver, target)
+    if not tgt:
+        return
+    return getattr(tgt.ini_groups, group, None)
 
 
 class Backstore(ReprMixIn, m.Document):
@@ -174,48 +191,17 @@ class DrbdResourceBackstore(Backstore):
 
 
 """
-Initiators
-"""
-
-
-#class Initiator(m.EmbeddedDocument):
-#    wwn = m.StringField()
-#    allowed = m.BooleanField()
-#
-#    def __unicode__(self):
-#        return self.__repr__()
-
-
-#class iSCSIInitiator(Initiator):
-#    pass
-
-
-#class SRPInitiator(Initiator):
-#    pass
-
-
-"""
 Acl
 """
 
 
-def get_target(driver, target):
-    driver = getattr(scstsys.targets, driver, None)
-    if driver:
-        return getattr(driver, target, None)
-
-
-def get_ini_group(driver, target, group):
-    tgt = get_target(driver, target)
-    if tgt:
-        return getattr(tgt.ini_groups, group, None)
-
-
 class Acl(ReprMixIn, m.EmbeddedDocument):
     initiators = m.ListField(m.StringField())
-    #allow = m.ListField()
+
+    # TODO insecure option
     #insecure = m.BooleanField()
 
+    # TODO chap auth
     #chap = m.BooleanField()
     #chap_user = m.StringField()
     #chap_pass = m.StringField()
@@ -223,13 +209,13 @@ class Acl(ReprMixIn, m.EmbeddedDocument):
     def start(self, target=None, group=None):
         logger.debug('Starting %s for %s for %s', self, group, target)
 
-        # TODO insecure option
-        # TODO chap auth
-
         ini_group = get_ini_group(target.driver, target.name, group.name)
         if ini_group:
             for initiator in self.initiators:
-                logger.debug('Adding intiator %s for %s for %s for %s', initiator, self, group, target)
+                if initiator in ini_group.initiators:
+                    continue
+                logger.debug('Adding intiator %s for %s for %s for %s',
+                             initiator, self, group, target)
                 ini_group.initiators.mgmt = 'add %s' % initiator
 
     def stop(self, target=None, group=None):
@@ -237,9 +223,13 @@ class Acl(ReprMixIn, m.EmbeddedDocument):
         ini_group = get_ini_group(target.driver, target.name, group.name)
         if ini_group:
             for initiator in self.initiators:
-                logger.debug('Removing initiator %s for %s for %s for %s', initiator, self, group, target)
+                if initiator not in ini_group.initiators:
+                    continue
+                logger.debug('Removing initiator %s for %s for %s for %s',
+                             initiator, self, group, target)
                 ini_group.initiators.mgmt = 'del %s' % initiator
-            logger.debug('Clearing all initiators for %s for %s for %s', self, group, target)
+            logger.debug('Clearing all initiators for %s for %s for %s',
+                         self, group, target)
             ini_group.initiators.mgmt = 'clear'
 
     def __unicode__(self):
@@ -317,19 +307,19 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
             target = self._target
         logger.debug('Stopping Group %s for Target %s', self, target)
 
-        self._rem_luns(target=target)
-        self._rem_acl(target=target)
-        self._rem_group(target=target)
+        self._del_luns(target=target)
+        self._del_acl(target=target)
+        self._del_group(target=target)
 
         return True
 
-    def _rem_luns(self, target=None):
+    def _del_luns(self, target=None):
         ini_group = get_ini_group(target.driver, target.name, self.name)
 
         for lun, backstore in enumerate(self.luns):
             lun += 1
 
-            if str(lun) in ini_group.luns:
+            if ini_group and str(lun) in ini_group.luns:
                 logger.debug('Removing lun %d with backstore %s for %s for %s', lun, backstore, self, target)
                 ini_group.luns.mgmt = 'del {0}'.format(lun)
 
@@ -339,13 +329,13 @@ class PortalGroup(ReprMixIn, m.EmbeddedDocument):
 
         if self.is_active(target=target):
             # Clear out luns for group, to be safe
-            scstadmin.clear_luns(target.driver, target.name, self.name)
+            ini_group.luns.mgmt = 'clear'
 
-    def _rem_acl(self, target=None):
+    def _del_acl(self, target=None):
         logger.debug('Removing Acl %s for Group %s for Target %s', self.acl, self, target)
         return self.acl.stop(target=target, group=self)
 
-    def _rem_group(self, target=None):
+    def _del_group(self, target=None):
         if self.is_active(target=target):
             logger.debug('Removing Group %s for Target %s', self, target)
             tgt = get_target(target.driver, target.name)
@@ -409,10 +399,11 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     floating_ip = m.ReferenceField(FloatingIP, dbref=False)
     uuid = m.UUIDField(binary=False)
 
-    #devices = m.ListField(m.GenericReferenceField())
-    #luns = m.ListField(m.EmbeddedDocumentField(Lun))
+    # Initiator groups
     groups = m.ListField(m.EmbeddedDocumentField(PortalGroup))
-    #groups = m.ListField(m.GenericReferenceField())
+
+    recent_denied_initiators = m.ListField(m.StringField())
+    #recent_allowed_initiators = m.ListField(m.StringField())
 
     _dev_handler = 'vdisk_blockio'
 
@@ -438,8 +429,8 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
                 group.stop(target=self)
 
             self.enabled = False
-            #self._rem_devices()
-            self._rem_target()
+            #self._del_devices()
+            self._del_target()
 
         self.signals.post_stop.send(self)
 
@@ -450,7 +441,8 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
 
     @property
     def added(self):
-        return scstadmin.does_target_exist(self.name, self.driver)
+        drv = get_driver(self.driver)
+        return self.name in drv
 
     @added.setter
     def added(self, value):
@@ -459,47 +451,112 @@ class Target(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
                 self._add_target()
         else:
             if self.added:
-                self._rem_target()
+                self._del_target()
 
     is_added = added
 
-    def _add_target(self):
-        logger.debug('Adding Target %s', self)
-        if not self.is_added:
-            scstadmin.add_target(self.name, self.driver)
+    """
+    The following target driver attributes available: IncomingUser, OutgoingUser
+    The following target attributes available: IncomingUser, OutgoingUser, allowed_portal
+    """
 
-    def _rem_target(self):
+    @property
+    def parameters(self):
+        return dictattrs(
+            #rel_tgt_id=randrange(1000, 3000),
+            #read_only=int(False),
+        )
+
+    @property
+    def attributes(self):
+        return dict(
+            #IncomingUser='test testtesttesttest',
+            #OutgoingUser='test testtesttesttest',
+        )
+
+    def _add_target(self):
+        logger.debug('Adding %s', self)
+        if not self.is_added:
+            drv = get_driver(self.driver)
+            parameters = self.parameters
+            if parameters:
+                logger.debug('Parameters for %s: %s', self, parameters)
+            drv.mgmt = 'add_target {0.name} {1}'.format(self, parameters)
+
+            self._add_target_attrs()
+
+    def _add_target_attrs(self):
+        #logger.debug('Adding %s attributes.', self)
+        attributes = self.attributes
+        if attributes:
+            logger.debug('Adding attribute to %s: %s', self, attributes)
+            for k, v in self.attributes.iteritems():
+                drv.mgmt = 'add_target_attribute {0.name} {1} {2}'.format(self, k, v)
+
+    def _del_target(self):
         logger.debug('Removing Target %s', self)
         if self.is_added:
-            scstadmin.rem_target(self.name, self.driver)
+            self._del_target_attrs()
+            drv = get_driver(self.driver)
+            drv.mgmt = 'del_target {0.name}'.format(self)
+
+    def _del_target_attrs(self):
+        logger.debug('Removing %s attributes.', self)
+        attributes = self.attributes
+        if attributes:
+            logger.debug('Removing attribute to %s: %s', self, attributes)
+            for k, v in self.attributes.iteritems():
+                drv.mgmt = 'del_target_attribute {0.name} {1} {2}'.format(self, k, v)
 
     @property
     def enabled(self):
-        return scstadmin.is_target_enabled(self.name, self.driver)
+        tgt = get_target(self.driver, self.name)
+        if not tgt:
+            return False
+        return bool(tgt.enabled)
 
     @enabled.setter
     def enabled(self, value):
         if not self.added:
             return
-        if value:
-            self._enable_target()
+        tgt = get_target(self.driver, self.name)
+        if value and not self.enabled:
+            logger.debug('Enabling Target %s', self)
         else:
-            self._disable_target()
+            logger.debug('Disabling Target %s', self)
+        value = int(bool(value))
+        if tgt.enabled != value:
+            tgt.enabled = value
+
+    @property
+    def driver_enabled(self):
+        drv = get_driver(self.driver)
+        if not drv:
+            return False
+        return bool(int(drv.enabled))
+
+    @driver_enabled.setter
+    def driver_enabled(self, value):
+        drv = get_driver(self.driver)
+        if not drv:
+            return False
+        drv.enabled = int(bool(value))
 
     is_enabled = enabled
 
-    def _enable_target(self):
-        logger.debug('Enabling Target %s', self)
-        if not self.enabled:
-            scstadmin.enable_target(self.name, self.driver)
-
-    def _disable_target(self):
-        logger.debug('Disabling Target %s', self)
-        if self.enabled:
-            scstadmin.disable_target(self.name, self.driver)
-
     def __unicode__(self):
         return self.__repr__()
+
+    @classmethod
+    def search_hard(cls, **kwargs):
+        if not kwargs:
+            return
+        for subcls in cls.__subclasses__():
+            try:
+                qs = subcls.objects.get(**kwargs)
+                return qs
+            except subcls.DoesNotExist:
+                pass
 
 
 @signals.start.connect
