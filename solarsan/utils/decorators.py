@@ -3,7 +3,7 @@
 Decorators
 """
 
-from decorator import decorator
+from decorator import decorator, FunctionMaker
 import logging
 #from django.core.cache import cache
 
@@ -14,11 +14,26 @@ def trace(f, *args, **kw):
     return f(*args, **kw)
 
 
+'''
 @decorator
 def args_list(f, *args, **kwargs):
     if not isinstance(args, list):
-        args = isinstance(args, basestring) and [args] or isinstance(args, tuple) and list(args)
+        if isinstance(args, basestring):
+            args = [args]
+        elif isinstance(args, tuple):
+            args = list(args)
     return f(*args, **kwargs)
+'''
+
+
+def decorator_apply(dec, func):
+    """
+    Decorate a function by preserving the signature even if dec
+    is not a signature-preserving decorator.
+    """
+    return FunctionMaker.create(
+        func, 'return decorated(%(signature)s)',
+        dict(decorated=dec(func)), __wrapped__=func)
 
 
 class conditional_decorator(object):
@@ -32,11 +47,13 @@ class conditional_decorator(object):
         if not self.condition:
             # Return the function unchanged, not decorated.
             return func
-        return self.decorator(func, *self.decorator_args[0], **self.decorator_args[1])
+        return self.decorator(func,
+                              *self.decorator_args[0],
+                              **self.decorator_args[1])
 
 
 def statelazyproperty(func):
-    """ A decorator for state-based lazy evaluation of properties """
+    """A decorator for state-based lazy evaluation of properties"""
     cache = {}
 
     def _get(self):

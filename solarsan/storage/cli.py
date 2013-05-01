@@ -2,7 +2,6 @@
 import sh
 
 from solarsan.cli.backend import AutomagicNode
-from solarsan.target.cli import TargetsNode
 
 
 class Storage(AutomagicNode):
@@ -11,9 +10,6 @@ class Storage(AutomagicNode):
 
     #def ui_child_resources(self):
     #    return ResourcesNode()
-
-    def ui_child_targets(self):
-        return TargetsNode()
 
     def ui_command_create_pool(self, name):
         '''
@@ -389,7 +385,6 @@ class PoolNode(StorageNode, PoolPropsMixIn, DatasetPropsMixIn):
 
 #from solarsan.exceptions import ZfsError
 from solarsan.cli.backend import AutomagicNode
-from solarsan.storage.drbd import DrbdResource
 
 
 class ResourcesNode(AutomagicNode):

@@ -41,7 +41,7 @@ browse portal:
 def test_scst_log_policy(self, log):
     if not 'scst' in log.message:
         return
-    logger.debug('SCST Log: %s', log.message)
+    print 'SCST Log: %s' % log
 
 
 '''

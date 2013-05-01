@@ -3,9 +3,9 @@ from solarsan import logging
 logger = logging.getLogger(__name__)
 from solarsan import conf
 #from solarsan.utils.exceptions import LoggedException
-from solarsan.storage.pool import Pool
-from solarsan.storage.volume import Volume
-from solarsan.storage.drbd import DrbdResource, DrbdPeer, DrbdLocalResource
+from .pool import Pool
+from .volume import Volume
+from .drbd import DrbdResource, DrbdPeer, DrbdLocalResource
 from solarsan.configure.models import Nic, get_all_local_ipv4_addrs
 from solarsan.cluster.models import Peer
 #from solarsan.ha.models import FloatingIP

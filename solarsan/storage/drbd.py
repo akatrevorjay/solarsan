@@ -126,6 +126,10 @@ class DrbdResource(CreatedModifiedDocMixIn, ReprMixIn, m.Document):
     # status
     status = m.DictField()
 
+    def __str__(self):
+        #return self.name
+        return self.__repr__().replace("'", '').replace("name=", '')
+
     def get_status(self, key):
         return self.status.get(key)
 

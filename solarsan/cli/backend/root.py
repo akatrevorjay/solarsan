@@ -2,6 +2,7 @@
 from . import AutomagicNode
 from solarsan.core.cli import SystemNode
 from solarsan.storage.cli import Storage
+from solarsan.target.cli import TargetsNode
 
 
 """
@@ -26,6 +27,9 @@ class CliRoot(AutomagicNode):
 
     def ui_child_storage(self):
         return Storage()
+
+    def ui_child_targets(self):
+        return TargetsNode()
 
     """
     Old Ye Stuffe
