@@ -671,4 +671,13 @@ class iSCSITarget(Target):
 
 
 class SRPTarget(Target):
-    driver = 'srpt'
+    #driver = 'srpt'
+    driver = 'iscsi'
+
+    @property
+    def _drv(self):
+        #if not hasattr(self, '_drv_cache') or self._drv_cache_verify != self.driver:
+        #    self._drv_cache = get_driver(self.driver)
+        #    self._drv_cache_verify = self.driver
+        #return self._drv_cache
+        return get_driver(self.driver)

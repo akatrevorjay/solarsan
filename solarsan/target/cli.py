@@ -56,11 +56,100 @@ class PortalGroupNode(AutomagicNode):
         self.obj = self.group
         AutomagicNode.__init__(self)
 
-    def ui_child_luns(self):
-        return LunsNode(group=self.group, group_index=self.group_index, target=self.target)
+        self.define_config_group_param('acl', 'allowed_initiators', 'string', 'Allowed initiators; space separated list')
+        #self.define_config_group_param('acl', 'denied_initiators', 'string', 'Denied initiators; space separated list')
 
-    def ui_child_acl(self):
-        return AclNode()
+        for i in xrange(10):
+            self.define_config_group_param('acl', 'recent_initiator_%s' % i, 'string', 'Recent initiator %s' % i)
+
+    def ui_command_lsinitiators(self):
+        return self.group.acl.initiators
+
+    def ui_command_allow(self, initiator):
+        if initiator not in self.group.acl.initiators:
+            self.group.acl.initiators.append(initiator)
+            self.target.save()
+            return True
+
+    def ui_command_deny(self, initiator):
+        if initiator in self.group.acl.initiators:
+            self.group.acl.initiators.remove(initiator)
+            self.target.save()
+            return True
+
+    def ui_command_lsrecent(self):
+        return self.target.recent_denied_initiators
+
+    def ui_getgroup_acl(self, key):
+        pass
+
+    def ui_setgroup_acl(self, key, value):
+        pass
+
+    #def ui_child_luns(self):
+    #    return LunsNode(group=self.group, group_index=self.group_index, target=self.target)
+
+    #def ui_child_acl(self):
+    #    return AclNode(group=self.group, group_index=self.group_index, target=self.target)
+
+    def ui_children_factory_lun_dict(self):
+        ret = {}
+        for x, lun in enumerate(self.group.luns):
+            ret['lun%s' % str(x)] = dict(args=(str(x), lun))
+        return ret
+
+    def ui_children_factory_lun(self, name, lun_index, lun):
+        return LunNode(lun=lun, lun_index=lun_index, group=self.group, group_index=self.group_index, target=self.target)
+
+    #def ui_command_attach(self, volume=None, resource=None, index=None):
+    def ui_command_attach(self, backstore=None, lun=None):
+        res = None
+        vol = None
+        backstore = None
+        index = lun
+
+        try:
+            res = DrbdResource.objects.get(name=backstore)
+
+            backstore, created = DrbdResourceBackstore.objects.get_or_create(resource=res)
+            if created:
+                backstore.name = resource
+                backstore.save()
+        except DrbdResource.DoesNotExist:
+            vol = Volume(backstore)
+            if not vol.exists():
+                raise ValueError('Volume "%s" does not exist.' % volume)
+
+            # TODO Make sure this volume isn't being used by a resource
+
+            backstore, created = VolumeBackstore.objects.get_or_create(volume_name=vol.name)
+            if created:
+                logger.info('Created Backstore "%s".', backstore)
+                backstore.name = vol.basename()
+                backstore.save()
+
+        else:
+            raise ValueError('You must specify either volume or resource to attach')
+
+        if index is not None:
+            self.group.luns.insert(index, backstore)
+        else:
+            self.group.luns.append(backstore)
+
+        self.target.save()
+        return True
+
+    def ui_command_detach(self, lun):
+        pass
+
+    def ui_command_lsluns(self):
+        return [lun for lun in self.group.luns]
+
+    def ui_command_lsvolumes(self):
+        return [lun for lun in self.group.luns if isinstance(lun, VolumeBackstore)]
+
+    def ui_command_lsresources(self):
+        return [lun for lun in self.group.luns if isinstance(lun, DrbdResourceBackstore)]
 
 
 class LunsNode(AutomagicNode):
@@ -74,7 +163,7 @@ class LunsNode(AutomagicNode):
     def ui_children_factory_lun_dict(self):
         ret = {}
         for x, lun in enumerate(self.group.luns):
-            ret[str(x)] = dict(args=(str(x), lun))
+            ret['lun%s' % str(x)] = dict(args=(str(x), lun), display_name='lun%s' % str(x))
         return ret
 
     def ui_children_factory_lun(self, name, lun_index, lun):
@@ -120,9 +209,6 @@ class LunsNode(AutomagicNode):
         self.target.save()
         return True
 
-    def ui_command_detach(self, lun):
-        pass
-
     def ui_command_lsluns(self):
         return [lun for lun in self.group.luns]
 
@@ -143,15 +229,48 @@ class LunNode(AutomagicNode):
 
         AutomagicNode.__init__(self)
 
+    def ui_command_detach(self):
+        self.group.luns.remove(self.obj)
+        self.target.save()
+        return True
+
 
 class AclNode(AutomagicNode):
+    def __init__(self, name=None, group=None, group_index=None, target=None):
+        self.target = target
+        self.group_index = group_index
+        self.group = group
+        self.obj = self.group
+        AutomagicNode.__init__(self)
+
+        #self.define_config_group_param('acl', 'allowed_initiators', 'string', 'Allowed initiators; space separated list')
+        ##self.define_config_group_param('acl', 'denied_initiators', 'string', 'Denied initiators; space separated list')
+
+        #for i in xrange(10):
+        #    self.define_config_group_param('acl', 'recent_initiator_%s' % i, 'string', 'Recent initiator %s' % i)
+
+    def ui_command_lsinitiators(self):
+        return self.group.acl.initiators
+
     def ui_command_allow(self, initiator):
-        pass
+        if initiator not in self.group.acl.initiators:
+            self.group.acl.initiators.append(initiator)
+            self.target.save()
+            return True
 
     def ui_command_deny(self, initiator):
-        pass
+        if initiator in self.group.acl.initiators:
+            self.group.acl.initiators.remove(initiator)
+            self.target.save()
+            return True
 
     def ui_command_lsrecent(self):
+        return self.target.recent_denied_initiators
+
+    def ui_getgroup_acl(self, key):
+        pass
+
+    def ui_setgroup_acl(self, key, value):
         pass
 
 
@@ -182,12 +301,6 @@ class TargetNode(AutomagicNode):
 
         for i in xrange(10):
             self.define_config_group_param('luns', '%s' % i, 'string', 'Lun %s device' % i)
-
-        self.define_config_group_param('acl', 'allowed_initiators', 'string', 'Allowed initiators; space separated list')
-        self.define_config_group_param('acl', 'denied_initiators', 'string', 'Denied initiators; space separated list')
-
-        for i in xrange(10):
-            self.define_config_group_param('acl', 'recent_initiator_%s' % i, 'string', 'Recent initiator %s' % i)
 
     def ui_getgroup_target(self, key):
         '''
@@ -244,12 +357,6 @@ class TargetNode(AutomagicNode):
             self.obj.devices[key] = vol.name
         else:
             raise ValueError('Could not find replicated resource or Volume named "%s"' % value)
-
-    def ui_getgroup_acl(self, key):
-        pass
-
-    def ui_setgroup_acl(self, key, value):
-        pass
 
     def ui_command_save(self):
         self.obj.save()

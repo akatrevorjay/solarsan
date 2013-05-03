@@ -45,9 +45,13 @@ class PeerNode(AutomagicNode):
         else:
             return ('offline', False)
 
+    _service = None
+
     @property
     def service(self):
-        return self.obj.get_service('storage')
+        if not self._service:
+            self._service = self.obj.get_service('storage')
+        return self._service
 
     def ui_command_ping(self):
         return self.service.root.ping()

@@ -400,7 +400,7 @@ class DrbdLocalResource(object):
     """
 
     def status(self):
-        return drbd_overview_parser(resource=self.res.name)
+        return drbd_overview_parser(resource=self.res.name) or {}
 
     #@property
     #def replication_is_healthy(self):
@@ -465,7 +465,7 @@ class DrbdLocalResource(object):
 
     @property
     def connection_state(self):
-        return self.status()['connection_state']
+        return self.status().get('connection_state')
 
     #@property
     #def is_connected(self):
@@ -496,7 +496,7 @@ class DrbdLocalResource(object):
 
     @property
     def role(self):
-        return self.status()['role']
+        return self.status().get('role')
 
     @property
     def is_primary(self):
@@ -538,7 +538,7 @@ class DrbdLocalResource(object):
 
     @property
     def disk_state(self):
-        return self.status()['disk_state']
+        return self.status().get('disk_state')
 
     @property
     def is_up_to_date(self):
@@ -564,5 +564,5 @@ class DrbdLocalResource(object):
 
     @property
     def io_state(self):
-        #return self.status()['io_state']
+        #return self.status().get('io_state')
         raise NotImplemented

@@ -36,8 +36,7 @@ def drbd_overview_parser(resource=None):
            '(?P<connection_state>\w+)',
            '(?P<role>\w+)/(?P<remote_role>\w+)',
            '(?P<disk_state>\w+)/(?P<remote_disk_state>\w+)',
-           '(?P<protocol>\w)',
-           '(?P<io_flags>[-\w]+)',
+           '(?P<protocol>[A-Z]?)\s?(?P<io_flags>\w[-\w]+)',
            '',
            ]
     pat = r'^%s$' % '\s+'.join(pat)
