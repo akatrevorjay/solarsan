@@ -215,7 +215,6 @@ class DkvServer(object):
 
         self.snapshot = ctx.socket(zmq.DEALER)
         self.snapshot.linger = 0
-        #connect_kwargs['service'] = '/dkv/snapshot'
         connect_kwargs['port'] = conf.ports.dkv
         snapshot_address = get_address(**connect_kwargs)
         logger.debug('Connecting snapshot to %s', snapshot_address)
@@ -224,7 +223,6 @@ class DkvServer(object):
         self.subscriber = ctx.socket(zmq.SUB)
         self.subscriber.linger = 0
         self.subscriber.setsockopt(zmq.SUBSCRIBE, subtree)
-        #connect_kwargs['service'] = '/dkv/pub'
         connect_kwargs['port'] = conf.ports.dkv_publisher
         subscriber_address = get_address(**connect_kwargs)
         self.subscriber.connect(subscriber_address)
@@ -242,6 +240,7 @@ class DkvAgent(object):
     sequence = 0            # last kvmsg procesed
     publisher = None        # Outgoing updates
     beacon = None
+    beacon_cls = Beacon
     debug = None
     connected_event = None
 
@@ -293,7 +292,7 @@ class DkvAgent(object):
     def connect_via_discovery(self):
         logger.debug('Starting beacon listener thread in background; will auto-connect to all peers.')
 
-        self.beacon = Beacon(send_beacon=False)
+        self.beacon = self.beacon_cls(send_beacon=False)
         self.beacon.on_peer_connected_cb = self._beacon_on_peer_connected
         self.beacon.on_peer_lost_cb = self._beacon_on_peer_lost
 
@@ -307,11 +306,10 @@ class DkvAgent(object):
         address = get_address(transport=peer.transport, host=peer.host)
         self.connect(address)
 
-        #self.connected_event.set()
-
     def _beacon_on_peer_lost(self, beacon, peer):
         logger.warning('Disconnecting from lost server %s', peer.addr)
         self.disconnect('%s://%s' % (peer.transport, peer.host), conf.ports.dkv)
+        #self.connected_event.set()
 
     def control_message(self):
         msg = self.pipe.recv_multipart()
@@ -367,8 +365,6 @@ class DkvAgent(object):
             elif key == 'STATUS':
                 self.pipe.send_multipart([str(self.cur_status), ''])
             elif key == 'KVMAP':
-                #kvmap_s = pickle.dumps(self.kvmap)
-                #self.pipe.send_multipart([kvmap_s, 'pickle'])
                 kvmap_s = pipeline.dump(self.kvmap)
                 self.pipe.send_multipart([kvmap_s])
 
@@ -429,11 +425,10 @@ class DkvAgent(object):
                 self.control_message()
 
             elif server_socket in items:
-                msg = server_socket.recv_multipart()
-                #logger.debug('server_socket=%s, msg=%s', server_socket, msg)
+                #msg = server_socket.recv_multipart()
                 #logger.debug('msg=%s', msg)
-                #kvmsg = KVMsg.recv(server_socket)
-                kvmsg = KVMsg.from_msg(msg)
+                #kvmsg = KVMsg.from_msg(msg)
+                kvmsg = KVMsg.recv(server_socket)
                 #pp(kvmsg.__dict__)
 
                 server.expiry = time.time() + SERVER_TTL    # Anything from server resets its expiry time
@@ -463,7 +458,8 @@ class DkvAgent(object):
 
                         """ Signal """
                         if kvmsg.key != 'HUGZ':  # Don't send signals if it's just hugz
-                            DkvClient.signals.on_sub.send(kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
+                            DkvClient.signals.on_sub.send(
+                                kvmsg, key=kvmsg.key, value=kvmsg.body, props=kvmsg.properties)
 
             else:
                 """Server has died, failover to next"""
