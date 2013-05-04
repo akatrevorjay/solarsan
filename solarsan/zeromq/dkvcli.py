@@ -6,16 +6,12 @@ import random
 import time
 import pickle
 #import zmq
-from .dkv import Dkv
-
-#SUBTREE = "/client/"
-SUBTREE = ""
+from .dkv import DkvClient
 
 
-def get_client(debug=True, discovery=True, connect_localhost=True):
+def get_client(debug=True, discovery=True, connect_localhost=True, subtree=None):
     """Create and connect dkv"""
-    dkv = Dkv(debug=debug, discovery=discovery, connect_localhost=connect_localhost)
-    #dkv.subtree = SUBTREE
+    dkv = DkvClient(debug=debug, discovery=discovery, connect_localhost=connect_localhost, subtree=subtree)
     return dkv
 
 

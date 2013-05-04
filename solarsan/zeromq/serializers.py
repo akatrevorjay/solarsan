@@ -241,3 +241,8 @@ class Pipeline(PriorityQueueDictionary, _SocketHelperMixIn):
         #if self._debug:
         #    logger.debug('pipeline load=%s', what)
         return what
+
+
+pipeline = Pipeline()
+pipeline.add(PickleSerializer())
+pipeline.add(ZippedCompressor())

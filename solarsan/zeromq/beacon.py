@@ -5,11 +5,10 @@ from solarsan.utils.stack import get_last_func_name
 
 import time
 import errno
-from functools import partial
 
 import zmq
 #from zmq import ZMQError
-from zmq.eventloop.ioloop import IOLoop, DelayedCallback, PeriodicCallback
+from zmq.eventloop.ioloop import IOLoop, PeriodicCallback
 from zmq.eventloop.zmqstream import ZMQStream
 
 import socket
@@ -147,7 +146,7 @@ class Beacon(object):
             return self.loop.start()
 
     def _recv_beacon(self, fd, events):
-        """Greenlet that received udp beacons
+        """received udp beacons
         """
         while True:
             try:
@@ -191,7 +190,7 @@ class Beacon(object):
                                peer_port, peer_socket_type)
 
     def _send_beacon(self):
-        """Greenlet that sends udp beacons at intervals.
+        """sends udp beacons at intervals.
         """
         beacon = beaconv2.pack(
             'ZRE', 2, self.me,
@@ -226,14 +225,14 @@ class Beacon(object):
                 del self.peers[peer_id]
 
     def _recv_peer(self, msg):
-        """Greenlet that receives messages from the local ROUTER
+        """receives messages from the local ROUTER
         socket.
         """
         log.debug('recv_peer msg=%s', msg)
         return self.handle_recv_msg(*msg)
 
     def _recv_router(self, msg):
-        """Greenlet that receives messages from the local ROUTER
+        """receives messages from the local ROUTER
         socket.
         """
         #log.debug('recv_router msg=%s', msg)

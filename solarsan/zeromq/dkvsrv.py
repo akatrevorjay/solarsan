@@ -15,19 +15,12 @@ from zmq.eventloop.ioloop import IOLoop, DelayedCallback, PeriodicCallback
 from zmq.eventloop.zmqstream import ZMQStream
 #import zmq.utils.jsonapi as json
 
-from .beacon import Beacon
+from .beacon_greeter import GreeterBeacon
 from .bstar import BinaryStar
 from .kvmsg import KVMsg
 from .zhelpers import dump
 
-#from . import serializers
-from .serializers import Pipeline, \
-    PickleSerializer, JsonSerializer, MsgPackSerializer, \
-    ZippedCompressor, BloscCompressor
-
-pipeline = Pipeline()
-pipeline.add(PickleSerializer())
-pipeline.add(ZippedCompressor())
+from .serializers import pipeline
 
 
 class Greet:
@@ -167,12 +160,12 @@ class Peer:
         return self._callback(None, serialized_obj)
 
 
-class GreeterBeacon(Beacon):
+class DkvBeacon(GreeterBeacon):
     _peer_cls = Peer
     dkvsrv = None
 
     def __init__(self, *args, **kwargs):
-        super(GreeterBeacon, self).__init__(*args, **kwargs)
+        GreeterBeacon.__init__(self, *args, **kwargs)
 
         self.dkvsrv = DkvServer()
 
@@ -180,33 +173,17 @@ class GreeterBeacon(Beacon):
         self._peer_init_kwargs['on_subscriber_recv_cb'] = self.dkvsrv.handle_subscriber
 
     def start(self, loop=True):
-        super(GreeterBeacon, self).start(loop=False)
-        #self.dkvsrv.start(loop=False)
+        GreeterBeacon.start(self, loop=False)
         if loop:
             return self.dkvsrv.start(loop=loop)
-            #return self.loop.start()
-
-    def on_recv_msg(self, peer, *msg):
-        cmd = msg[0]
-        log.debug('Peer %s: %s.', peer.uuid, cmd)
-
-        if cmd == 'GREET':
-            peer._on_greet(msg[1])
-            self.loop.add_callback(partial(self._callback, 'peer_on_greet', peer))
-        else:
-            log.error('Peer %s: Wtfux %s?', peer.uuid, cmd)
-            peer.socket.close()
 
     def on_peer_connected(self, peer):
-        log.info('Peer %s: Connected.', peer.uuid)
-
-        peer.send_greet_delay = DelayedCallback(peer.send_greet, self.beacon_interval * 1000)
-        peer.send_greet_delay.start()
+        GreeterBeacon.on_peer_connected(self, peer)
 
         self.dkvsrv.add_peer(peer)
 
     def on_peer_lost(self, peer):
-        log.info('Peer %s: Lost.', peer.uuid)
+        GreeterBeacon.on_peer_lost(self, peer)
 
         self.dkvsrv.remove_peer(peer)
 
@@ -565,10 +542,10 @@ def main():
     local = cmodels.Peer.get_local()
     ipaddr = str(local.cluster_nic.ipaddr)
 
-    log.info('Starting Beacon (service_addr=%s, discovery_port=%s)',
+    log.info('Starting DkvBeacon (service_addr=%s, discovery_port=%s)',
              ipaddr, conf.ports.discovery)
 
-    gb = GreeterBeacon(
+    gb = DkvBeacon(
         #beacon_interval=2,
         beacon_interval=1,
         dead_interval=10,
