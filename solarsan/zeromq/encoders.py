@@ -99,7 +99,8 @@ class PickleSerializer(_Serializer):
 
     def load(self, what):
         """Inverse of dump"""
-        return pickle.loads(what)
+        if what:
+            return pickle.loads(what)
 
 
 class JsonSerializer(_Serializer):
@@ -107,7 +108,8 @@ class JsonSerializer(_Serializer):
         return json.dumps(what)
 
     def load(self, what):
-        return json.loads(what)
+        if what:
+            return json.loads(what)
 
 
 try:
@@ -131,7 +133,8 @@ try:
             return what
 
         def load(self, what):
-            return msgpack.unpackb(what, object_hook=self._object_hook, list_hook=self._list_hook, use_list=self.use_list)
+            if what:
+                return msgpack.unpackb(what, object_hook=self._object_hook, list_hook=self._list_hook, use_list=self.use_list)
 
         def _object_hook(self, what):
             from .kvmsg import KVMsg
@@ -236,7 +239,8 @@ class Pipeline(PriorityQueueDictionary, _SocketHelperMixIn):
 
     def load(self, what):
         """Loads 'what' from serialized format"""
-        return self(None, what, False)
+        if what:
+            return self(None, what, False)
 
 
 pipeline = Pipeline()
