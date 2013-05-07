@@ -6,7 +6,7 @@ import random
 import time
 import pickle
 #import zmq
-from .dkv import DkvClient
+from .dkvclient import DkvClient
 
 
 def get_client(debug=True, discovery=True, connect_localhost=True, subtree=None):

@@ -38,8 +38,7 @@ class Peer:
         self.time = time_ or time.time()
 
         self.transport, host = addr.split('://', 1)
-        self.host, port = host.rsplit(':', 1)
-        #self.host = self.addr.rsplit(':', 1)[0].split('://', 1)[1]
+        self.host, self.port = host.rsplit(':', 1)
 
     #@property
     #def endpoint(self):
@@ -74,7 +73,6 @@ class Beacon(object):
                  on_peer_connected=None,
                  on_peer_lost=None,
                  send_beacon=True):
-
         self.broadcast_addr = broadcast_addr
         self.broadcast_port = broadcast_port
         self.service_addr = service_addr
@@ -82,36 +80,29 @@ class Beacon(object):
         self.service_socket_type = service_socket_type
         self.beacon_interval = beacon_interval
         self.dead_interval = dead_interval
-
-        self.on_recv_msg_cb = on_recv_msg
-        self.on_peer_connected_cb = on_peer_connected
-        self.on_peer_lost_cb = on_peer_lost
-
         self.send_beacon = send_beacon
-
+        self.me = uuid.uuid4().bytes
         self.peers = {}
         if service_addr != '*':
             self.service_addr_bytes = socket.inet_aton(
                 socket.gethostbyname(service_addr))
         else:
             self.service_addr_bytes = NULL_IP
-
-        self.me = uuid.uuid4().bytes
-
         self._peer_init_kwargs = {}
-        #self._peer_init_kwargs['beacon'] = self
+
+        self.on_recv_msg_cb = on_recv_msg
+        self.on_peer_connected_cb = on_peer_connected
+        self.on_peer_lost_cb = on_peer_lost
 
     def init(self):
         log.info('Starting beacon..')
         if not self.ctx:
             self.ctx = zmq.Context.instance()
-
         self.loop = IOLoop.instance()
 
         self.router = self.ctx.socket(self.service_socket_type)
         endpoint = '%s://%s' % (self.service_transport, self.service_addr)
         self.service_port = self.router.bind_to_random_port(endpoint)
-
         self.router = ZMQStream(self.router, self.loop)
         self.router.on_recv(self._recv_router)
         #self.router.set_close_callback(self._peer_socket_closed)
@@ -128,10 +119,8 @@ class Beacon(object):
             socket.SOL_SOCKET,
             socket.SO_REUSEADDR,
             1)
-
         self.broadcaster.setblocking(0)
         self.broadcaster.bind((self.broadcast_addr, self.broadcast_port))
-
         self.loop.add_handler(self.broadcaster.fileno(), self._recv_beacon, self.loop.READ)
 
         if self.send_beacon:

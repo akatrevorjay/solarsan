@@ -2,25 +2,13 @@
 from solarsan import logging
 log = logging.getLogger(__name__)
 from solarsan.utils.stack import get_current_func_name
-
 import struct  # for packing integers
 import sys
 from uuid import uuid4
-
-import zmq
-
-from .serializers import Pipeline, \
-    PickleSerializer, JsonSerializer, MsgPackSerializer, \
-    ZippedCompressor, BloscCompressor
-
-pipeline = Pipeline()
-pipeline.add(PickleSerializer())
-pipeline.add(ZippedCompressor())
-#pipeline.add(MsgPackSerializer(use_list=False))
-#pipeline.add(BloscCompressor())
-
-
 from bunch import Bunch
+import zmq
+from .serializers import pipeline
+from datetime import datetime
 
 
 #class KVMsg(Bunch):
@@ -50,6 +38,7 @@ class KVMsg(object):
         self.key = key
         self.properties = {} if properties is None else properties
         self.body = body
+        self['created_at'] = datetime.now()
 
     # dictionary access maps to properties:
     def __getitem__(self, k):
