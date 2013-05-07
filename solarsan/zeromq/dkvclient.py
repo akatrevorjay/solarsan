@@ -8,7 +8,7 @@ import time
 
 from .beacon import Beacon
 #from .beacon_greeter import GreeterBeacon
-from .serializers import pipeline
+from .encoders import pipeline
 from .utils import get_address, parse_address
 
 import zmq

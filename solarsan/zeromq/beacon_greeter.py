@@ -5,7 +5,7 @@ from solarsan.utils.stack import get_last_func_name
 import solarsan.cluster.models as cmodels
 
 from .beacon import Beacon
-from .serializers import pipeline
+from .encoders import pipeline
 
 from functools import partial
 from zmq.eventloop.ioloop import IOLoop, DelayedCallback

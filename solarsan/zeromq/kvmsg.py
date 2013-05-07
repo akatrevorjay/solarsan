@@ -7,7 +7,7 @@ import sys
 from uuid import uuid4
 from bunch import Bunch
 import zmq
-from .serializers import pipeline
+from .encoders import pipeline
 from datetime import datetime
 
 
@@ -46,7 +46,7 @@ class KVMsg(object):
 
     def __setitem__(self, k, v):
         self.properties[k] = v
-        #if pipeline and pipeline in self.allowed_serializers:
+        #if pipeline and pipeline in self.allowed_encoders:
 
     def get(self, k, default=None):
         return self.properties.get(k, default)
@@ -118,8 +118,8 @@ class KVMsg(object):
     #    if not body:
     #        return
 
-    #    #if pipeline and pipeline in self.allowed_serializers:
-    #    #    body = self.allowed_serializers[serializer].load(body)
+    #    #if pipeline and pipeline in self.allowed_encoders:
+    #    #    body = self.allowed_encoders[serializer].load(body)
     #    #if pipeline:
     #    #    body = pipeline.load(body)
 

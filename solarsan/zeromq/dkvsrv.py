@@ -20,7 +20,7 @@ from .bstar import BinaryStar
 from .kvmsg import KVMsg
 from .zhelpers import dump
 
-from .serializers import pipeline
+from .encoders import pipeline
 
 
 class Greet:

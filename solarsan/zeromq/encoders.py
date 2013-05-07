@@ -10,9 +10,7 @@ try:
 except ImportError:
     import pickle
 import zmq.utils.jsonapi as json
-import msgpack
 import zlib
-import blosc
 
 
 """
@@ -31,7 +29,7 @@ class _SocketHelperMixIn:
 
 
 class _Base(object, _SocketHelperMixIn):
-    """Base for both serializers and compressors"""
+    """Base for both encoders and compressors"""
     _remove_name_ending = None
 
     def __init__(self, **kwargs):
@@ -112,37 +110,40 @@ class JsonSerializer(_Serializer):
         return json.loads(what)
 
 
-from uuid import UUID
+try:
+    import msgpack
+    from uuid import UUID
 
+    class MsgPackSerializer(_Serializer):
+        use_list = None
 
-class MsgPackSerializer(_Serializer):
-    use_list = None
+        def dump(self, what):
+            return msgpack.packb(what, default=self._default)
 
-    def dump(self, what):
-        return msgpack.packb(what, default=self._default)
+        def _default(self, what):
+            from .kvmsg import KVMsg
 
-    def _default(self, what):
-        from .kvmsg import KVMsg
+            #logger.debug('what=%s', what)
+            cls = what.__class__.__name__
+            state = getattr(what, '__dict__', None)
+            if state:
+                return (cls, state)
+            return what
 
-        #logger.debug('what=%s', what)
-        cls = what.__class__.__name__
-        state = getattr(what, '__dict__', None)
-        if state:
-            return (cls, state)
-        return what
+        def load(self, what):
+            return msgpack.unpackb(what, object_hook=self._object_hook, list_hook=self._list_hook, use_list=self.use_list)
 
-    def load(self, what):
-        return msgpack.unpackb(what, object_hook=self._object_hook, list_hook=self._list_hook, use_list=self.use_list)
+        def _object_hook(self, what):
+            from .kvmsg import KVMsg
 
-    def _object_hook(self, what):
-        from .kvmsg import KVMsg
+            #logger.debug('what=%s', what)
+            return what
 
-        #logger.debug('what=%s', what)
-        return what
-
-    def _list_hook(self, what):
-        #logger.debug('what=%s', what)
-        return what
+        def _list_hook(self, what):
+            #logger.debug('what=%s', what)
+            return what
+except ImportError:
+    pass
 
 
 """
@@ -176,17 +177,22 @@ class ZippedCompressor(_Compressor):
         return zlib.decompress(*args)
 
 
-class BloscCompressor(_Compressor):
-    """Blosc compressor"""
-    typesize = 254
-    clevel = 9
-    shuffle = True
+try:
+    import blosc
 
-    def dump(self, what):
-        return blosc.compress(what, self.typesize, self.clevel, self.shuffle)
+    class BloscCompressor(_Compressor):
+        """Blosc compressor"""
+        typesize = 254
+        clevel = 9
+        shuffle = True
 
-    def load(self, what):
-        return blosc.decompress(what)
+        def dump(self, what):
+            return blosc.compress(what, self.typesize, self.clevel, self.shuffle)
+
+        def load(self, what):
+            return blosc.decompress(what)
+except ImportError:
+    pass
 
 
 """
