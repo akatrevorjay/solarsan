@@ -3,7 +3,7 @@ from solarsan import logging, conf
 logger = logging.getLogger(__name__)
 from solarsan.pretty import pp
 from circuits import Component, Event, Timer, handler
-from solarsan.zeromq.dkvcli import get_client
+from solarsan.zeromq.dkvclient import get_client
 from solarsan.cluster.models import Peer
 from datetime import timedelta, datetime
 import sys
