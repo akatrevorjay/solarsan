@@ -17,7 +17,7 @@ from solarsan.pretty import pp
 from docopt import docopt
 from time import sleep
 
-from solarsan.zeromq.dkvcli import get_client
+from solarsan.zeromq.dkvclient import get_client
 #from zmq.eventloop.ioloop import IOLoop
 
 
