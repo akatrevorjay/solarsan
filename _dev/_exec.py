@@ -52,4 +52,4 @@ import mongoengine
 from uuid import UUID, uuid4
 
 # zeromq
-from solarsan.zeromq.dkvcli import get_client
+from solarsan.zeromq.dkvclient import get_client, DkvClient
