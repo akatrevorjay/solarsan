@@ -1,19 +1,19 @@
 
 from solarsan import logging, signals, conf
 logger = logging.getLogger(__name__)
-from solarsan.exceptions import SolarSanError
 from solarsan.pretty import pp
 import threading
 import time
 
-from .beacon import Beacon
-#from .beacon_greeter import GreeterBeacon
-from .encoders import pipeline
-from .utils import get_address, parse_address
+from solarsan.exceptions import DkvError, DkvTimeoutExceeded
+from ..beacon import Beacon
+#from ..beacon_greeter import GreeterBeacon
+from ..encoders import pipeline
+from ..utils import get_address, parse_address
+from ..zhelpers import zpipe
 
 import zmq
-from zhelpers import zpipe
-from kvmsg import KVMsg
+from .kvmsg import KVMsg
 
 
 """
@@ -29,18 +29,6 @@ SERVER_MAX = 20         # Number of servers we will talk to
 """
 Synchronous part, works in our application thread
 """
-
-
-class DkvError(SolarSanError):
-    pass
-
-
-class DkvTimeoutExceeded(DkvError):
-    pass
-
-
-#class DkvNotConnected(DkvError):
-#    pass
 
 
 class DkvClient(object):

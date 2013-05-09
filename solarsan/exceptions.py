@@ -65,3 +65,20 @@ class DrbdResourceError(DrbdError):
 
 class DrbdFreeMinorUnavailable(DrbdError):
     """Could not find a free Drbd minor"""
+
+
+"""
+Dkv
+"""
+
+
+class DkvError(SolarSanError):
+    pass
+
+
+class DkvTimeoutExceeded(DkvError):
+    pass
+
+
+#class DkvNotConnected(DkvError):
+#    pass

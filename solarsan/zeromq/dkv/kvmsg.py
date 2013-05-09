@@ -7,7 +7,7 @@ import sys
 from uuid import uuid4
 from bunch import Bunch
 import zmq
-from .encoders import pipeline
+from ..encoders import pipeline
 from datetime import datetime
 
 
