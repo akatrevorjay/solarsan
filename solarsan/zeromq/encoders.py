@@ -80,6 +80,31 @@ class _NullMixIn:
         return what
 
 
+class _BaseAdapter:
+    base = None
+
+    def _base_adapt_name(self, name):
+        if isinstance(self, _Compressor):
+            if name == 'dump':
+                return 'compress'
+            elif name == 'load':
+                return 'decompress'
+        elif isinstance(self, _Serializer):
+            return '%ss' % name
+
+    def _base_adapt(self, what, *args, **kwargs):
+        if self.base:
+            return getattr(self.base, self._base_adapt_name(get_last_func_name()))(what, *args, **kwargs)
+        else:
+            raise NotImplemented
+
+    def dump(self, what, *args, **kwargs):
+        return self._base_adapt(what, *args, **kwargs)
+
+    def load(self, what, *args, **kwargs):
+        return self._base_adapt(what, *args, **kwargs)
+
+
 """
 Serializers
 """
@@ -89,56 +114,53 @@ class NullSerializer(_NullMixIn, _Serializer):
     """Null serializer"""
 
 
-class PickleSerializer(_Serializer):
+class PickleSerializer(_BaseAdapter, _Serializer):
     """Pickle serializer"""
+    base = pickle
     protocol = -1
 
     def dump(self, what):
-        """pickle an object, and zip the pickle"""
-        return pickle.dumps(what, self.protocol)
-
-    def load(self, what):
-        """Inverse of dump"""
-        if what:
-            return pickle.loads(what)
+        return _BaseAdapter.dump(self, what, self.protocol)
 
 
-class JsonSerializer(_Serializer):
-    def dump(self, what):
-        return json.dumps(what)
-
-    def load(self, what):
-        if what:
-            return json.loads(what)
+class JsonSerializer(_BaseAdapter, _Serializer):
+    """JSON serializer"""
+    base = json
 
 
 try:
     import msgpack
-    from uuid import UUID
 
-    class MsgPackSerializer(_Serializer):
+    class MsgPackSerializer(_BaseAdapter, _Serializer):
+        """MsgPack serializer"""
+        base = msgpack
         use_list = None
 
+        def _base_adapt_name(self, name):
+            if name == 'dump':
+                return 'packb'
+            elif name == 'load':
+                return 'unpackb'
+
         def dump(self, what):
-            return msgpack.packb(what, default=self._default)
-
-        def _default(self, what):
-            from .kvmsg import KVMsg
-
-            #logger.debug('what=%s', what)
-            cls = what.__class__.__name__
-            state = getattr(what, '__dict__', None)
-            if state:
-                return (cls, state)
-            return what
+            return _BaseAdapter.dump.dump(self, what, default=self._default)
 
         def load(self, what):
             if what:
-                return msgpack.unpackb(what, object_hook=self._object_hook, list_hook=self._list_hook, use_list=self.use_list)
+                return _BaseAdapter.load.load(what, object_hook=self._object_hook, list_hook=self._list_hook, use_list=self.use_list)
+
+        def _default(self, what):
+            #from .kvmsg import KVMsg
+            #logger.debug('what=%s', what)
+            #cls = what.__class__.__name__
+            #state = getattr(what, '__dict__', None)
+            #if state:
+            #    return (cls, state)
+
+            return what
 
         def _object_hook(self, what):
-            from .kvmsg import KVMsg
-
+            #from .kvmsg import KVMsg
             #logger.debug('what=%s', what)
             return what
 
@@ -158,7 +180,8 @@ class NullCompressor(_NullMixIn, _Compressor):
     """Null serializer"""
 
 
-class ZippedCompressor(_Compressor):
+class ZippedCompressor(_BaseAdapter, _Compressor):
+    base = zlib
     level = None
     window_size = None
     buffer_size = None
@@ -167,33 +190,30 @@ class ZippedCompressor(_Compressor):
         args = []
         if self.level:
             args.append(self.level)
-        args.append(what)
-        return zlib.compress(*args)
+        return _BaseAdapter.dump(self, what, *args)
 
     def load(self, what):
-        args = []
-        if self.window_size:
-            args.append(self.window_size)
-        if self.buffer_size:
-            args.append(self.buffer_size)
-        args.append(what)
-        return zlib.decompress(*args)
+        if what:
+            args = []
+            if self.window_size:
+                args.append(self.window_size)
+            if self.buffer_size:
+                args.append(self.buffer_size)
+            return _BaseAdapter.load(self, what, *args)
 
 
 try:
     import blosc
 
-    class BloscCompressor(_Compressor):
+    class BloscCompressor(_BaseAdapter, _Compressor):
         """Blosc compressor"""
+        base = blosc
         typesize = 254
         clevel = 9
         shuffle = True
 
         def dump(self, what):
-            return blosc.compress(what, self.typesize, self.clevel, self.shuffle)
-
-        def load(self, what):
-            return blosc.decompress(what)
+            return _BaseAdapter.dump(what, self.typesize, self.clevel, self.shuffle)
 except ImportError:
     pass
 
@@ -239,8 +259,10 @@ class Pipeline(PriorityQueueDictionary, _SocketHelperMixIn):
 
     def load(self, what):
         """Loads 'what' from serialized format"""
-        if what:
-            return self(None, what, False)
+        return self(None, what, False)
+
+    def __repr__(self):
+        return '<%s %s>' % (self.__class__.__name__, self.keys())
 
 
 pipeline = Pipeline()
