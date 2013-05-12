@@ -8,7 +8,9 @@ from uuid import uuid4
 from bunch import Bunch
 import zmq
 from ..encoders import pipeline
+import datetime
 from datetime import datetime
+import time
 
 
 #class KVMsg(Bunch):
@@ -56,6 +58,8 @@ class KVMsg(object):
         else delete me from the dict."""
         if self.key is not None and self.body is not None:
             dikt[self.key] = self
+            if self.get('ttl'):
+                dikt[self.key]['ttl'] = time.time() + self['ttl']
         elif self.key in dikt:
             del dikt[self.key]
 

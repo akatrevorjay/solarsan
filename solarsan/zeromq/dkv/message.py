@@ -5,20 +5,17 @@ from solarsan.exceptions import SolarSanError
 from solarsan.pretty import pp
 import threading
 import time
-
-from .beacon import Beacon
-#from .beacon_greeter import GreeterBeacon
-from .encoders import pipeline
-from .utils import get_address, parse_address
-
-import zmq
-from zhelpers import zpipe
-from kvmsg import KVMsg
-
 from datetime import datetime
 
+#from .beacon_greeter import GreeterBeacon
+from ..encoders import pipeline
+from ..utils import get_address, parse_address
+from ..zhelpers import zpipe
+import zmq
 
-class DkvMsg(dict):
+
+
+class Message(dict):
     _sequence = None
     _pending = None
     _sent = None
@@ -37,7 +34,7 @@ class DkvMsg(dict):
         pass
 
     def __repr__(self):
-        return '<DkvMsg "%s">' % dict.__repr__(self)
+        return '<%s "%s">' % (self.__class__.__name__, dict.__repr__(self))
 
     def __setattr__(self, k, v):
         if k.startswith('_'):
@@ -51,42 +48,3 @@ class DkvMsg(dict):
             return dict.__getitem__(self, k)
         except KeyError:
             raise AttributeError
-
-
-class DkvContainer(list):
-    pass
-
-
-class DkvEvent(object):
-    msg = None  # DkvMsg() object
-    event = None
-
-    # Events
-    CREATE = 0
-    UPDATE = 1
-    DELETE = 2
-
-    def __init__(self, data=None):
-        if data:
-            self.__dict__ = data.copy()
-            del data
-
-    def dump(self):
-        data = self.__dict__
-        return pipeline.dump(data)
-
-    def load(cls, data):
-        data = pipeline.loads(data)
-        return cls(**pipeline.load(data))
-
-
-class DkvUpdate(DkvEvent):
-    event = DkvEvent.UPDATE
-
-
-class DkvDelete(DkvEvent):
-    event = DkvEvent.DELETE
-
-
-class DkvCreate(DkvEvent):
-    event = DkvEvent.CREATE
