@@ -76,3 +76,5 @@ wsgiref
 #zerorpc
 watchdog
 -e git+git://github.com/agrover/configshell-fb.git#egg=configshell-dev
+docopt
+iso8601
