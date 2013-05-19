@@ -41,9 +41,41 @@ def _decode_dict(data):
 
 
 try:
-    import ujson as json
-except:
-    import json
+    import ujson
+
+    class UJSONEncoder (object):
+        def encode(self, node_uid, message_type, parts):
+            header = dict()
+
+            header['type'] = message_type
+            header['from'] = node_uid
+
+            plist = [header]
+
+            if parts:
+                plist.extend(parts)
+
+            return [str(ujson.dumps(p)) for p in plist]
+
+        def decode(self, jparts):
+            if not jparts:
+                return
+
+            try:
+                parts = [ujson.loads(j) for j in jparts]
+            except ValueError:
+                print 'Invalid JSON: ', jparts
+                return
+
+            header = parts[0]
+            parts = parts[1:]
+
+            return header['from'], header['type'], parts
+except ImportError:
+    pass
+
+
+import json
 
 
 class JSONEncoder (object):

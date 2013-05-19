@@ -1,42 +1,43 @@
 
+from solarsan import logging
+logger = logging.getLogger(__name__)
+import zmq
+from zmq.eventloop.ioloop import IOLoop, PeriodicCallback, DelayedCallback
+from uuid import uuid4
+from datetime import datetime, timedelta
+
 
 class Transaction(object):
     """Transaction class that handles any updates on their path toward good,
     or evil."""
+
+    uuid = None
     ts = None
     payload = None
-    uuid = None
 
-    _serialize_attrs = ['ts', 'payload', 'uuid']
+    _node = None
+    _serialize_attrs = ['uuid', 'ts', 'payload']
+    _timeout = timedelta(minutes=1)
 
     _min_sequence = None
-    _agent = None
-    _replies = None
     _votes = None
 
-    def __init__(self, agent, **kwargs):
-        self._agent = agent
-        self._replies = {}
+    """ Base """
+
+    def __init__(self, node, **kwargs):
+        self._node = node
+
         self._votes = {}
 
         if kwargs:
             self.update(kwargs)
 
-        self.bar = self._bar
+        if not self.uuid:
+            self.uuid = uuid4().get_hex()
+        if not self.ts:
+            self.ts = datetime.now()
 
-    @classmethod
-    def from_dict(cls, agent, datadict):
-        return cls(agent, **datadict)
-
-    @classmethod
-    def bar(cls, baz):
-        print "bar, baz:", baz
-
-    def _bar(self, baz):
-        print "_bar, baz:", baz
-
-    def _from_dict(self, datadict):
-        pass
+        self._set_timeout()
 
     def update(self, datadict):
         if not datadict:
@@ -44,14 +45,66 @@ class Transaction(object):
         for k in self._serialize_attrs:
             setattr(self, k, datadict.get(k))
 
+    """ Tofro dict """
+
+    @classmethod
+    def from_dict(cls, agent, datadict):
+        return cls(agent, **datadict)
+
     def to_dict(self):
         ret = {}
         for k in self._serialize_attrs:
             ret[k] = getattr(self, k, None)
         return ret
 
+    """ Timeout """
+
+    def _set_timeout(self):
+        self._ttl = self.ts + self._timeout
+
+    def _check_timeout(self):
+        return self._ttl < datetime.now()
+
+    """ Actions """
+
+    def propose(self, cb=None):
+        """Flood peers with proposal for us to get stored."""
+        #self._node.add_handler('dkv.transaction.propose:%s' % self.uuid, self.on_vote)
+        self._node.add_handler('dkv.transaction', self)
+        self._node.broadcast('dkv.transaction', 'proposal',
+                             self.uuid, self.to_dict())
+
+    def cancel(self, cb=None):
+        """Cancel (proposed) transaction."""
+        pass
+
+    def commit(self, cb=None):
+        """Commit (proposed) transaction."""
+        pass
+
+    """ Events """
+
+    def receive_debug(self, *args, **kwargs):
+        logger.debug('args=%s; kwargs=%s;', args, kwargs)
+
+    def receive_vote(self, peer, accept, sequence):
+        self.receive_debug(accept, sequence)
+
+    def receive_proposal(self, peer, tx_uuid, tx_dict):
+        self.receive_debug(peer, tx_uuid, tx_dict)
+
+    #receive_vote = receive_debug
+    receive_cancel = receive_debug
+    receive_commit = receive_debug
+
+
+class OldTransaction:
+    """ Old Actions """
+
     def publish(self, sock):
-        #sock = self._agent.publisher
+        """Broadcast message to all peers.
+        @param sock: publisher socket
+        """
         sock.send('TXN_PENDING', zmq.SNDMORE)
         sock.send_json(self.to_dict())
 

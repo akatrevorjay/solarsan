@@ -45,7 +45,7 @@ class _BaseDict(dict):
             raise AttributeError
 
 
-class _DictMessage(_BaseDict):
+class DictMessage(_BaseDict):
 
     def __init__(self, **kwargs):
         _BaseDict.__init__(self, **kwargs)
@@ -53,28 +53,6 @@ class _DictMessage(_BaseDict):
             self.created_at = datetime.now()
         if 'sequence' not in self:
             self.sequence = None
-        if self.proposed:
-            self.proposed
-
-    def propose(self):
-        """Flood peers with proposal for us to get stored."""
-        tx = self._tx = Transaction(message=self)
-        return tx.propose(cb=self.on_propose)
-
-    def cancel(self):
-        tx = self._tx
-        return tx.cancel(cb=self.on_cancel)
-
-    def commit(self):
-        tx = self._tx
-        return tx.commit(cb=self.on_commit)
-
-    def on_debug(self, *args, **kwargs):
-        logger.debug('args=%s; kwargs=%s;', args, kwargs)
-
-    on_propose = on_debug
-    on_cancel = on_debug
-    on_commit = on_debug
 
 
 class MessageError(RuntimeError):

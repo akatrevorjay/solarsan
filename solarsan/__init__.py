@@ -4,6 +4,8 @@ logging.config.dictConfig(LOGGING)
 root = logging.getLogger()
 logger = logging.getLogger(__name__)
 
+#from .conf import config
+
 #from solarsan import conf
 #import logging
 #import logging.config

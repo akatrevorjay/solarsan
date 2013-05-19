@@ -33,6 +33,10 @@ ports = Bunch(
     dkv_publisher=5557,
     dkv_collector=5558,
 
+    dkv_rtr=6555,
+    dkv_pub=6556,
+    dkv_col=6557,
+
     #_rpc=1787,
     #_drbd_start=7800,
 )
@@ -171,9 +175,10 @@ LOGGING = {
             'level': 'INFO',
         },
         'solarsan': {
-            'propagate': True,
             'level': 'DEBUG',
-            'handlers': ['syslog'],
+            'propagate': False,
+            'handlers': ['console'],
+            #'propagate': True,
             #'handlers': ['syslog'],
         },
         'solarsan.rpc.server_storage': {
@@ -198,25 +203,25 @@ LOGGING = {
             #'level': 'DEBUG',
             'handlers': ['console'],
         },
-        'solarsan.zeromq.dkv': {
-            'propagate': False,
-            'level': 'DEBUG',
-            'handlers': ['console'],
-        },
-        'solarsan.zeromq.dkvsrv': {
-            'propagate': False,
-            'level': 'DEBUG',
-            'handlers': ['console'],
-        },
+        #'solarsan.zeromq.dkv': {
+        #    'propagate': False,
+        #    'level': 'DEBUG',
+        #    'handlers': ['console'],
+        #},
+        #'solarsan.zeromq.dkvsrv': {
+        #    'propagate': False,
+        #    'level': 'DEBUG',
+        #    'handlers': ['console'],
+        #},
         'butler': {
             'propagate': False,
             'level': 'INFO',
             'handlers': ['console'],
         },
-        'pizco': {
-            'propagate': False,
-            'level': 'INFO',
-            'handlers': ['console'],
-        },
+        #'pizco': {
+        #    'propagate': False,
+        #    'level': 'INFO',
+        #    'handlers': ['console'],
+        #},
     }
 }
