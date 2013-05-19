@@ -15,7 +15,8 @@ nginx-extras
 #uwsgi
 
 # zeromq
-libzmq-dev python-zmq
+#libzmq-dev python-zmq
+libzmq3-dev
 
 # simpleparse
 python-simpleparse

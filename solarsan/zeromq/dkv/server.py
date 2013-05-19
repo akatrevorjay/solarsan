@@ -16,47 +16,25 @@ from zmq.eventloop.ioloop import IOLoop, DelayedCallback, PeriodicCallback
 from zmq.eventloop.zmqstream import ZMQStream
 #import zmq.utils.jsonapi as json
 
-from ..beacon_greeter import GreeterBeacon
+from ..beacon_greeter import GreeterBeacon, Greet, Peer
 from ..bstar import BinaryStar
 from ..zhelpers import dump
 from ..encoders import pipeline
 
-from .kvmsg import KVMsg
+from .message import Message
 
 
-class Greet:
-    @classmethod
-    def _gen_from_peer(cls, peer):
-        self = Greet()
-        self.hostname = peer.hostname
-        self.uuid = peer.uuid
-        self.cluster_iface = peer.cluster_iface
-        return self
-
-    @classmethod
-    def gen_from_local(cls):
-        peer = cmodels.Peer.get_local()
-        return cls._gen_from_peer(peer)
-
-    def __str__(self):
-        d = self.__dict__
-        data = ''
-        for k in ['hostname', 'uuid']:
-            v = d.get(k)
-            if v:
-                data += '%s=%s; ' % (k, v)
-        if data:
-            data = data[:-2]
-        return '<Greet %s>' % data
+class Greet(Greet):
+    pass
 
 
-class Peer:
+class Peer(Peer):
     ctx = None
 
-    def __init__(self, id, uuid, socket, addr, time_=None, beacon=None, **kwargs):
+    def __init__(self, id, uuid, router, addr, time_=None, beacon=None, **kwargs):
         self.id = id
         self.uuid = uuid
-        self.socket = socket
+        self.router = router
         self.addr = addr
         self.time = time_ or time.time()
 
@@ -142,7 +120,7 @@ class Peer:
         greet = Greet.gen_from_local()
         greet = pipeline.dump(greet)
         #greet = json.dumps(greet.__dict__)
-        self.socket.send_multipart(['GREET', greet])
+        self.router.send_multipart(['GREET', greet])
 
         delay = getattr(self, 'send_greet_delay', None)
         if delay:
@@ -191,12 +169,12 @@ class DkvBeacon(GreeterBeacon):
 
 class Route:
     """Simple struct for routing information for a key-value snapshot"""
-    socket = None
+    router = None
     identity = None
     subtree = None
 
-    def __init__(self, socket, identity, subtree):
-        self.socket = socket        # ROUTER socket to send to
+    def __init__(self, router, identity, subtree):
+        self.router = router        # ROUTER socket to send to
         self.identity = identity    # Identity of peer who requested state
         self.subtree = subtree      # Client subtree specification
 
@@ -206,8 +184,8 @@ def send_single(key, kvmsg, route):
     # check front of key against subscription subtree:
     if kvmsg.key.startswith(route.subtree):
         # Send identity of recipient first
-        route.socket.send(route.identity, zmq.SNDMORE)
-        kvmsg.send(route.socket)
+        route.router.send(route.identity, zmq.SNDMORE)
+        kvmsg.send(route.router)
 
 
 class DkvServer(object):
@@ -365,7 +343,7 @@ class DkvServer(object):
             # Now send END message with sequence number
             log.info("Sending state shapshot=%d", self.sequence)
             socket.send(identity, zmq.SNDMORE)
-            kvmsg = KVMsg(self.sequence)
+            kvmsg = Message(self.sequence)
             kvmsg.key = "KTHXBAI"
             kvmsg.body = subtree
             kvmsg.send(socket)
@@ -383,7 +361,7 @@ class DkvServer(object):
         #    log.info('handle_collect: Got bad message %s.', msg)
         #    return
 
-        kvmsg = KVMsg.from_msg(msg)
+        kvmsg = Message.from_msg(msg)
         if self.master:
             self.sequence += 1
             kvmsg.sequence = self.sequence
@@ -435,7 +413,7 @@ class DkvServer(object):
         if self._debug:
             log.debug('Sending HUGZ to publisher')
 
-        kvmsg = KVMsg(self.sequence)
+        kvmsg = Message(self.sequence)
         kvmsg.key = "HUGZ"
         kvmsg.body = ""
         kvmsg.send(self.publisher)
@@ -497,7 +475,7 @@ class DkvServer(object):
             snapshot = peer.get_snapshot()
             while True:
                 try:
-                    kvmsg = KVMsg.recv(snapshot)
+                    kvmsg = Message.recv(snapshot)
                 except KeyboardInterrupt:
                     #self.bstar.loop.stop()
                     self.loop.stop()
@@ -517,7 +495,7 @@ class DkvServer(object):
         #    return
 
         # Find and remove update off pending list
-        kvmsg = KVMsg.from_msg(msg)
+        kvmsg = Message.from_msg(msg)
 
         # update integer ttl -> timestamp
         ttl = kvmsg.get('ttl')

@@ -1,0 +1,3 @@
+
+class MessageContainer(list):
+    pass

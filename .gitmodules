@@ -1,3 +1,6 @@
 [submodule "lib/bashism"]
 	path = lib/bashism
 	url = git://github.com/akatrevorjay/bashism.git
+[submodule "lib/src/python-sysfs"]
+	path = lib/src/python-sysfs
+	url = git://github.com/akatrevorjay/python-sysfs.git
