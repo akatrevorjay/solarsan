@@ -1,6 +1,4 @@
 
-import json
-
 
 class SimpleEncoder(object):
     '''
@@ -40,6 +38,12 @@ def _decode_dict(data):
             value = _decode_dict(value)
         rv[key] = value
     return rv
+
+
+try:
+    import ujson as json
+except:
+    import json
 
 
 class JSONEncoder (object):

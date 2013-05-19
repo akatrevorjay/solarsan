@@ -21,7 +21,7 @@ from ..bstar import BinaryStar
 from ..zhelpers import dump
 from ..encoders import pipeline
 
-from .kvmsg import KVMsg
+from .message import Message
 
 
 class Greet(Greet):
@@ -343,7 +343,7 @@ class DkvServer(object):
             # Now send END message with sequence number
             log.info("Sending state shapshot=%d", self.sequence)
             socket.send(identity, zmq.SNDMORE)
-            kvmsg = KVMsg(self.sequence)
+            kvmsg = Message(self.sequence)
             kvmsg.key = "KTHXBAI"
             kvmsg.body = subtree
             kvmsg.send(socket)
@@ -361,7 +361,7 @@ class DkvServer(object):
         #    log.info('handle_collect: Got bad message %s.', msg)
         #    return
 
-        kvmsg = KVMsg.from_msg(msg)
+        kvmsg = Message.from_msg(msg)
         if self.master:
             self.sequence += 1
             kvmsg.sequence = self.sequence
@@ -413,7 +413,7 @@ class DkvServer(object):
         if self._debug:
             log.debug('Sending HUGZ to publisher')
 
-        kvmsg = KVMsg(self.sequence)
+        kvmsg = Message(self.sequence)
         kvmsg.key = "HUGZ"
         kvmsg.body = ""
         kvmsg.send(self.publisher)
@@ -475,7 +475,7 @@ class DkvServer(object):
             snapshot = peer.get_snapshot()
             while True:
                 try:
-                    kvmsg = KVMsg.recv(snapshot)
+                    kvmsg = Message.recv(snapshot)
                 except KeyboardInterrupt:
                     #self.bstar.loop.stop()
                     self.loop.stop()
@@ -495,7 +495,7 @@ class DkvServer(object):
         #    return
 
         # Find and remove update off pending list
-        kvmsg = KVMsg.from_msg(msg)
+        kvmsg = Message.from_msg(msg)
 
         # update integer ttl -> timestamp
         ttl = kvmsg.get('ttl')

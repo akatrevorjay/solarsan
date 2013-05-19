@@ -13,7 +13,11 @@ from ..utils import get_address, parse_address
 from ..zhelpers import zpipe
 
 import zmq
-from .kvmsg import KVMsg
+
+from .node import Node
+from .channel import Channel
+from .message import Message, ChannelMessage, MessageContainer
+from .transaction import Transaction
 
 
 """
@@ -350,7 +354,7 @@ class DkvAgent(object):
                 return
 
             # Create and store key-value pair
-            kvmsg = KVMsg(0, key=key, body=value)
+            kvmsg = Message(0, key=key, body=value)
             kvmsg.store(self.kvmap)
             if ttl:
                 kvmsg["ttl"] = ttl
@@ -441,8 +445,8 @@ class DkvAgent(object):
             elif server_socket in items:
                 #msg = server_socket.recv_multipart()
                 #logger.debug('msg=%s', msg)
-                #kvmsg = KVMsg.from_msg(msg)
-                kvmsg = KVMsg.recv(server_socket)
+                #kvmsg = Message.from_msg(msg)
+                kvmsg = Message.recv(server_socket)
                 #pp(kvmsg.__dict__)
 
                 # Anything from server resets its expiry time
