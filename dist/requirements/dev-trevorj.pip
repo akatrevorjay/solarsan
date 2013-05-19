@@ -62,7 +62,7 @@ python-dateutil
 -e git://github.com/umago/python-udisks.git#egg=python_udisks-dev
 pytz
 pyudev
-#pyzmq
+pyzmq
 #requests
 #riak
 #riak-pb
