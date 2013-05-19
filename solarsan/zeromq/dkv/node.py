@@ -17,58 +17,74 @@ class Node(object):
     #_default_encoder = SimpleEncoder
     _default_encoder = JSONEncoder
 
-    def __init__(self, node_uuid, encoder=_default_encoder()):
-        self.uuid = node_uuid
+    def __init__(self, uuid, encoder=_default_encoder()):
+        self.uuid = uuid
         self.encoder = encoder
 
-        # Dictionary of uuid -> (rtr_addr, pub_addr)
-        self.peers = None
-        # Dictionary of channel_name => list( message_handlers )
-        self.message_handlers = dict()
-
+        # Sockets
         self.rtr = None
         self.pub = None
         self.sub = None
 
-    def add_message_handler(self, channel_name, handler):
+        # Dictionary of uuid -> (rtr_addr, pub_addr)
+        self.peers = dict()
+
+        # Dictionary of channel_name => list( message_handlers )
+        self.message_handlers = dict()
+
+    def add_handler(self, channel_name, handler):
         if not channel_name in self.message_handlers:
             self.message_handlers[channel_name] = list()
         self.message_handlers[channel_name].append(handler)
 
-    def connect(self, peers):
-        '''
-        peers - Dictionary of uuid => (zmq_rtr_addr, zmq_pub_addr)
-        '''
-        if not self.uuid in peers:
-            raise Exception('Missing local node configuration')
-
-        self.peers = peers
-
+    def _zmq_init(self):
         if not hasattr(self, 'ctx'):
             self.ctx = zmq.Context.instance()
         ctx = self.ctx
         if not hasattr(self, 'loop'):
-            self.loop = ioloop.IOLoop.instance()
+            self.loop = IOLoop.instance()
         loop = self.loop
+
+    def _bind(self, rtr_addr, pub_addr):
+        self._zmq_init()
 
         if self.rtr:
             self.rtr.close()
+        rtr = ctx.socket(zmq.ROUTER)
+
         if self.pub:
             self.pub.close()
+        pub = ctx.socket(zmq.PUB)
+
+        for sock in (rtr, pub):
+            sock.linger = 0
+
+        rtr.setsockopt(zmq.IDENTITY, self.uuid)
+        rtr.bind(rtr_addr)
+
+        pub.bind(pub_addr)
+
+    def connect(self, peer_uuid, peer_rtr_addr):
+        '''Connects to peer
+        '''
+        self._zmq_init()
+
+        rtr_addr = peer_rtr_addr
+
+        self.peers[peer_uuid] = dict(sub=None, rtr_addr=rtr_addr)
+
         if self.sub:
             self.sub.close()
-
-        rtr = ctx.socket(zmq.ROUTER)
-        pub = ctx.socket(zmq.PUB)
-        sub = ctx.socket(zmq.SUB)
-
-        for sock in (rtr, pub, sub):
+        sub = self.ctx.socket(zmq.SUB)
+        for sock in (sub, ):
             sock.linger = 0
-        rtr.setsockopt(zmq.IDENTITY, uuid)
         sub.setsockopt(zmq.SUBSCRIBE, 'test')
 
-        rtr.bind(peers[self.uuid][0])
-        pub.bind(peers[self.uuid][1])
+
+    def connect_many(self, **peers):
+        '''Connects to peer(s), specified as dict of uuid => (zmq_rtr_addr, zmq_pub_addr)
+        '''
+
         #for peer_uuid, peer in self.peers.iteritems():
         #    sub.connect(peers
 
@@ -86,23 +102,26 @@ class Node(object):
         self.chan_pubsub.on_receive(self._on_sub_received)
 
     def shutdown(self):
-        self.rtr.close()
-        self.pub.close()
-        self.sub.close()
-        self.rtr = None
-        self.pub = None
-        self.sub = None
+        if self.rtr:
+            self.rtr.close()
+            self.rtr = None
+        if self.pub:
+            self.pub.close()
+            self.pub = None
+        if self.sub:
+            self.sub.close()
+            self.sub = None
 
-    def broadcast_message(self, channel_name, message_type, *parts):
+    def broadcast(self, channel_name, message_type, *parts):
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
             parts = parts[0]
         l = ['zpax', channel_name]
         l.extend(self.encoder.encode(self.uuid, message_type, parts))
         self.pub.send(l)
 
-    def unicast_message(self, to_uuid, channel_name, message_type, *parts):
+    def unicast(self, to_uuid, channel_name, message_type, *parts):
         if to_uuid == self.uuid:
-            self.dispatch_message(
+            self.dispatch(
                 self.uuid, channel_name, message_type, parts)
             return
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
@@ -111,7 +130,7 @@ class Node(object):
         l.extend(self.encoder.encode(self.uuid, message_type, parts))
         self.rtr.send(l)
 
-    def _dispatch_message(self, from_uuid, channel_name, message_type, parts):
+    def _dispatch(self, from_uuid, channel_name, message_type, parts):
         handlers = self.message_handlers.get(channel_name, None)
         if handlers:
             for h in handlers:
@@ -125,11 +144,11 @@ class Node(object):
         # for consistency
         channel_name = raw_parts[1]
         from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
-        self._dispatch_message(from_uuid, channel_name, message_type, parts)
+        self._dispatch(from_uuid, channel_name, message_type, parts)
 
     def _on_sub_received(self, raw_parts):
         # discard the message header. Can address targeted subscriptions
         # later
         channel_name = raw_parts[1]
         from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
-        self._dispatch_message(from_uuid, channel_name, message_type, parts)
+        self._dispatch(from_uuid, channel_name, message_type, parts)
