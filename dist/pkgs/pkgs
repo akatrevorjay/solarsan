@@ -11,7 +11,11 @@ python-augeas augeas-tools
 collectd collectd-utils
 
 # solarsan.web (wip)
-#nginx-extras uwsgi
+nginx-extras
+#uwsgi
 
 # zeromq
 libzmq-dev python-zmq
+
+# simpleparse
+python-simpleparse
