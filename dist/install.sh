@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+### All of this crap below and probably alot of the above should be in salt. ###
+
 export HOME="/root"
 export WORKON_HOME="/root/.virtualenvs"
 
@@ -20,15 +22,17 @@ for i in /opt/solarsanweb /opt/solarsanweb/lib /opt/solarsanweb/solarsanweb /opt
 done
 set -e
 
+DIST="/opt/solarsan/dist"
+pushd "$DIST"
+
+echo "[$0] Installing PPAs and packages.."
+./pkgs/install.sh
+
+echo "[$@] Installing python packages.."
 pip install -r /opt/solarsan/dist/requirements/dev-trevorj.pip
+
+echo "[$@] Installing upstart scripts.."
 cp -v /opt/solarsan/dist/upstart/* /etc/init/
-
-pushd /opt/solarsan/dist/
-
-### All of this crap below and probably alot of the above should be in salt. ###
-
-echo "[$0] Installing PPAs.."
-pushd ppas && ./install.sh; popd
 
 echo "[$0] Installing configs.."
 cp -v collectd/*.conf /etc/collectd/

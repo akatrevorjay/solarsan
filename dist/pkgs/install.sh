@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd /opt/solarsan/dist/pkgs
+
 CODENAME=$(lsb_release -sc)
 
 for ppa in $(cat ppas); do
@@ -13,7 +15,7 @@ for ppa in $(cat ppas); do
 done
 
 apt-get update
-#apt-get dist-upgrade -y
+apt-get dist-upgrade -y
 
 cat pkgs \
     | egrep -v '^#' \
