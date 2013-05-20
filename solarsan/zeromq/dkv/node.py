@@ -13,55 +13,12 @@ from .transaction import TransactionManager
 from uuid import uuid4
 from datetime import datetime
 from functools import partial
+import weakref
+from .manager import _BaseManager
 
 
 class NodeError(SolarSanError):
     """Generic Node Error"""
-
-
-class _BaseManager(object):
-    channel = None
-
-    def __init__(self, node, **kwargs):
-        self._node = node
-        self._set_channel(kwargs.pop('channel', None))
-        self._add_handler()
-        self._node.add_manager(self)
-
-    @property
-    def running(self):
-        return hasattr(self, '_greenlet')
-
-    def _set_channel(self, channel=None):
-        if not channel:
-            channel = self.channel
-        if not channel:
-            channel = self.__class__.channel
-        if not channel:
-            channel = self.__class__.__name__
-        self.channel = channel
-
-    """ Handlers """
-
-    def _add_handler(self, channel=None):
-        if not channel:
-            channel = self.channel
-        self._node.add_handler(channel, self)
-
-    def _remove_handler(self, channel=None):
-        if not channel:
-            channel = self.channel
-        self._node.remove_handler(channel, self)
-
-    """ Abstractions """
-
-    def broadcast(self, message_type, *parts, **kwargs):
-        channel = kwargs.pop('channel', self.channel)
-        return self._node.broadcast(channel, message_type, *parts)
-
-    def unicast(self, peer, message_type, *parts, **kwargs):
-        channel = kwargs.pop('channel', self.channel)
-        return self._node.unicast(peer, channel, message_type, *parts)
 
 
 class NodeNotReadyError(NodeError):
@@ -78,10 +35,12 @@ class HeartbeatSequenceManager(_BaseManager):
         self.sequence = 0
 
     def _run(self):
-        while True:
+        self.running = True
+        while self.running:
             gevent.sleep(self.beat_every_sec)
             self.beat()
-            gevent.spawn(self.bring_out_yer_dead)
+            #gevent.spawn(self.bring_out_yer_dead)
+            self.bring_out_yer_dead()
 
     """ Heartbeat """
 
@@ -150,7 +109,7 @@ class DebuggerManager(_BaseManager):
         logger.debug('Debugger %s: %s', key, parts)
 
 
-class Node(object):
+class Node(gevent.Greenlet):
     '''
     Messages are handled by adding instances to the message_handlers list. The
     first instance that contains a method named 'receive_<message_type>'
@@ -166,6 +125,8 @@ class Node(object):
     #_default_managers = list()
 
     def __init__(self, uuid=None, encoder=_default_encoder()):
+        gevent.Greenlet.__init__(self)
+
         if not uuid:
             uuid = uuid4().get_hex()
         self.uuid = uuid
@@ -177,6 +138,7 @@ class Node(object):
         self.sub = None
 
         # State
+        self.running = False
         self.sequence = 0
 
         # Dictionary of uuid -> (rtr_addr, pub_addr)
@@ -184,16 +146,20 @@ class Node(object):
 
         # Dictionary of channel_name => list( message_handlers )
         self.message_handlers = dict()
+        #self.message_handlers = weakref.WeakValueDictionary()
+
+        # Managers
+        self.managers = dict()
+        #self.managers = weakref.WeakValueDictionary()
+
+        # Sockets
+        self._socks = dict()
 
         if not hasattr(self, 'ctx'):
             self.ctx = zmq.Context.instance()
 
         if not hasattr(self, 'poller'):
             self.poller = zmq.Poller()
-
-        self._socks = dict()
-
-        self.managers = dict()
 
         for cls in self._default_managers:
             cls(self)
@@ -204,13 +170,23 @@ class Node(object):
             name = manager.__class__.__name__
         if not name in self.managers:
             self.managers[name] = manager
-        self._run_managers()
+        if self.started:
+            self._run_managers()
+
+    def remove_manager(self, manager, name=None):
+        if not name:
+            #name = repr(manager)
+            name = manager.__class__.__name__
+        if name in self.managers:
+            del self.managers[name]
 
     def add_handler(self, channel_name, handler):
         if not channel_name in self.message_handlers:
             logger.debug('Add channel: %s', channel_name)
             self.message_handlers[channel_name] = list()
+
         if handler not in self.message_handlers[channel_name]:
+            #handler = weakref.proxy(handler)
             logger.debug('Add handler: %s chan=%s', handler, channel_name)
             self.message_handlers[channel_name].append(handler)
 
@@ -218,8 +194,8 @@ class Node(object):
         if channel_name in self.message_handlers:
             if handler in self.message_handlers[channel_name]:
                 logger.debug('Remove handler: %s chan=%s', handler, channel_name)
-                self.message_handlers[channel_name].pop(handler)
-            if not self.messsage_handlers[channel_name]:
+                self.message_handlers[channel_name].remove(handler)
+            if not self.message_handlers[channel_name]:
                 logger.debug('Remove channel: %s', channel_name)
                 self.message_handlers.pop(channel_name)
 
@@ -227,32 +203,20 @@ class Node(object):
         self.poller.register(sock, flags)
         self._socks[sock] = (cb, flags)
 
-    @property
-    def running(self):
-        return hasattr(self, '_greenlet')
-
-    def start(self):
-        if not self.running:
-            self._greenlet = gevent.spawn(self._run)
-            #self._greenlet.link(self._run_exit)
-            #self._greenlet.link_exception(self._run_exception)
-
     def _run_managers(self):
-        if not self.running:
-            return False
         # Also run managers if possible
         for k, v in self.managers.iteritems():
-            if hasattr(v, '_run'):
-                if not hasattr(v, '_greenlet'):
-                    logger.debug('Spawning Manager %s: %s', k, v)
-                    v._greenlet = gevent.spawn(v._run)
-        return True
+            if not getattr(v, 'started', None):
+                #if not hasattr(v, '_greenlet'):
+                logger.debug('Spawning Manager %s: %s', k, v)
+                v.link(self.remove_manager)
+                v.start()
 
     def _run(self):
+        self.running = True
         self._run_managers()
 
-        # Loop
-        while True:
+        while self.running:
             socks = dict(self.poller.poll(timeout=0))
             if socks:
                 #logger.debug('socks=%s', socks)

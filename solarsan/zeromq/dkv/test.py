@@ -25,10 +25,16 @@ n2.start()
 
 m = message.DictMessage()
 m['omg'] = True
-
 t = transaction.Transaction(n, payload=m)
+t.start()
+del t
+
+m2 = message.DictMessage()
+m2['omg'] = False
+t2 = transaction.Transaction(n2, payload=m2)
+t2.start()
+del t2
 
 while True:
     gevent.sleep(1)
-    t.proposed = None
-    t.propose()
+    #t.propose()

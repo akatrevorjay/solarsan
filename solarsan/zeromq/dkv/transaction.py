@@ -4,90 +4,112 @@ logger = logging.getLogger(__name__)
 import zmq
 from uuid import uuid4
 from datetime import datetime, timedelta
+import gevent
+import gevent.event
+from copy import copy
+#import weakref
+import xworkflows
+
+from .manager import _BaseManager
 
 
-class TransactionManager(object):
+class TransactionManager(_BaseManager):
     def __init__(self, node):
-        self._node = node
+        _BaseManager.__init__(self, node)
+
+        #self.pending = weakref.WeakValueDictionary()
         self.pending = dict()
+
         node.add_handler('dkv.transaction', self)
+
+    """ Pending transaction interface """
+
+    def has(self, tx_uuid):
+        return tx_uuid in self.pending
+
+    def append(self, tx):
+        self.pending[tx.uuid] = tx
+
+    def pop(self, tx_uuid):
+        if tx_uuid in self.pending:
+            del self.pending[tx_uuid]
+
+    """ Handlers """
+
+    def _dead_tx(self, tx):
+        logger.debug('Dead tx: %s', tx.uuid)
+        self.pop(tx)
+        del tx
+
+    def _exception_tx(self, tx):
+        return self._dead_tx(tx)
 
     def receive_proposal(self, peer, tx_uuid, tx_dict):
         logger.info('Got transaction proposal from %s: %s', peer, tx_dict)
 
-        tx = Transaction.from_dict(self._node, tx_dict)
+        tx = ReceiveTransaction.from_dict(self._node, peer, tx_dict)
+        tx.link(self._dead_tx)
+        tx.link_exception(self._exception_tx)
         self.append(tx)
+        tx.start()
 
-        self.vote(peer, tx_uuid, True)
+    #def receive_cancel(self, peer, tx_uuid):
+    #    if self.has(tx_uuid):
+    #        logger.info('Got pending transaction cancellation from %s: %s', peer, tx_uuid)
+    #        self.pop(tx_uuid)
 
-    def append(self, tx):
-        #logger.debug('tx=%s', tx)
-        self.pending[tx.uuid] = tx
-
-    def vote(self, peer, tx_uuid, accept):
-        tx = self.pending[tx_uuid]
-        seq = tx.allocate_sequence()
-        cur_seq = self._node.sequence
-
-        meta = dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)
-        self._node.unicast(peer, 'dkv.transaction:%s' % tx_uuid, 'vote', accept, meta)
-
-    def receive_cancel(self, peer, tx_uuid):
-        if tx_uuid in self.pending:
-            logger.info('Got transaction cancellation from %s: %s', peer, tx_uuid)
-            self.pending.pop(tx_uuid)
-
-    def receive_commit(self, peer, tx_uuid):
-        logger.info('Got transaction committance from %s: %s', peer, tx_uuid)
-        if tx_uuid in self.pending:
-            #self.pending[tx_uuid].commit()
-            self.pending.pop(tx_uuid)
-
-    def receive_debug(self, *args, **kwargs):
-        logger.debug('args=%s; kwargs=%s;', args, kwargs)
+    #def receive_commit(self, peer, tx_uuid):
+    #    if self.has(tx_uuid):
+    #        logger.info('Got pending transaction committance from %s: %s', peer, tx_uuid)
+    #        self.pop(tx_uuid)
 
 
-class Transaction(object):
+class _BaseTransaction(gevent.Greenlet):
     """Transaction class that handles any updates on their path toward good,
     or evil."""
 
     uuid = None
     ts = None
     payload = None
+    sender = None
 
-    _node = None
-    _serialize_attrs = ['uuid', 'ts', 'payload']
-    _timeout = timedelta(minutes=1)
+    _serialize_attrs = ['uuid', 'ts', 'payload', 'sender']
+    _timeout = timedelta(seconds=5)
 
     _sequence = None
-    _votes = None
 
     """ Base """
 
     def __init__(self, node, **kwargs):
+        gevent.Greenlet.__init__(self)
+        self.link(self._stop)
         self._node = node
+        self.event_committed = gevent.event.AsyncResult()
 
         if kwargs:
-            self.update(kwargs)
+            self._update(kwargs)
 
-        if not self.uuid:
-            self.uuid = uuid4().get_hex()
-        if not self.ts:
-            self.ts = datetime.now()
-
-        self._votes = {}
-        self._set_timeout()
-
-    def update(self, datadict):
+    def _update(self, datadict):
         if not datadict:
             return
         for k in self._serialize_attrs:
             setattr(self, k, datadict.get(k))
 
+    def _run(self):
+        self.running = True
+        timeout = gevent.Timeout(seconds=self._timeout.seconds)
+        timeout.start()
+
+    @classmethod
+    def _stop(cls, self):
+        logger.debug('Stopping transaction %s', self.uuid)
+        self._remove_handler()
+        self.kill()
+
     """ Tofro dict """
 
     @classmethod
-    def from_dict(cls, node, datadict):
+    def from_dict(cls, node, peer, datadict):
         return cls(node, **datadict)
 
     def to_dict(self):
@@ -95,14 +117,6 @@ class Transaction(object):
         for k in self._serialize_attrs:
             ret[k] = getattr(self, k, None)
         return ret
-
-    """ Timeout """
-
-    def _set_timeout(self):
-        self._ttl = self.ts + self._timeout
-
-    def _check_timeout(self):
-        return self._ttl < datetime.now()
 
     """ Handlers """
 
@@ -112,46 +126,98 @@ class Transaction(object):
     def _remove_handler(self):
         self._node.remove_handler('dkv.transaction:%s' % self.uuid, self)
 
+    """ States """
+
     """ Actions """
 
     def allocate_sequence(self):
         if not self._sequence:
             self._sequence = self._node.sequence
 
-    proposed = None
-
-    def propose(self):
-        """Flood peers with proposal for us to get stored."""
-        if not self.proposed:
-            self._add_handler()
-            self._node.broadcast('dkv.transaction', 'proposal',
-                                self.uuid, self.to_dict())
-            self.proposed = True
-
-    cancelled = None
-
-    def cancel(self):
-        """Cancel (proposed) transaction."""
-        if not self.cancelled and self.proposed:
-            self._remove_handler()
-            self._node.broadcast('dkv.transaction', 'cancel', self.uuid)
-            self.cancelled = True
-
-    committed = None
-
-    def commit(self):
-        """Commit (proposed) transaction."""
-        if not self.committed and not self.cancelled and self.proposed:
-            self._remove_handler()
-            self._node.broadcast('dkv.transaction', 'commit', self.uuid)
-            self.committed = True
-
     """ Events """
 
     def receive_debug(self, *args, **kwargs):
         logger.debug('args=%s; kwargs=%s;', args, kwargs)
 
+    receive_cancel = receive_debug
+    receive_commit = receive_debug
+    receive_vote = receive_debug
+
+
+class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled):
+    class State(xworkflows.Workflow):
+        initial_state = 'init'
+        states = (
+            ('init',        'Initial state'),
+            #('start',       'Start'),
+            ('proposal',    'Proposal'),
+            ('voting',      'Voting'),
+            ('commit',      'Commit'),
+            ('cancel',      'Cancelled'),
+            ('done',        'Done'),
+        )
+        transitions = (
+            #('start', 'init', 'start'),
+            #('propose', 'start', 'proposal'),
+            ('propose', 'init', 'proposal'),
+            ('receive_vote', 'proposal', 'voting'),
+            ('commit', 'voting', 'commit'),
+            ('cancel', ('init', 'proposal', 'voting', 'commit'), 'cancel'),
+            ('done', ('cancel', 'commit'), 'done'),
+        )
+
+    state = State()
+
+    _votes = None
+
+    def __init__(self, node, **kwargs):
+        _BaseTransaction.__init__(self, node, **kwargs)
+        self.sender = self._node.uuid
+
+        if not self.uuid:
+            self.uuid = uuid4().get_hex()
+        if not self.ts:
+            self.ts = datetime.now()
+
+        self._votes = {}
+
+    def _run(self):
+        _BaseTransaction._run(self)
+
+        try:
+            gevent.spawn(self.propose).join()
+            self.event_committed.get()
+        except gevent.Timeout as e:
+            logger.warning('Timeout waiting for votes on transaction %s: %s', self.uuid, e)
+            #gevent.spawn(self.cancel).join()
+            #raise e
+
+    """ Actions """
+
+    @xworkflows.transition()
+    def propose(self):
+        """Flood peers with proposal for us to get stored."""
+        self._add_handler()
+        self._node.broadcast('dkv.transaction', 'proposal',
+                             self.uuid, self.to_dict())
+
+    @xworkflows.transition()
+    def cancel(self):
+        """Cancel (proposed) transaction."""
+        self._remove_handler()
+        self._node.broadcast('dkv.transaction', 'cancel', self.uuid)
+
+    @xworkflows.transition()
+    def commit(self):
+        """Commit (proposed) transaction."""
+        self._remove_handler()
+        self._node.broadcast('dkv.transaction', 'commit', self.uuid)
+
+    """ Handlers """
+
+    @xworkflows.transition()
     def receive_vote(self, peer, accept, meta):
+        """Sent by each peer that receives a proposal courtesy of self.propose()."""
         logger.info('Transaction %s received vote from %s: %s', self.uuid, peer, accept)
         logger.debug('meta=%s', meta)
         self._votes[peer] = dict(
@@ -160,8 +226,58 @@ class Transaction(object):
             cur_sequence=meta['cur_sequence'],
         )
 
-    receive_cancel = receive_debug
-    receive_commit = receive_debug
+
+class ReceiveTransaction(_BaseTransaction):
+    _serialize_attrs = copy(_BaseTransaction._serialize_attrs)
+    _serialize_attrs.append('sender')
+
+    def __init__(self, node, sender, **kwargs):
+        _BaseTransaction.__init__(self, node, **kwargs)
+        self.sender = sender
+        #self._node.add_handler(
+
+    def _run(self):
+        _BaseTransaction._run(self)
+
+        try:
+            self.vote(True)
+
+            self.event_committed.get()
+        except gevent.Timeout as e:
+            logger.warning('Timeout waiting for votes on transaction %s: %s', self.uuid, e)
+            #raise e
+
+    """ Actions """
+
+    def vote(self, accept):
+        seq = self.allocate_sequence()
+        cur_seq = self._node.sequence
+
+        meta = dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)
+        self._node.unicast(self.sender, 'dkv.transaction:%s' % self.uuid, 'vote', accept, meta)
+
+    def cancel(self):
+        pass
+
+    def commit(self):
+        self.event_committed.set()
+        pass
+
+    """ Handlers """
+
+    def receive_cancel(self, peer):
+        """Sent by sender to indicate cancellation of this transaction"""
+        if peer != self.sender:
+            return
+        logger.info('Transaction %s received cancel from %s.', self.uuid, peer)
+        gevent.spawn(self.cancel).join()
+
+    def receive_commit(self, peer, sequence):
+        """Sent by sender to indicate transaction as good to commit."""
+        if peer != self.sender:
+            return
+        logger.info('Transaction %s received commit from %s (sequence=%s).', self.uuid, peer, sequence)
+        gevent.spawn(self.commit).join()
 
 
 class OldTransaction:
