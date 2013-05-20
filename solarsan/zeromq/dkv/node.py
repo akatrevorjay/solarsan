@@ -2,19 +2,152 @@
 from solarsan import logging, conf
 logger = logging.getLogger(__name__)
 
+from solarsan.exceptions import SolarSanError
+
 import gevent
 import zmq.green as zmq
 
 #from .channel import Channel, NodeChannel
-from .encoder import UJSONEncoder, JSONEncoder
+from .encoder import EJSONEncoder
+from .transaction import TransactionManager
 from uuid import uuid4
-
-'''
-Gevent
-
+from datetime import datetime
+from functools import partial
 
 
-'''
+class NodeError(SolarSanError):
+    """Generic Node Error"""
+
+
+class _BaseManager(object):
+    channel = None
+
+    def __init__(self, node, **kwargs):
+        self._node = node
+        self._set_channel(kwargs.pop('channel', None))
+        self._add_handler()
+        self._node.add_manager(self)
+
+    @property
+    def running(self):
+        return hasattr(self, '_greenlet')
+
+    def _set_channel(self, channel=None):
+        if not channel:
+            channel = self.channel
+        if not channel:
+            channel = self.__class__.channel
+        if not channel:
+            channel = self.__class__.__name__
+        self.channel = channel
+
+    """ Handlers """
+
+    def _add_handler(self, channel=None):
+        if not channel:
+            channel = self.channel
+        self._node.add_handler(channel, self)
+
+    def _remove_handler(self, channel=None):
+        if not channel:
+            channel = self.channel
+        self._node.remove_handler(channel, self)
+
+    """ Abstractions """
+
+    def broadcast(self, message_type, *parts, **kwargs):
+        channel = kwargs.pop('channel', self.channel)
+        return self._node.broadcast(channel, message_type, *parts)
+
+    def unicast(self, peer, message_type, *parts, **kwargs):
+        channel = kwargs.pop('channel', self.channel)
+        return self._node.unicast(peer, channel, message_type, *parts)
+
+
+class NodeNotReadyError(NodeError):
+    """Not ready"""
+
+
+class HeartbeatSequenceManager(_BaseManager):
+    # TODO Lower later
+    beat_every_sec = 10.0
+
+    def __init__(self, node):
+        self._sequence = -1
+        _BaseManager.__init__(self, node)
+        self.sequence = 0
+
+    def _run(self):
+        while True:
+            gevent.sleep(self.beat_every_sec)
+            self.beat()
+            gevent.spawn(self.bring_out_yer_dead)
+
+    """ Heartbeat """
+
+    @property
+    def _meta(self):
+        meta = dict()
+
+        if self._check(exception=False):
+            meta['cur_sequence'] = self._sequence
+
+        return meta
+
+    def beat(self):
+        meta = self._meta
+        logger.debug('Sending heartbeat: meta=%s', meta)
+        self.broadcast('ping', meta)
+        del meta
+
+    def bring_out_yer_dead(self):
+        # TODO Check for peer timeouts
+        return
+
+    def receive_ping(self, peer, meta):
+        logger.info('Heartbeat from %s: meta=%s', peer, meta)
+
+        cur_seq = meta.get('cur_sequence')
+        if cur_seq:
+            logger.info('cur_seq=%s', cur_seq)
+            #if cur_seq != self._sequence
+
+    """ Sequence """
+
+    @property
+    def sequence(self):
+        self._check()
+        return self._sequence
+
+    @sequence.setter
+    def sequence(self, value):
+        self._sequence = value
+        self.ts = datetime.now()
+
+    def _check(self, exception=True):
+        if self._sequence < 0:
+            if exception:
+                raise NodeNotReadyError
+            else:
+                return False
+        return True
+
+    def allocate(self):
+        self._check()
+        self.sequence += 1
+        return self.sequence
+
+
+class DebuggerManager(_BaseManager):
+    channel = '*'
+
+    def __getattribute__(self, key):
+        if not hasattr(self, key) and key.startswith('receive_'):
+            setattr(self, key, partial(self._receive_debug, key))
+        return object.__getattribute__(self, key)
+
+    def _receive_debug(self, key, *parts):
+        logger.debug('Debugger %s: %s', key, parts)
 
 
 class Node(object):
@@ -25,8 +158,12 @@ class Node(object):
     sender's uuid. The remaining positional arguments are filled with the
     parts of the ZeroMQ message.
     '''
-    _default_encoder = UJSONEncoder
-    #_default_encoder = JSONEncoder
+
+    _default_encoder = EJSONEncoder
+
+    _default_managers = (HeartbeatSequenceManager, TransactionManager)
+    #_default_managers += (DebuggerManager, )
+    #_default_managers = list()
 
     def __init__(self, uuid=None, encoder=_default_encoder()):
         if not uuid:
@@ -39,6 +176,9 @@ class Node(object):
         self.pub = None
         self.sub = None
 
+        # State
+        self.sequence = 0
+
         # Dictionary of uuid -> (rtr_addr, pub_addr)
         self.peers = dict()
 
@@ -47,21 +187,71 @@ class Node(object):
 
         if not hasattr(self, 'ctx'):
             self.ctx = zmq.Context.instance()
+
         if not hasattr(self, 'poller'):
             self.poller = zmq.Poller()
+
         self._socks = dict()
+
+        self.managers = dict()
+
+        for cls in self._default_managers:
+            cls(self)
+
+    def add_manager(self, manager, name=None):
+        if not name:
+            #name = repr(manager)
+            name = manager.__class__.__name__
+        if not name in self.managers:
+            self.managers[name] = manager
+        self._run_managers()
 
     def add_handler(self, channel_name, handler):
         if not channel_name in self.message_handlers:
+            logger.debug('Add channel: %s', channel_name)
             self.message_handlers[channel_name] = list()
         if handler not in self.message_handlers[channel_name]:
+            logger.debug('Add handler: %s chan=%s', handler, channel_name)
             self.message_handlers[channel_name].append(handler)
+
+    def remove_handler(self, channel_name, handler):
+        if channel_name in self.message_handlers:
+            if handler in self.message_handlers[channel_name]:
+                logger.debug('Remove handler: %s chan=%s', handler, channel_name)
+                self.message_handlers[channel_name].pop(handler)
+            if not self.messsage_handlers[channel_name]:
+                logger.debug('Remove channel: %s', channel_name)
+                self.message_handlers.pop(channel_name)
 
     def _add_sock(self, sock, cb, flags=zmq.POLLIN):
         self.poller.register(sock, flags)
         self._socks[sock] = (cb, flags)
 
-    def _loop(self):
+    @property
+    def running(self):
+        return hasattr(self, '_greenlet')
+
+    def start(self):
+        if not self.running:
+            self._greenlet = gevent.spawn(self._run)
+            #self._greenlet.link(self._run_exit)
+            #self._greenlet.link_exception(self._run_exception)
+
+    def _run_managers(self):
+        if not self.running:
+            return False
+        # Also run managers if possible
+        for k, v in self.managers.iteritems():
+            if hasattr(v, '_run'):
+                if not hasattr(v, '_greenlet'):
+                    logger.debug('Spawning Manager %s: %s', k, v)
+                    v._greenlet = gevent.spawn(v._run)
+        return True
+
+    def _run(self):
+        self._run_managers()
+
+        # Loop
         while True:
             socks = dict(self.poller.poll(timeout=0))
             if socks:
@@ -71,12 +261,6 @@ class Node(object):
                     if s in socks and socks[s] == flags:
                         cb(s.recv_multipart())
             gevent.sleep(0.1)
-
-    def start(self):
-        if not hasattr(self, '_greenlet'):
-            self._greenlet = gevent.spawn(self._loop)
-            #self._greenlet.link(self._loop_exit)
-            #self._greenlet.link_exception(self._loop_exception)
 
     def _zmq_init(self):
         if not self.rtr:
@@ -135,20 +319,14 @@ class Node(object):
         # Upon greet received, connect to pub_addr specified
 
     def shutdown(self):
-        if self.rtr:
-            self.rtr.close()
-            self.rtr = None
-        if self.pub:
-            self.pub.close()
-            self.pub = None
-        if self.sub:
-            self.sub.close()
-            self.sub = None
+        for s, sv in self._socks.iteritems():
+            s.close()
+        self._socks = dict()
 
     def broadcast(self, channel_name, message_type, *parts):
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
             parts = parts[0]
-        l = ['solarsan', channel_name]
+        l = ['solarsan', str(channel_name)]
         l.extend(self.encoder.encode(self.uuid, message_type, parts))
         self.pub.send_multipart(l)
 
@@ -159,23 +337,31 @@ class Node(object):
             return
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
             parts = parts[0]
-        l = [str(to_uuid), channel_name]
+        l = [str(to_uuid), str(channel_name)]
         l.extend(self.encoder.encode(self.uuid, message_type, parts))
         self.rtr.send_multipart(l)
 
     def _dispatch(self, from_uuid, channel_name, message_type, parts):
+        #logger.debug('Dispatch: from=%s chan=%s msg_type=%s parts=%s', from_uuid, channel_name, message_type, parts)
+
+        # Handle wildcard channel
+        if channel_name != '*':
+            self._dispatch(from_uuid, '*', message_type, parts)
+
         handlers = self.message_handlers.get(channel_name, None)
         if handlers:
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
-                    f(from_uuid, *parts)
-                    break
+                    #logger.debug('Dispatching to: %s', h)
+                    #f(from_uuid, *parts)
+                    gevent.spawn(f, from_uuid, *parts)
+                    #break
 
     def _on_rtr_received(self, raw_parts):
         # discard source address. We'll use the one embedded in the message
         # for consistency
-        logger.info('raw_parts=%s', raw_parts)
+        #logger.info('raw_parts=%s', raw_parts)
         channel_name = raw_parts[1]
         from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
         self._dispatch(from_uuid, channel_name, message_type, parts)
@@ -183,7 +369,7 @@ class Node(object):
     def _on_sub_received(self, raw_parts):
         # discard the message header. Can address targeted subscriptions
         # later
-        logger.info('raw_parts=%s', raw_parts)
+        #logger.info('raw_parts=%s', raw_parts)
         channel_name = raw_parts[1]
         from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
         self._dispatch(from_uuid, channel_name, message_type, parts)

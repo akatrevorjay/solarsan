@@ -4,8 +4,8 @@ class SimpleEncoder(object):
     '''
     An in-process "encoder" that is primarily useful for unit testing.
     '''
-    def encode(self, node_uid, message_type, parts):
-        return ['{0}\0{1}'.format(node_uid, message_type)] + list(parts)
+    def encode(self, node_uuid, message_type, parts):
+        return ['{0}\0{1}'.format(node_uuid, message_type)] + list(parts)
 
     def decode(self, parts):
         from_uid, message_type = parts[0].split('\0')
@@ -41,14 +41,50 @@ def _decode_dict(data):
 
 
 try:
-    import ujson
+    import ejson
 
-    class UJSONEncoder (object):
-        def encode(self, node_uid, message_type, parts):
+
+    class EJSONEncoder (object):
+        def encode(self, node_uuid, message_type, parts):
             header = dict()
 
             header['type'] = message_type
-            header['from'] = node_uid
+            header['from'] = node_uuid
+
+            plist = [header]
+
+            if parts:
+                plist.extend(parts)
+
+            return [str(ejson.dumps(p)) for p in plist]
+
+        def decode(self, jparts):
+            if not jparts:
+                return
+
+            try:
+                parts = [ejson.loads(j) for j in jparts]
+            except ValueError:
+                print 'Invalid JSON: ', jparts
+                return
+
+            header = parts[0]
+            parts = parts[1:]
+
+            return header['from'], header['type'], parts
+except ImportError:
+    pass
+
+
+try:
+    import ujson
+
+    class UJSONEncoder (object):
+        def encode(self, node_uuid, message_type, parts):
+            header = dict()
+
+            header['type'] = message_type
+            header['from'] = node_uuid
 
             plist = [header]
 
@@ -79,11 +115,11 @@ import json
 
 
 class JSONEncoder (object):
-    def encode(self, node_uid, message_type, parts):
+    def encode(self, node_uuid, message_type, parts):
         header = dict()
 
         header['type'] = message_type
-        header['from'] = node_uid
+        header['from'] = node_uuid
 
         plist = [header]
 

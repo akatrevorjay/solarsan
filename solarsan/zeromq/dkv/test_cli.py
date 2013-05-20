@@ -16,6 +16,8 @@ n = node.Node()
 n.connect_peer(pl)
 n.start()
 
+#tm = transaction.TransactionManager(n)
+
 #m = message.DictMessage()
 #m['omg'] = True
 
@@ -24,6 +26,7 @@ n.start()
 #t.propose()
 
 #n.loop.start()
+
 
 class Debugger(object):
     def __getattribute__(self, key):
@@ -35,9 +38,11 @@ class Debugger(object):
     def _receive_debug(self, *parts):
         logger.info('parts=%s', parts)
 
+
 debugger = Debugger()
 
-n.add_handler('dkv.transaction', debugger)
+
+#n.add_handler('dkv.transaction', debugger)
 
 
 while True:

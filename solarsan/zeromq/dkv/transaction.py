@@ -2,9 +2,49 @@
 from solarsan import logging
 logger = logging.getLogger(__name__)
 import zmq
-from zmq.eventloop.ioloop import IOLoop, PeriodicCallback, DelayedCallback
 from uuid import uuid4
 from datetime import datetime, timedelta
+
+
+class TransactionManager(object):
+    def __init__(self, node):
+        self._node = node
+        self.pending = dict()
+        node.add_handler('dkv.transaction', self)
+
+    def receive_proposal(self, peer, tx_uuid, tx_dict):
+        logger.info('Got transaction proposal from %s: %s', peer, tx_dict)
+
+        tx = Transaction.from_dict(self._node, tx_dict)
+        self.append(tx)
+
+        self.vote(peer, tx_uuid, True)
+
+    def append(self, tx):
+        #logger.debug('tx=%s', tx)
+        self.pending[tx.uuid] = tx
+
+    def vote(self, peer, tx_uuid, accept):
+        tx = self.pending[tx_uuid]
+        seq = tx.allocate_sequence()
+        cur_seq = self._node.sequence
+
+        meta = dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)
+        self._node.unicast(peer, 'dkv.transaction:%s' % tx_uuid, 'vote', accept, meta)
+
+    def receive_cancel(self, peer, tx_uuid):
+        if tx_uuid in self.pending:
+            logger.info('Got transaction cancellation from %s: %s', peer, tx_uuid)
+            self.pending.pop(tx_uuid)
+
+    def receive_commit(self, peer, tx_uuid):
+        logger.info('Got transaction committance from %s: %s', peer, tx_uuid)
+        if tx_uuid in self.pending:
+            #self.pending[tx_uuid].commit()
+            self.pending.pop(tx_uuid)
+
+    def receive_debug(self, *args, **kwargs):
+        logger.debug('args=%s; kwargs=%s;', args, kwargs)
 
 
 class Transaction(object):
@@ -19,15 +59,13 @@ class Transaction(object):
     _serialize_attrs = ['uuid', 'ts', 'payload']
     _timeout = timedelta(minutes=1)
 
-    _min_sequence = None
+    _sequence = None
     _votes = None
 
     """ Base """
 
     def __init__(self, node, **kwargs):
         self._node = node
-
-        self._votes = {}
 
         if kwargs:
             self.update(kwargs)
@@ -37,6 +75,7 @@ class Transaction(object):
         if not self.ts:
             self.ts = datetime.now()
 
+        self._votes = {}
         self._set_timeout()
 
     def update(self, datadict):
@@ -48,8 +87,8 @@ class Transaction(object):
     """ Tofro dict """
 
     @classmethod
-    def from_dict(cls, agent, datadict):
-        return cls(agent, **datadict)
+    def from_dict(cls, node, datadict):
+        return cls(node, **datadict)
 
     def to_dict(self):
         ret = {}
@@ -65,35 +104,62 @@ class Transaction(object):
     def _check_timeout(self):
         return self._ttl < datetime.now()
 
+    """ Handlers """
+
+    def _add_handler(self):
+        self._node.add_handler('dkv.transaction:%s' % self.uuid, self)
+
+    def _remove_handler(self):
+        self._node.remove_handler('dkv.transaction:%s' % self.uuid, self)
+
     """ Actions """
 
-    def propose(self, cb=None):
+    def allocate_sequence(self):
+        if not self._sequence:
+            self._sequence = self._node.sequence
+
+    proposed = None
+
+    def propose(self):
         """Flood peers with proposal for us to get stored."""
-        #self._node.add_handler('dkv.transaction.propose:%s' % self.uuid, self.on_vote)
-        self._node.add_handler('dkv.transaction', self)
-        self._node.broadcast('dkv.transaction', 'proposal',
-                             self.uuid, self.to_dict())
+        if not self.proposed:
+            self._add_handler()
+            self._node.broadcast('dkv.transaction', 'proposal',
+                                self.uuid, self.to_dict())
+            self.proposed = True
 
-    def cancel(self, cb=None):
+    cancelled = None
+
+    def cancel(self):
         """Cancel (proposed) transaction."""
-        pass
+        if not self.cancelled and self.proposed:
+            self._remove_handler()
+            self._node.broadcast('dkv.transaction', 'cancel', self.uuid)
+            self.cancelled = True
 
-    def commit(self, cb=None):
+    committed = None
+
+    def commit(self):
         """Commit (proposed) transaction."""
-        pass
+        if not self.committed and not self.cancelled and self.proposed:
+            self._remove_handler()
+            self._node.broadcast('dkv.transaction', 'commit', self.uuid)
+            self.committed = True
 
     """ Events """
 
     def receive_debug(self, *args, **kwargs):
         logger.debug('args=%s; kwargs=%s;', args, kwargs)
 
-    def receive_vote(self, peer, accept, sequence):
-        self.receive_debug(accept, sequence)
+    def receive_vote(self, peer, accept, meta):
+        logger.info('Transaction %s received vote from %s: %s', self.uuid, peer, accept)
+        logger.debug('meta=%s', meta)
+        self._votes[peer] = dict(
+            accept=accept,
+            sequence=meta['sequence'],
+            cur_sequence=meta['cur_sequence'],
+        )
 
-    def receive_proposal(self, peer, tx_uuid, tx_dict):
-        self.receive_debug(peer, tx_uuid, tx_dict)
-
-    #receive_vote = receive_debug
     receive_cancel = receive_debug
     receive_commit = receive_debug
 
