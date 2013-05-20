@@ -34,6 +34,8 @@ class HeartbeatSequenceManager(_BaseManager):
         _BaseManager.__init__(self, node)
         self.sequence = 0
 
+        node.seq = self
+
     def _run(self):
         self.running = True
         while self.running:

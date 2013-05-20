@@ -17,13 +17,14 @@ import xworkflows
 
 
 class TransactionManager(_BaseManager):
+    channel = 'dkv.transaction'
+
     def __init__(self, node):
         _BaseManager.__init__(self, node)
 
         #self.pending = weakref.WeakValueDictionary()
         self.pending = dict()
-
-        node.add_handler('dkv.transaction', self)
+        #node.add_handler('dkv.transaction', self)
 
     """ Pending transaction interface """
 
@@ -51,20 +52,14 @@ class TransactionManager(_BaseManager):
         logger.info('Got transaction proposal from %s: %s', peer, tx_dict)
 
         tx = ReceiveTransaction.from_dict(self._node, peer, tx_dict)
-        tx.link(self._dead_tx)
-        #tx.link_exception(self._exception_tx)
         self.append(tx)
-        tx.start()
 
-    #def receive_cancel(self, peer, tx_uuid):
-    #    if self.has(tx_uuid):
-    #        logger.info('Got pending transaction cancellation from %s: %s', peer, tx_uuid)
-    #        self.pop(tx_uuid)
+        def gen_tx(self, tx):
+            tx.link(self._dead_tx)
+            #tx.link_exception(self._exception_tx)
+            tx.start()
 
-    #def receive_commit(self, peer, tx_uuid):
-    #    if self.has(tx_uuid):
-    #        logger.info('Got pending transaction committance from %s: %s', peer, tx_uuid)
-    #        self.pop(tx_uuid)
+        gevent.spawn(gen_tx, self, tx)
 
 
 class _BaseTransaction(gevent.Greenlet):
@@ -93,6 +88,9 @@ class _BaseTransaction(gevent.Greenlet):
         if kwargs:
             self._update(kwargs)
 
+    def _post_init(self):
+        self._add_handler()
+
     def _update(self, datadict):
         if not datadict:
             return
@@ -101,10 +99,7 @@ class _BaseTransaction(gevent.Greenlet):
 
     def _run(self):
         self.running = True
-
-        #gevent.sleep(0.1)
-
-        timeout = gevent.Timeout(seconds=self._timeout.seconds)
+        self._run_timeout = timeout = gevent.Timeout(seconds=self._timeout.seconds)
         timeout.start()
 
     @classmethod
@@ -128,11 +123,11 @@ class _BaseTransaction(gevent.Greenlet):
     """ Handlers """
 
     def _add_handler(self):
-        self._node.add_handler('dkv.transaction:%s' % self.uuid, self)
-        #self.link(self._remove_handler)
+        self.channel_tx = '%s:%s' % (self.channel, self.uuid)
+        return self._node.add_handler(self.channel_tx, self)
 
     def _remove_handler(self):
-        self._node.remove_handler('dkv.transaction:%s' % self.uuid, self)
+        return self._node.remove_handler(self.channel_tx, self)
 
     """ Actions """
 
@@ -144,14 +139,25 @@ class _BaseTransaction(gevent.Greenlet):
             self.sequence = self._node.sequence
         return self.sequence
 
+    def store(self):
+        # TODO Make this WORK
+        logger.error('TODO Storing transaction %s.', self.uuid)
+        pass
+
+    """ Helpers """
+
+    def broadcast(self, message_type, *parts, **kwargs):
+        channel = kwargs.pop('channel', self.channel)
+        return self._node.broadcast(channel, message_type, *parts)
+
+    def unicast(self, peer, message_type, *parts, **kwargs):
+        channel = kwargs.pop('channel', self.channel)
+        return self._node.unicast(peer, channel, message_type, *parts)
+
     """ Events """
 
     def receive_debug(self, *args, **kwargs):
         logger.debug('args=%s; kwargs=%s;', args, kwargs)
-
-    #receive_cancel = receive_debug
-    #receive_commit = receive_debug
-    #receive_vote = receive_debug
 
 
 class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled):
@@ -191,19 +197,18 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled):
 
         self._votes = {}
 
+        self._post_init()
+
     def _run(self):
         _BaseTransaction._run(self)
-
-        #gevent.sleep(0.1)
 
         try:
             #gevent.spawn(self.propose).join()
             self.propose()
             self.event_done.get()
+            self._run_timeout.cancel()
         except gevent.Timeout as e:
-            logger.warning('Timeout waiting for votes on transaction %s: %s', self.uuid, e)
-            #gevent.spawn(self.cancel).join()
-            #raise e
+            logger.error('Timeout waiting for votes on transaction %s: %s', self.uuid, e)
 
     """ Actions """
 
@@ -211,36 +216,39 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled):
     def propose(self):
         """Flood peers with proposal for us to get stored."""
         self.allocate_sequence()
-        self._add_handler()
-        self._node.broadcast('dkv.transaction', 'proposal',
-                             self.uuid, self.to_dict())
+        self.broadcast('proposal', self.uuid, self.to_dict())
 
     @xworkflows.transition()
     def cancel(self):
         """Cancel (proposed) transaction."""
-        self._remove_handler()
-        self._node.broadcast('dkv.transaction', 'cancel', self.uuid)
-        self.event_done.set()
+        logger.warning('Cancelling proposed transaction %s', self.uuid)
+        self.broadcast('cancel', self.uuid)
+        self.done()
 
     @xworkflows.transition()
     def commit(self):
         """Commit (proposed) transaction."""
         logger.info('Committing proposed transaction %s', self.uuid)
-        self._remove_handler()
-        self._node.broadcast('dkv.transaction', 'commit', self.uuid)
-        self.event_done.set()
+        self.broadcast('commit', self.uuid, channel=self.channel_tx)
 
-    #@xworkflows.on_enter_state('commit')
-    #def _on_commit(self):
-    #    self.event_done.set()
+    @xworkflows.on_enter_state('commit')
+    def enter_commit(self, r):
+        self.done()
+
+    #@xworkflows.transition()
+    @xworkflows.on_enter_state('done')
+    def enter_done(self, r):
+        logger.debug('Done with transaction %s.', self.uuid)
+        self.event_done.set()
 
     """ Handlers """
 
     @xworkflows.transition()
     def receive_vote(self, peer, accept, meta):
         """Sent by each peer that receives a proposal courtesy of self.propose()."""
-        logger.info('Transaction %s received vote from %s: %s', self.uuid, peer, accept)
-        logger.debug('meta=%s', meta)
+        logger.info('Transaction %s received vote from %s: %s (sequence=%s).',
+                    self.uuid, peer, accept, meta['sequence'])
+        #logger.debug('meta=%s', meta)
 
         self._votes[peer] = dict(
             accept=accept,
@@ -250,15 +258,15 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled):
 
     @xworkflows.after_transition('receive_vote')
     def after_receive_vote(self, *args):
-        logger.debug('args=%s', args)
+        #logger.debug('args=%s', args)
         if len(self._votes) == len(self._node.peers):
             for k, v in self._votes.iteritems():
                 if not v['accept']:
-                    logger.warning('Cancelling transaction %s: peer %s did not accept.', self.uuid, k)
+                    logger.error('Cancelling transaction %s: peer %s did not accept.', self.uuid, k)
                     raise PeerDidNotAccept
 
                 if not v['sequence'] == self.sequence:
-                    logger.warning('cancelling transaction %s: peer %s sequence did not match (%s!=%s).',
+                    logger.error('cancelling transaction %s: peer %s sequence did not match (%s!=%s).',
                                    self.uuid, k, self.sequence, v['sequence'])
                     raise PeerSequenceDidNotMatch
             self.commit()
@@ -293,54 +301,53 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled):
         #self.channel = 'dkv.transaction:%s' % self.uuid
         _BaseTransaction.__init__(self, node, **kwargs)
         self.sender = sender
-        #self._node.add_handler(
+
+        self._post_init()
 
     def _run(self):
         _BaseTransaction._run(self)
 
         try:
-            # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
-            #gevent.spawn(self.vote, True).join()
             self.vote()
-
             self.event_done.get()
+            self._run_timeout.cancel()
         except gevent.Timeout as e:
-            logger.warning('Timeout waiting for votes on transaction %s: %s', self.uuid, e)
-            #raise e
+            logger.error('Timeout waiting for votes on transaction %s: %s', self.uuid, e)
 
     """ Actions """
 
     @xworkflows.transition()
     def vote(self):
+        # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
         accept = True
         # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
         seq = self.allocate_sequence()
         cur_seq = self._node.sequence
 
         meta = dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)
-        self._node.unicast(self.sender, 'dkv.transaction:%s' % self.uuid, 'vote', accept, meta)
+        self.unicast(self.sender, 'vote', accept, meta, channel=self.channel_tx)
 
     @xworkflows.transition()
     def cancel(self):
+        logger.warning('Cancelling transaction %s from %s (sequence=%s).',
+                        self.uuid, self.sender, self.sequence)
         self.done()
-        pass
 
     @xworkflows.transition()
     def commit(self):
+        logger.info('Committing transaction %s from %s (sequence=%s).',
+                    self.uuid, self.sender, self.sequence)
         self.store()
+
+    @xworkflows.on_enter_state('commit')
+    def enter_commit(self, r):
         self.done()
 
-    def store(self):
-
-        pass
-
-    @xworkflows.transition()
-    def done(self):
+    #@xworkflows.transition()
+    @xworkflows.on_enter_state('done')
+    def enter_done(self, r):
+        #logger.debug('Done with transaction %s.', self.uuid)
         self.event_done.set()
-
-    #@xworkflows.on_enter_state('commit')
-    #def _on_commit(self):
-    #    self.event_done.set()
 
     """ Handlers """
 
@@ -348,7 +355,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled):
         """Sent by sender to indicate cancellation of this transaction"""
         if peer != self.sender:
             return
-        logger.info('Transaction %s received cancel from %s.', self.uuid, peer)
+        #logger.info('Transaction %s received cancel from %s.', self.uuid, peer)
         #gevent.spawn(self.cancel).join()
         self.cancel()
 
@@ -356,7 +363,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled):
         """Sent by sender to indicate transaction as good to commit."""
         if peer != self.sender:
             return
-        logger.info('Transaction %s received commit from %s (sequence=%s).', self.uuid, peer, sequence)
+        #logger.info('Transaction %s received commit from %s (sequence=%s).', self.uuid, peer, sequence)
         #gevent.spawn(self.commit).join()
         self.commit()
 

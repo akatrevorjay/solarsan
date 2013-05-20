@@ -7,13 +7,11 @@ class _BaseManager(gevent.Greenlet):
 
     def __init__(self, node, **kwargs):
         gevent.Greenlet.__init__(self)
-
+        self.running = False
         self._node = node
         self._set_channel(kwargs.pop('channel', None))
-        self._add_handler()
-
-        self.running = False
         self._node.add_manager(self)
+        self._add_handler()
 
     def _run(self):
         #self.running = True
