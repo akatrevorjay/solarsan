@@ -82,3 +82,20 @@ class DkvTimeoutExceeded(DkvError):
 
 #class DkvNotConnected(DkvError):
 #    pass
+
+
+"""
+ZeroMQ/Dkv
+"""
+
+
+class TransactionError(SolarSanError):
+    """Generic Transaction Error"""
+
+
+class PeerDidNotAccept(TransactionError):
+    """Peer did not accept transaction"""
+
+
+class PeerSequenceDidNotMatch(TransactionError):
+    """Peer sequence sent did not match ours"""

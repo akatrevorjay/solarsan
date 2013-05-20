@@ -247,6 +247,8 @@ class Node(gevent.Greenlet):
         rtr.bind(rtr_addr)
         pub.bind(pub_addr)
 
+        gevent.sleep(0.1)
+
     def connect_peer(self, peer):
         self.connect(peer.uuid,
                      'tcp://%s:%s' % (peer.cluster_addr, conf.ports.dkv_rtr),
@@ -281,6 +283,8 @@ class Node(gevent.Greenlet):
         # Greet peer
         # >> If timeout hits here, try again <<
         # Upon greet received, connect to pub_addr specified
+
+        gevent.sleep(0.1)
 
     def shutdown(self):
         for s, sv in self._socks.iteritems():
