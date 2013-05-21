@@ -40,6 +40,39 @@ def _decode_dict(data):
     return rv
 
 
+import json
+
+
+class JSONEncoder (object):
+    def encode(self, node_uuid, message_type, parts):
+        header = dict()
+
+        header['type'] = message_type
+        header['from'] = node_uuid
+
+        plist = [header]
+
+        if parts:
+            plist.extend(parts)
+
+        return [str(json.dumps(p)) for p in plist]
+
+    def decode(self, jparts):
+        if not jparts:
+            return
+
+        try:
+            parts = [json.loads(j, object_hook=_decode_dict) for j in jparts]
+        except ValueError:
+            print 'Invalid JSON: ', jparts
+            return
+
+        header = parts[0]
+        parts = parts[1:]
+
+        return header['from'], header['type'], parts
+
+
 try:
     import ejson
 
@@ -79,6 +112,7 @@ except ImportError:
 try:
     import ujson
 
+
     class UJSONEncoder (object):
         def encode(self, node_uuid, message_type, parts):
             header = dict()
@@ -109,36 +143,3 @@ try:
             return header['from'], header['type'], parts
 except ImportError:
     pass
-
-
-import json
-
-
-class JSONEncoder (object):
-    def encode(self, node_uuid, message_type, parts):
-        header = dict()
-
-        header['type'] = message_type
-        header['from'] = node_uuid
-
-        plist = [header]
-
-        if parts:
-            plist.extend(parts)
-
-        return [str(json.dumps(p)) for p in plist]
-
-    def decode(self, jparts):
-        if not jparts:
-            return
-
-        try:
-            parts = [json.loads(j, object_hook=_decode_dict) for j in jparts]
-        except ValueError:
-            print 'Invalid JSON: ', jparts
-            return
-
-        header = parts[0]
-        parts = parts[1:]
-
-        return header['from'], header['type'], parts

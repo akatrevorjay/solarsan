@@ -89,6 +89,23 @@ ZeroMQ/Dkv
 """
 
 
+class NodeError(SolarSanError):
+    """Generic Node Error"""
+
+
+class NodeNotReadyError(NodeError):
+    """Not ready"""
+
+
+class ChannelError(SolarSanError):
+    """Base for channel exceptions."""
+
+
+"""
+Transaction
+"""
+
+
 class TransactionError(SolarSanError):
     """Generic Transaction Error"""
 

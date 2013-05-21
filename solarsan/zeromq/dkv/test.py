@@ -3,7 +3,8 @@ import gevent.monkey
 gevent.monkey.patch_all()
 
 from solarsan import conf
-from solarsan.zeromq.dkv import message, server, client, serializer, encoder, node, transaction
+#from solarsan.zeromq.dkv import message, server, client, serializer, encoder, node, transaction
+from solarsan.zeromq.dkv import node, message, transaction, encoder
 
 
 dkv_rtr = conf.ports.dkv_rtr
@@ -23,13 +24,13 @@ n.connect(n2.uuid, 'tcp://127.0.0.1:%s' % dkv_rtr2, 'tcp://127.0.0.1:%s' % dkv_p
 n.start()
 n2.start()
 
-m = message.DictMessage()
+m = message.Message()
 m['omg'] = True
 t = transaction.Transaction(n, payload=m)
 t.start()
 del t
 
-m2 = message.DictMessage()
+m2 = message.Message()
 m2['omg'] = False
 t2 = transaction.Transaction(n2, payload=m2)
 t2.start()

@@ -1,22 +1,26 @@
 
+import gevent
+import gevent.monkey
+gevent.monkey.patch_all()
+
 from solarsan import logging, signals, conf
 logger = logging.getLogger(__name__)
 from solarsan.pretty import pp
-import threading
-import time
-
 from solarsan.exceptions import DkvError, DkvTimeoutExceeded
+
 from ..beacon import Beacon
 #from ..beacon_greeter import GreeterBeacon
 from ..encoders import pipeline
 from ..utils import get_address, parse_address
 from ..zhelpers import zpipe
 
-import zmq
+import zmq.green as zmq
+import threading
+import time
 
 from .node import Node
 from .channel import Channel
-from .message import Message, ChannelMessage, MessageContainer
+from .message import Message, MessageContainer
 from .transaction import Transaction
 
 
