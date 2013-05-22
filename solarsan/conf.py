@@ -93,12 +93,13 @@ if _config_updated:
 
 LOGGING = {
     'version': 1,
-    #'disable_existing_loggers': True,
+    'disable_existing_loggers': True,
     #'disable_existing_loggers': False,
     'root': {
         'level': 'DEBUG',
         #'handlers': ['console', 'syslog'],
-        'handlers': ['console'],
+        'handlers': ['console_color'],
+        #'handlers': ['console_solarsan_color'],
         #'level': 'WARNING',
         #'handlers': ['console', 'sentry'],
     },
@@ -110,15 +111,39 @@ LOGGING = {
         #},
         #'solarsan_standard': {
         'standard': {
+            'datefmt': '%H:%M:%S',
+            #'format': '%(asctime)s %(name)s[%(process)d]: [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d',
+            'format': '[%(asctime)s] {%(name)s} [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d',
+        },
+        'color': {
+            '()': 'colorlog.ColoredFormatter',
+            'datefmt': '%H:%M:%S',
+            #'format': "%(log_color)s%(levelname)-5s%(reset)s %(blue)s%(message)s"
+            #'format': '%(yellow)s[%(reset)s%(asctime)s%(yellow)s] %(yellow)s{%(reset)s%(name)s%(yellow)s} [%(log_color)s%(levelname)s%(yellow)s] %(reset)s%(message)s %(bold)s%(purple)s@%(cyan)s%(funcName)s%(green)s:%(red)s%(lineno)d',
+            'format': '%(bold)s[%(reset)s%(asctime)s%(bold)s] {%(reset)s%(name)s%(bold)s} [%(reset)s%(log_color)s%(levelname)s%(reset)s%(bold)s]%(reset)s %(message)s %(bold)s%(purple)s@%(cyan)s%(funcName)s%(green)s:%(red)s%(lineno)d',
+        },
+        'color_solarsan': {
+            '()': 'colorlog.ColoredFormatter',
+            'datefmt': '%H:%M:%S',
+            #'format': "%(log_color)s%(levelname)-5s%(reset)s %(blue)s%(message)s"
+            'format': '%(yellow)s[%(log_color)s%(asctime)s%(yellow)s] {%(reset)s%(name)s%(yellow)s} [%(log_color)s%(levelname)s%(yellow)s] %(reset)s%(message)s %(bold)s%(purple)s@%(cyan)s%(funcName)s%(green)s:%(red)s%(lineno)d',
+        },
+        'std_solarsan': {
+            'datefmt': '%H:%M:%S',
             #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(message)s',
             #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(processName)s[%(process)d] {%(thread)d} %(message)s',
             #'format': '%(asctime)s %(levelname)8s %(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d} %(message)s',
             #'format': '>> %(asctime)s %(levelname)8s %(name)20s@%(funcName)20s:%(lineno)4d [%(process)6d] {%(thread)d}\n%(message)s\n',
             #'format': '%(asctime)s %(name)s/%(processName)s[%(process)d]: %(message)s @%(funcName)s:%(lineno)d',
-            'format': '%(asctime)s %(name)s[%(process)d]: [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d',
+            #'format': '%(asctime)s %(name)s[%(process)d]: [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d',
             #'format': '%(asctime)s %(name)s[%(process)d] {%(thread)d}: %(message)s @%(funcName)s:%(lineno)d',
+            #'format': '%(asctime)s {%(name)s} %(levelname)s: %(message)s %(context)s @%(funcName)s:%(lineno)d',
+            #'format': '%(asctime)s {%(name)-5s} %(levelname)-8s: %(message)s %(context)s @%(funcName)s:%(lineno)d',
+            #'format': '%(date)s {%(name)-5s} %(levelname)-8s: %(message)s @%(funcName)s:%(lineno)d',
+            'format': '[%(asctime)s] {%(name)s} [%(levelname)s] %(message)s @%(funcName)s:%(lineno)d',
         },
         'verbose': {
+            'datefmt': '%H:%M:%S',
             #'format': '%(asctime)s %(levelname)s %(name)s@%(funcName)s:%(lineno)d %(processName)s[%(process)d] {%(thread)d} %(message)s',
             #'format': '%(asctime)s %(name)s/%(processName)s[%(process)d]: %(message)s {%(thread)d} @%(funcName)s:%(lineno)d',
             'format': '%(asctime)s %(name)s[%(process)d] {%(thread)d}: %(message)s @%(funcName)s:%(lineno)d',
@@ -136,6 +161,9 @@ LOGGING = {
         'require_debug_false': {
             '()': 'django.utils.log.RequireDebugFalse',
         },
+        #'local_context': {
+        #    '()': 'solarsan.logger.LocalContextFilter',
+        #},
     },
     'handlers': {
         #'sentry': {
@@ -155,6 +183,18 @@ LOGGING = {
             #'class': 'logging.StreamHandler',
             'class': 'ConsoleHandler.ConsoleHandler',
             'formatter': 'standard',
+        },
+        'console_color': {
+            'level': 'DEBUG',
+            #'class': 'logging.StreamHandler',
+            'class': 'ConsoleHandler.ConsoleHandler',
+            'formatter': 'color',
+        },
+        'console_solarsan_color': {
+            'level': 'DEBUG',
+            #'class': 'logging.StreamHandler',
+            'class': 'ConsoleHandler.ConsoleHandler',
+            'formatter': 'color_solarsan',
         },
         'syslog': {
             'level': 'DEBUG',
@@ -177,7 +217,8 @@ LOGGING = {
         'solarsan': {
             'level': 'DEBUG',
             'propagate': False,
-            'handlers': ['console'],
+            'handlers': ['console_solarsan_color'],
+            #'filters': ['local_context'],
             #'propagate': True,
             #'handlers': ['syslog'],
         },

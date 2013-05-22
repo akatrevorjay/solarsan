@@ -86,7 +86,7 @@ class _BaseTransaction(gevent.Greenlet):
         # TODO Work with Node and ACTUALLY ALLOCATE a sequence ahead of time!
         # TODO We can then relenquish upon failure or quit without commit, etc
         if not self.sequence:
-            self._node.sequence += 1
+            self._node.pending_sequence += 1
             self.sequence = self._node.sequence
         return self.sequence
 
@@ -209,6 +209,9 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled):
 
     @xworkflows.after_transition('receive_vote')
     def after_receive_vote(self, *args):
+        self.check_if_done()
+
+    def check_if_done(self, *args):
         #logger.debug('args=%s', args)
         if len(self._votes) == len(self._node.peers):
             for k, v in self._votes.iteritems():

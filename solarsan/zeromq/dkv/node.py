@@ -28,6 +28,28 @@ class Node(gevent.Greenlet):
     _default_encoder = EJSONEncoder
     _default_managers = (HeartbeatSequenceManager, TransactionManager)
     _default_managers += (DebuggerManager, )
+    uuid = None
+
+    sequence = 0
+    _pending_sequence = sequence
+
+    _store = dict()
+
+
+    @property
+    def pending_sequence(self):
+        if self.sequence < self._pending_sequence:
+            return self._pending_sequence
+        else:
+            return self.sequence
+
+    @pending_sequence.setter
+    def pending_sequence(self, value):
+        self._pending_sequence = value
+
+
+    def __repr__(self):
+        return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)
 
     def __init__(self, uuid=None, encoder=_default_encoder()):
         gevent.Greenlet.__init__(self)

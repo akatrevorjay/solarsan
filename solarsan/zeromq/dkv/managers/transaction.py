@@ -42,10 +42,11 @@ class TransactionManager(_BaseManager):
     #    return self._dead_tx(tx)
 
     def receive_proposal(self, peer, tx_uuid, tx_dict):
-        logger.info('Got transaction proposal from %s: %s', peer, tx_dict)
+        logger.info('Got transaction proposal from %s: %s', peer, tx_uuid)
+        logger.debug('tx_dict=%s', tx_dict)
 
         tx = ReceiveTransaction.from_dict(self._node, peer, tx_dict)
-        self.append(tx)
+        #self.append(tx)
 
         def gen_tx(self, tx):
             tx.link(self._dead_tx)
