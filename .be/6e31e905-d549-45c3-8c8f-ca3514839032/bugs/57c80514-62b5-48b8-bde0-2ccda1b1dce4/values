@@ -1,0 +1,92 @@
+{
+
+
+
+
+
+
+    "assigned": "trevorj", 
+
+
+
+
+
+
+    "creator": "trevorj", 
+
+
+
+
+
+
+    "extra_strings": [
+
+
+
+
+
+
+        "TAG:cli", 
+
+
+
+
+
+
+        "TAG:rpc", 
+
+
+
+
+
+
+        "TAG:zmq"
+
+
+
+
+
+
+    ], 
+
+
+
+
+
+
+    "reporter": "trevorj", 
+
+
+
+
+
+
+    "severity": "minor", 
+
+
+
+
+
+
+    "status": "open", 
+
+
+
+
+
+
+    "summary": "CLI: Utilize service arch to show all neighbor sans and to config them all in one unified cli", 
+
+
+
+
+
+
+    "time": "Wed, 22 May 2013 10:42:21 +0000"
+
+
+
+
+
+
+}
