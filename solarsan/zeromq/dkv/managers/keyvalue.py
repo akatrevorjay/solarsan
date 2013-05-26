@@ -4,6 +4,8 @@ from .base import _BaseManager
 from collections import Counter, OrderedDict, defaultdict, deque
 from gevent.queue import Queue, LifoQueue, PriorityQueue, JoinableQueue
 
+from ..message import Message, MessageContainer
+
 
 class SequenceSet(object):
     def __init__(self):
@@ -37,7 +39,6 @@ class SequenceManager(_BaseManager):
 
     def handle_commit(self, *args):
         pass
-
 
     @property
     def pending_sequence(self):

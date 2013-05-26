@@ -1,26 +1,6 @@
-# Copyright (c) 2009 Eric Gradman (Monkeys & Robots)
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-
 
 """
-pystates - A simple and powerful python state machine framework using coroutines
+Based on pystates.
 
 Example:
 
@@ -55,62 +35,10 @@ See the README for a details on how to implement your own StateMachines
 """
 
 
-from solarsan import logging
+from solarsan import logging, LogMeta
 logger = logging.getLogger(__name__)
-from solarsan.exceptions import SolarSanError
-
-import sys
-import inspect
+from solarsan.exceptions import StateDoesNotExist
 import time
-
-
-def _get_caller_module_name():
-    def inner():
-        return sys._getframe(2)
-    f = None
-    m = None
-    ret = None
-    try:
-        f = inner()
-        m = inspect.getmodule(f)
-        ret = m.__name__
-    except:
-        pass
-    finally:
-        del f
-        del m
-    return ret
-
-
-class LogMeta(type):
-
-    def __call__(cls, *args, **kwargs):
-        if 'log' not in kwargs:
-            kwargs['log'] = logging.getLogger('%s.%s' % (_get_caller_module_name(), cls.__name__))
-        return type.__call__(cls, *args, **kwargs)
-
-
-class LogMixin:
-    __metaclass__ = LogMeta
-
-
-#class _FakeLog(object):
-#
-#    def debug(self):
-#        pass
-#
-#_fake_log = _FakeLog()
-#log = _fake_log
-
-
-class MachineError(SolarSanError):
-
-    """Generic Machine Error"""
-
-
-class StateDoesNotExist(MachineError):
-
-    """State does not exist"""
 
 
 class Event:

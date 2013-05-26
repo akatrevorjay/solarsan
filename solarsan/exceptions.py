@@ -116,3 +116,16 @@ class PeerDidNotAccept(TransactionError):
 
 class PeerSequenceDidNotMatch(TransactionError):
     """Peer sequence sent did not match ours"""
+
+
+"""
+Machine
+"""
+
+
+class MachineError(SolarSanError):
+    """Generic StateMachine Error"""
+
+
+class StateDoesNotExist(MachineError):
+    """State does not exist in StateMachine"""

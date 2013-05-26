@@ -1,12 +1,8 @@
 
-from solarsan import logging, conf
+from solarsan import logging, LogMeta
 logger = logging.getLogger(__name__)
-from solarsan.core.logger import LogMeta
 #from solarsan.exceptions import NodeError
-
 from .base import _BaseManager
-
-#import gevent
 from functools import partial
 
 
@@ -20,4 +16,4 @@ class DebuggerManager(_BaseManager):
         return object.__getattribute__(self, key)
 
     def _receive_debug(self, key, *parts):
-        logger.debug('Debugger %s: %s', key, parts)
+        self.log.debug('Debugger %s: %s', key, parts, stack=2)

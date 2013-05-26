@@ -15,7 +15,7 @@ Managers
 """
 
 
-class Sequence(_BaseManager):
+class SequenceManager(_BaseManager):
     def __init__(self, node):
         self._sequence = -1
         _BaseManager.__init__(self, node)
@@ -50,7 +50,7 @@ class Sequence(_BaseManager):
 
 
 
-class Heartbeat(_BaseManager):
+class HeartbeatManager(_BaseManager):
     # TODO Lower later
     beat_every_sec = 10.0
 

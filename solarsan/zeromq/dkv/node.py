@@ -1,27 +1,29 @@
 
-from solarsan import logging, conf
+from solarsan import logging, conf, LogMeta
 logger = logging.getLogger(__name__)
-#from solarsan.exceptions import NodeError
+# from solarsan.exceptions import NodeError
 
 from .encoder import EJSONEncoder
-from .managers import HeartbeatSequenceManager, TransactionManager, DebuggerManager
-#from .message import MessageContainer
-#from .channel import Channel
-from . import managers
+from .managers import HeartbeatSequenceManager, \
+    HeartbeatManager, SequenceManager, TransactionManager, DebuggerManager
+# from .message import MessageContainer
+# from .channel import Channel
 
 import gevent
 import zmq.green as zmq
 from uuid import uuid4
-#from datetime import datetime
-#from functools import partial
-#import weakref
+# from datetime import datetime
+# from functools import partial
+# import weakref
 
 from reflex.base import Reactor, Binding, Ruleset
 from reflex.control import Binding, Callable, Binding, Event, EventManager, \
     PackageBattery, ReactorBattery, RulesetBattery
 
 
+
 class Node(gevent.Greenlet, Reactor):
+
     '''
     Messages are handled by adding instances to the handlers list. The
     first instance that contains a method named 'receive_<message_type>'
@@ -30,6 +32,7 @@ class Node(gevent.Greenlet, Reactor):
     parts of the ZeroMQ message.
     '''
 
+    __metaclass__ = LogMeta
     debug = False
 
     uuid = None
@@ -37,9 +40,9 @@ class Node(gevent.Greenlet, Reactor):
     peers = None
     _socks = None
 
-    _default_plugins = ['Heartbeat', 'Sequence', 'Transaction']
+    _default_managers = [HeartbeatManager, SequenceManager, TransactionManager]
     if debug:
-        _default_plugins += ['Debugger']
+        _default_managers += [DebuggerManager]
 
     _evm = None
     _handlers = None
@@ -49,7 +52,7 @@ class Node(gevent.Greenlet, Reactor):
 
     _encoder_cls = EJSONEncoder
     _encoder = None
-    plugins = None
+    _managers = None
 
     def __init__(self, uuid=None, encoder=_encoder_cls()):
         gevent.Greenlet.__init__(self)
@@ -85,59 +88,61 @@ class Node(gevent.Greenlet, Reactor):
         if not hasattr(self, 'poller'):
             self._poller = zmq.Poller()
 
-        # load plugins
-        self._init_plugins(kwargs.get('plugins'))
+        # load managers
+        self._init_managers(kwargs.get('managers'))
 
-    def _init_plugins(self, plugins=None):
-        self.plugins = dict()
+    def _init_managers(self, managers=None):
+        self._managers = dict()
 
-        if not plugins:
-            plugins = []
-        plugins += self._default_plugins
+        if not managers:
+            managers = []
+        managers += self._default_managers
 
         self.battery = ReactorBattery()
 
-        for cls in plugins:
-            #cls(self)
-            self.battery.load_objects(
-                self.evm, managers, 'NodePlugin', self, self.evm)
+        for cls in managers:
+            self.log.debug('Loading manager %s', cls)
+            cls(self)
+            #self.battery.load_objects(
+            #    self.evm, managers, 'Manager', self)
 
     def add_manager(self, manager, name=None):
         if not name:
-            #name = repr(manager)
+            # name = repr(manager)
             name = manager.__class__.__name__
-        if not name in self.managers:
-            self.managers[name] = manager
+        if not name in self._managers:
+            self._managers[name] = manager
         if self.started:
             self._run_managers()
 
     def remove_manager(self, manager, name=None):
         if not name:
-            #name = repr(manager)
+            # name = repr(manager)
             name = manager.__class__.__name__
-        if name in self.managers:
-            del self.managers[name]
+        if name in self._managers:
+            del self._managers[name]
 
     def __repr__(self):
         return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)
 
     def add_handler(self, channel_name, handler):
         if not channel_name in self.handlers:
-            logger.debug('Add channel: %s', channel_name)
+            self.log.debug('Add channel: %s', channel_name)
             self.handlers[channel_name] = list()
 
         if handler not in self.handlers[channel_name]:
-            #handler = weakref.proxy(handler)
-            logger.debug('Add handler: %s chan=%s', handler, channel_name)
+            # handler = weakref.proxy(handler)
+            self.log.debug('Add handler: %s chan=%s', handler, channel_name)
             self.handlers[channel_name].append(handler)
 
     def remove_handler(self, channel_name, handler):
         if channel_name in self.handlers:
             if handler in self.handlers[channel_name]:
-                logger.debug('Remove handler: %s chan=%s', handler, channel_name)
+                self.log.debug(
+                    'Remove handler: %s chan=%s', handler, channel_name)
                 self.handlers[channel_name].remove(handler)
             if not self.handlers[channel_name]:
-                logger.debug('Remove channel: %s', channel_name)
+                self.log.debug('Remove channel: %s', channel_name)
                 self.handlers.pop(channel_name)
 
     def _add_sock(self, sock, cb, flags=zmq.POLLIN):
@@ -145,9 +150,9 @@ class Node(gevent.Greenlet, Reactor):
         self._socks[sock] = (cb, flags)
 
     def _run_managers(self):
-        for k, v in self.managers.iteritems():
+        for k, v in self._managers.iteritems():
             if not getattr(v, 'started', None):
-                logger.debug('Spawning Manager %s: %s', k, v)
+                self.log.debug('Spawning Manager %s: %s', k, v)
                 v.link(self.remove_manager)
                 v.start()
 
@@ -158,7 +163,7 @@ class Node(gevent.Greenlet, Reactor):
         while self.running:
             socks = dict(self._poller.poll(timeout=0))
             if socks:
-                #logger.debug('socks=%s', socks)
+                # self.log.debug('socks=%s', socks)
                 for s, sv in self._socks.iteritems():
                     cb, flags = sv
                     if s in socks and socks[s] == flags:
@@ -217,7 +222,7 @@ class Node(gevent.Greenlet, Reactor):
         self.peers[uuid] = dict(sub=sub, rtr_addr=rtr_addr, pub_addr=pub_addr)
 
         # Set timeout
-        #t = gevent.Timeout(seconds=30)
+        # t = gevent.Timeout(seconds=30)
 
         # Greet peer
         # >> If timeout hits here, try again <<
@@ -249,7 +254,8 @@ class Node(gevent.Greenlet, Reactor):
         self.rtr.send_multipart(l)
 
     def _dispatch(self, from_uuid, channel_name, message_type, parts):
-        #logger.debug('Dispatch: from=%s chan=%s msg_type=%s parts=%s', from_uuid, channel_name, message_type, parts)
+        # self.log.debug('Dispatch: from=%s chan=%s msg_type=%s parts=%s',
+        # from_uuid, channel_name, message_type, parts)
 
         # Handle wildcard channel
         if channel_name != '*':
@@ -260,15 +266,15 @@ class Node(gevent.Greenlet, Reactor):
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
-                    #logger.debug('Dispatching to: %s', h)
-                    #f(from_uuid, *parts)
+                    # self.log.debug('Dispatching to: %s', h)
+                    # f(from_uuid, *parts)
                     gevent.spawn(f, from_uuid, *parts)
-                    #break
+                    # break
 
     def _on_rtr_received(self, raw_parts):
         # discard source address. We'll use the one embedded in the message
         # for consistency
-        #logger.info('raw_parts=%s', raw_parts)
+        # self.log.info('raw_parts=%s', raw_parts)
         channel_name = raw_parts[1]
         from_uuid, message_type, parts = self._encoder.decode(raw_parts[2:])
         self._dispatch(from_uuid, channel_name, message_type, parts)
@@ -276,11 +282,14 @@ class Node(gevent.Greenlet, Reactor):
     def _on_sub_received(self, raw_parts):
         # discard the message header. Can address targeted subscriptions
         # later
-        #logger.info('raw_parts=%s', raw_parts)
+        # self.log.info('raw_parts=%s', raw_parts)
         channel_name = raw_parts[1]
         from_uuid, message_type, parts = self._encoder.decode(raw_parts[2:])
         self._dispatch(from_uuid, channel_name, message_type, parts)
 
-    #def receive_discovery(self, peer_uuid, peer_router):
+    # def receive_discovery(self, peer_uuid, peer_router):
     #    """Connects to discovered peer"""
     #    self.connect(peer_uuid, router=peer_router)
+
+
+

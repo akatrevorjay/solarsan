@@ -5,6 +5,88 @@ import traceback
 import sys
 
 
+class Event(list):
+    """Event subscription.
+
+    A list of callable objects. Calling an instance of this will cause a
+    call to each item in the list in ascending order by index.
+
+    Example Usage:
+    >>> def f(x):
+    ...     print 'f(%s)' % x
+    >>> def g(x):
+    ...     print 'g(%s)' % x
+    >>> e = Event()
+    >>> e()
+    >>> e.append(f)
+    >>> e(123)
+    f(123)
+    >>> e.remove(f)
+    >>> e()
+    >>> e += (f, g)
+    >>> e(10)
+    f(10)
+    g(10)
+    >>> del e[0]
+    >>> e(2)
+    g(2)
+
+    """
+    def __call__(self, *args, **kwargs):
+        for f in self:
+            f(*args, **kwargs)
+
+    def __repr__(self):
+        return "Event(%s)" % list.__repr__(self)
+
+class Event:
+    def __init__(self):
+        self.handlers = set()
+
+    def handle(self, handler):
+        self.handlers.add(handler)
+        return self
+
+    def unhandle(self, handler):
+        try:
+            self.handlers.remove(handler)
+        except:
+            raise ValueError("Handler is not handling this event, so cannot unhandle it.")
+        return self
+
+    def fire(self, *args, **kargs):
+        for handler in self.handlers:
+            handler(*args, **kargs)
+
+    def getHandlerCount(self):
+        return len(self.handlers)
+
+    __iadd__ = handle
+    __isub__ = unhandle
+    __call__ = fire
+    __len__  = getHandlerCount
+
+class MockFileWatcher:
+    def __init__(self):
+        self.fileChanged = Event()
+
+    def watchFiles(self):
+        source_path = "foo"
+        self.fileChanged(source_path)
+
+def log_file_change(source_path):
+    print "%r changed." % (source_path,)
+
+def log_file_change2(source_path):
+    print "%r changed!" % (source_path,)
+
+watcher              = MockFileWatcher()
+watcher.fileChanged += log_file_change2
+watcher.fileChanged += log_file_change
+watcher.fileChanged -= log_file_change2
+watcher.watchFiles()
+
+
 # from customevent
 class Event(object):
     def __init__(self, threaded=None, spawn=None):
