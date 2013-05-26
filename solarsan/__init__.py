@@ -1,9 +1,4 @@
-import logging.config
-from .conf import LOGGING
-#logging.setLoggerClass(AugmentedLogger)
-logging.config.dictConfig(LOGGING)
-root = logging.getLogger()
-logger = logging.getLogger(__name__)
+from .core.logger import logging
 
 #from .conf import config
 

@@ -25,28 +25,14 @@ class Node(gevent.Greenlet):
     parts of the ZeroMQ message.
     '''
 
+    debug = False
+
     _default_encoder = EJSONEncoder
     _default_managers = (HeartbeatSequenceManager, TransactionManager)
-    _default_managers += (DebuggerManager, )
+    if debug:
+        _default_managers += (DebuggerManager, )
+
     uuid = None
-
-    sequence = 0
-    _pending_sequence = sequence
-
-    _store = dict()
-
-
-    @property
-    def pending_sequence(self):
-        if self.sequence < self._pending_sequence:
-            return self._pending_sequence
-        else:
-            return self.sequence
-
-    @pending_sequence.setter
-    def pending_sequence(self, value):
-        self._pending_sequence = value
-
 
     def __repr__(self):
         return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)
@@ -56,7 +42,7 @@ class Node(gevent.Greenlet):
 
         if not uuid:
             uuid = uuid4().get_hex()
-        self.uuid = uuid
+        self.uuid = str(uuid)
         self.encoder = encoder
 
         # Sockets
@@ -66,8 +52,6 @@ class Node(gevent.Greenlet):
 
         # State
         self.running = False
-        self.sequence = 0
-
         # Dictionary of uuid -> (rtr_addr, pub_addr)
         self.peers = dict()
 

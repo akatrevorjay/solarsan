@@ -12,7 +12,7 @@ from datetime import datetime
 
 class HeartbeatSequenceManager(_BaseManager):
     # TODO Lower later
-    beat_every_sec = 10.0
+    beat_every = 10.0
 
     def __init__(self, node):
         self._sequence = -1
@@ -24,7 +24,7 @@ class HeartbeatSequenceManager(_BaseManager):
     def _run(self):
         self.running = True
         while self.running:
-            gevent.sleep(self.beat_every_sec)
+            gevent.sleep(self.beat_every)
             self.beat()
             #gevent.spawn(self.bring_out_yer_dead)
             self.bring_out_yer_dead()
