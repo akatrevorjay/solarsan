@@ -1,6 +1,7 @@
 
 from solarsan import logging, conf
 logger = logging.getLogger(__name__)
+from solarsan.core.logger import LogMeta
 #from solarsan.exceptions import NodeError
 
 from .base import _BaseManager
@@ -10,6 +11,7 @@ from functools import partial
 
 
 class DebuggerManager(_BaseManager):
+    __metaclass__ = LogMeta
     channel = '*'
 
     def __getattribute__(self, key):

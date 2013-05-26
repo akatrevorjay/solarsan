@@ -113,31 +113,29 @@ class _BaseTransaction(gevent.Greenlet):
         logger.debug('args=%s; kwargs=%s;', args, kwargs)
 
 
-from pystates import StateMachine, State
+from .machine import Machine
 
 
-class MyMachine(StateMachine):
+class MyMachine(Machine):
     def IDLE(self):
         while True:
             ev = yield
             if ev.type == pygame.KEYDOWN:
                 self.transition("RUNNING", ev.key)
 
-    class RUNNING(State):
-        def eval(self, key):
-            print "you pressed the %s key" % key
-            while True:
-                ev = yield
-                if self.duration() > 5.0:
+    def RUNNING(self, key):
+        print "you pressed the %s key" % key
+        while True:
+            ev = yield
+            if self.duration() > 5.0:
                 self.transition("COUNTDOWN")
 
-    class COUNTDOWN(State):
-        def eval(self):
-            i = 10
-            while True:
-                ev = yield
-                print "i = %d" % i
-                if i == 0:
+    def COUNTDOWN(self):
+        i = 10
+        while True:
+            ev = yield
+            print "i = %d" % i
+            if i == 0:
                 self.transition("IDLE")
                 i -= 1
 
@@ -149,7 +147,7 @@ class Transaction(_BaseTransaction):
         def initial(self):
             while True:
                 ev = yield
-                if ev.type ==
+
     class State(xworkflows.Workflow):
         initial_state = 'init'
         states = (

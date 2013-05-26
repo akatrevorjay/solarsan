@@ -1,8 +1,8 @@
 
 from reflex.base import Reactor
-from reflex.data import Event
-from reflex.control import ReactorBattery, Ruleset, RulesetBattery, \
-    EventManager, PackageBattery
+from reflex.data import Event, Binding
+from reflex.control import EventManager, Ruleset, \
+    ReactorBattery, RulesetBattery, PackageBattery
 
 
 
