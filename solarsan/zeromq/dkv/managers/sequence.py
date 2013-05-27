@@ -7,14 +7,17 @@ from .base import _BaseManager
 
 import gevent
 import gevent.coros
-#import zmq.green as zmq
+# import zmq.green as zmq
 
 from datetime import datetime
 import xworkflows
 from collections import deque, Counter, defaultdict
 
+import weakref
+
 
 class SequenceSet(object):
+
     def __init__(self):
         self.values = dict()
 
@@ -29,15 +32,16 @@ class SequenceManager(_BaseManager, LogMixin, xworkflows.WorkflowEnabled):
         _BaseManager.__init__(self, node)
 
         self.seq = Counter(['cur', 'pending'])
-        self.counter = Counter()
-        self.last_accepted = -1
-        self.accepted = defaultdict(deque)
-        #self.pending = defaultdict(list)
-        self.pending = dict()
-        self.pending_seqs = set()
-        self.store = defaultdict(deque)
 
-        self.pending_sem = gevent.coros.BoundedSemaphore()
+        # self.last_accepted = -1
+        # self.store = defaultdict(deque)
+        # self.accepted = defaultdict(deque)
+        # self.pending = defaultdict(list)
+        # self.pending = dict()
+        # self.pending_seqs = set()
+        # self.pending_sem = gevent.coros.BoundedSemaphore()
+
+        self.pending = weakref.WeakValueDictionary()
 
         self._node.seq = self
 
@@ -74,10 +78,41 @@ class SequenceManager(_BaseManager, LogMixin, xworkflows.WorkflowEnabled):
     def current(self):
         return self.seq['cur']
 
+    def pending_tx(self, tx, seq=None):
+        ret = None
+
+        if seq:
+            if seq <= self.current:
+                self.log.warning(
+                    'Pending tx sequence=%s is less than current=%s for pending_tx=%s', seq, self.current, tx)
+                # TODO Maybe use an exception to signal this with in the props
+                # a replacement?
+            elif seq in self.pending:
+                self.log.warning(
+                    'Pending tx sequence=%s is already pending for another pending_tx=%s', seq, self.pending.get(seq))
+                # TODO Maybe use an exception to signal this with in the props
+                # a replacement?
+            else:
+                ret = seq
+
+        # if not ret and self._node.active:
+        if not ret:
+            ret = self.current
+            while True:
+                ret += 1
+                if ret not in self.pending:
+                    #self.pending[ret] = weakref.proxy(tx, callback=self.release_pending_tx)
+                    self.pending[ret] = tx
+                    break
+
+        self.log.debug('Allocated sequence=%s for pending_tx=%s', ret, tx)
+        return ret
+
     def allocate_pending(self):
         self.log.debug('Waiting for semaphore')
-        self.pending_sem.acquire()
-        #with self.pending_sem:
+        if not self.pending_sem.acquire(timeout=1):
+            return 999
+        # with self.pending_sem:
         if True:
             self.log.debug('Got semaphore')
             cur = self.current
@@ -94,7 +129,7 @@ class SequenceManager(_BaseManager, LogMixin, xworkflows.WorkflowEnabled):
         if seq in self.pending:
             self.log('Releasing pending seq=%s', seq)
             self.pending.pop(seq)
-            self.pending_sem.release()
+            #self.pending_sem.release()
 
     """ Events """
 

@@ -85,8 +85,10 @@ class Peer(LogMixin):
     def pub_addr(self):
         return 'tcp://%s:%s' % (self.cluster_addr, self.pub_port)
 
-    def unicast(self, *args, **kwargs):
-        return self._node.unicast(self, *args, **kwargs)
+    """ Messaging """
+
+    def unicast(self, channel, message_type, *parts, **kwargs):
+        return self._node.unicast(self, channel, message_type, *parts, **kwargs)
 
     """ Heartbeat """
 
