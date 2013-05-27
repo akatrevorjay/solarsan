@@ -73,8 +73,9 @@ def get_node_stuffs(what):
 
 def bind_node(what):
     name, c, n = get_node_stuffs(what)
-    n.bind(bind_fmt % c.rtr, bind_fmt % c.pub)
+    logger.debug('Binding node %s to %s', n, c)
     n.start()
+    n.bind(bind_fmt % c.rtr, bind_fmt % c.pub)
 
 def connect_node(n, to_n):
     (name, c, n) = get_node_stuffs(n)

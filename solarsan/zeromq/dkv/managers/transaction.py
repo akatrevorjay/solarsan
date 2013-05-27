@@ -8,16 +8,21 @@ from ..transaction import ReceiveTransaction
 
 import gevent
 
+from collections import deque, Counter
+
+
+# Sequences: (aka counter.)
+#    committed = the most recent committed transaction sequence
+#    pending = blah
+
 
 class TransactionManager(_BaseManager):
-    channel = 'dkv.transaction'
-
     def __init__(self, node):
         _BaseManager.__init__(self, node)
-
-        #self.pending = weakref.WeakValueDictionary()
+        self.seq = Counter(['store', 'pending'])
         self.pending = dict()
-        #node.add_handler('dkv.transaction', self)
+        self.store = dict()
+
 
     """ Pending transaction interface """
 

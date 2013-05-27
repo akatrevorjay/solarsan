@@ -57,23 +57,26 @@ class NodePlugin(type):
 
 
 class _BaseManager(gevent.Greenlet, Reactor):
+    #__metaclass__ = NodePlugin
     channel = None
 
     def __init__(self, node, **kwargs):
         gevent.Greenlet.__init__(self)
-        Reactor.__init__(self, node.evm, node, **kwargs)
+        Reactor.__init__(self, node.events, node, **kwargs)
 
-    def init(self, node, **kwargs):
         self._node = node
         self._set_channel(kwargs.pop('channel', None))
         self._node.add_manager(self)
         self._add_handler()
 
+    #def init(self, node, **kwargs):
+    #    pass
+
     def _run(self):
-        #self.running = True
-        #while self.running:
-        #    gevent.sleep(0.1)
-        pass
+        """What gets spawned to run this manager. Default is a do-nothing around sleep."""
+        self.running = True
+        while self.running:
+            gevent.sleep(0.1)
 
     def _set_channel(self, channel=None):
         if not channel:
@@ -82,6 +85,8 @@ class _BaseManager(gevent.Greenlet, Reactor):
             channel = self.__class__.channel
         if not channel:
             channel = self.__class__.__name__
+            if channel.endswith('Manager'):
+                channel = channel.rsplit('Manager', 1)[0]
         self.channel = channel
 
     """ Handlers """

@@ -15,6 +15,8 @@ from datetime import datetime
 #from .transaction import Transaction
 #from .channel import Channel
 #from .node import Node
+from uuid import uuid4
+from solarsan.utils.uuids import get_uuid_datetime
 
 
 class _BaseDict(dict):
@@ -41,17 +43,19 @@ class _BaseDict(dict):
 class Message(_BaseDict):
     def __init__(self, **kwargs):
         _BaseDict.__init__(self, **kwargs)
-        if 'created_at' not in self:
-            self.created_at = datetime.now()
-        #if 'sequence' not in self:
-        #    self.sequence = None
+        if 'uuid' not in self:
+            self.uuid = uuid4()
+
+    @property
+    def created_at(self):
+        return get_uuid_datetime(self.uuid)
 
 
-class MessageContainer(list):
-
-    """
-    Container to hold your Messages
-    """
-
-    def append(self, object):
-        return list.append(self, object)
+#class MessageContainer(list):
+#
+#    """
+#    Container to hold your Messages
+#    """
+#
+#    def append(self, object):
+#        return list.append(self, object)

@@ -73,40 +73,48 @@ class JSONEncoder (object):
         return header['from'], header['type'], parts
 
 
-try:
-    import ejson
+import ejson
+import uuid
 
 
-    class EJSONEncoder (object):
-        def encode(self, node_uuid, message_type, parts):
-            header = dict()
+@ejson.register_serializer(uuid.UUID)
+def serialize_uuid(instance):
+    return instance.urn
 
-            header['type'] = message_type
-            header['from'] = node_uuid
 
-            plist = [header]
+@ejson.register_deserializer(uuid.UUID)
+def deserialize_uuid(data):
+    return uuid.UUID(data)
 
-            if parts:
-                plist.extend(parts)
 
-            return [str(ejson.dumps(p)) for p in plist]
+class EJSONEncoder (object):
+    def encode(self, node_uuid, message_type, parts):
+        header = dict()
 
-        def decode(self, jparts):
-            if not jparts:
-                return
+        header['type'] = message_type
+        header['from'] = node_uuid
 
-            try:
-                parts = [ejson.loads(j) for j in jparts]
-            except ValueError:
-                print 'Invalid JSON: ', jparts
-                return
+        plist = [header]
 
-            header = parts[0]
-            parts = parts[1:]
+        if parts:
+            plist.extend(parts)
 
-            return header['from'], header['type'], parts
-except ImportError:
-    pass
+        return [str(ejson.dumps(p)) for p in plist]
+
+    def decode(self, jparts):
+        if not jparts:
+            return
+
+        try:
+            parts = [ejson.loads(j) for j in jparts]
+        except ValueError:
+            print 'Invalid JSON: ', jparts
+            return
+
+        header = parts[0]
+        parts = parts[1:]
+
+        return header['from'], header['type'], parts
 
 
 try:

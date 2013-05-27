@@ -27,7 +27,7 @@ class _BaseTransaction(gevent.Greenlet):
     _serialize_attrs = ['uuid', 'ts', 'payload', 'sender', 'sequence']
     _timeout = timedelta(seconds=5)
 
-    channel = 'dkv.transaction'
+    channel = 'Transaction'
 
     """ Base """
 
@@ -57,7 +57,7 @@ class _BaseTransaction(gevent.Greenlet):
 
     @classmethod
     def _stop(cls, self):
-        logger.debug('Stopping transaction %s', self.uuid)
+        #logger.debug('Stopping transaction %s', self.uuid)
         self._remove_handler()
         self.kill()
 
@@ -88,8 +88,7 @@ class _BaseTransaction(gevent.Greenlet):
         # TODO Work with Node and ACTUALLY ALLOCATE a sequence ahead of time!
         # TODO We can then relenquish upon failure or quit without commit, etc
         if not self.sequence:
-            self._node.pending_sequence += 1
-            self.sequence = self._node.sequence
+            self.sequence = self._node.seq.allocate_pending()
         return self.sequence
 
     def store(self):
@@ -259,7 +258,6 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled):
     state = State()
 
     def __init__(self, node, sender, **kwargs):
-        # self.channel = 'dkv.transaction:%s' % self.uuid
         _BaseTransaction.__init__(self, node, **kwargs)
         self.sender = sender
 
@@ -284,7 +282,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled):
         accept = True
         # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
         seq = self.allocate_sequence()
-        cur_seq = self._node.sequence
+        cur_seq = self._node.seq.current
 
         meta = dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)
         self.unicast(self.sender, 'vote',
