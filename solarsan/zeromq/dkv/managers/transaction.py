@@ -11,18 +11,11 @@ import gevent
 from collections import deque, Counter
 
 
-# Sequences: (aka counter.)
-#    committed = the most recent committed transaction sequence
-#    pending = blah
-
-
 class TransactionManager(_BaseManager):
     def __init__(self, node):
         _BaseManager.__init__(self, node)
-        self.seq = Counter(['store', 'pending'])
         self.pending = dict()
         self.store = dict()
-
 
     """ Pending transaction interface """
 

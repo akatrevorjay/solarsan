@@ -86,15 +86,13 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
     """ Actions """
 
     def allocate_sequence(self):
-        # TODO Work with Node and ACTUALLY ALLOCATE a sequence ahead of time!
-        # TODO We can then relenquish upon failure or quit without commit, etc
         if not self.sequence:
             #self.sequence = self._node.seq.allocate_pending()
             self.sequence = self._node.seq.pending_tx(self)
         return self.sequence
 
     def store(self):
-        self.log.info('Storing tx %s', self)
+        #self.log.info('Storing tx %s', self)
 
         payload = self.payload
         self._node.kv.set(payload['key'], payload)
@@ -278,9 +276,9 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     @xworkflows.transition()
     def vote(self):
         # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
-        accept = True
-        # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
-        seq = self.allocate_sequence()
+
+        accept = self.sequence
+        seq = self.allocate_sequence(self.sequence)
         cur_seq = self._node.seq.current
 
         meta = dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)

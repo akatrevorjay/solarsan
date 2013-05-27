@@ -78,6 +78,14 @@ class SequenceManager(_BaseManager, LogMixin, xworkflows.WorkflowEnabled):
     def current(self):
         return self.seq['cur']
 
+    """ Allocators """
+
+    def key_current(self, key):
+        if key in self.seq:
+            return self.key_seq
+
+    """ Allocators (global) """
+
     def pending_tx(self, tx, seq=None):
         ret = None
 
