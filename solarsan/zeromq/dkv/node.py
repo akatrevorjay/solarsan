@@ -1,7 +1,7 @@
 
 from solarsan import logging, conf, LogMeta, LogMixin
 logger = logging.getLogger(__name__)
-# from solarsan.exceptions import NodeError
+from solarsan.exceptions import NodeError, PeerUnknown
 
 from .encoder import EJSONEncoder
 
@@ -13,14 +13,13 @@ import zmq.green as zmq
 from uuid import uuid4
 # from datetime import datetime
 # from functools import partial
-# import weakref
+import weakref
 
 from reflex.base import Reactor, Binding, Ruleset
-from reflex.control import Binding, Callable, Binding, Event, EventManager, \
+from reflex.control import Callable, Event, EventManager, \
     PackageBattery, ReactorBattery, RulesetBattery
 
 import xworkflows
-
 
 from . import managers as node_managers
 
@@ -28,7 +27,71 @@ from .managers.heartbeat import HeartbeatManager
 from .managers.sequence import SequenceManager
 from .managers.transaction import TransactionManager
 from .managers.debugger import DebuggerManager
-from .managers.keyvalue import KeyValueNode, KeyValueStorageNode
+from .managers.keyvalue import KeyValueManager
+
+#from .base import _BaseDict
+
+
+class Peer(LogMixin):
+    uuid = None
+    cluster_addr = None
+    is_local = None
+
+    def __init__(self, uuid):
+        self.uuid = uuid
+        self.is_local = False
+
+    """ Connection """
+
+    def _connect_sub(self):
+        # Connect subscriber
+        self.sub.connect(self.pub_addr)
+
+    def connect(self, node):
+        #if self.debug:
+        self.log.debug('Connecting to peer: %s', self)
+
+        self._node = weakref.proxy(node)
+
+        self.sub = sub = self._node._ctx.socket(zmq.SUB)
+        for sock in (sub, ):
+            sock.linger = 0
+        sub.setsockopt(zmq.SUBSCRIBE, b'')
+
+        self._connect_sub()
+
+        self._node.add_peer(self)
+
+    def shutdown(self):
+        #if self.debug:
+        self.log.debug('Shutting down peer: %s', self)
+
+        if hasattr(self, '_node'):
+            self._node.remove_peer(self)
+        if hasattr(self, 'sub'):
+            self.sub.close()
+
+    """ Helpers """
+
+    rtr_port = conf.ports.dkv_rtr
+
+    @property
+    def rtr_addr(self):
+        return 'tcp://%s:%s' % (self.cluster_addr, self.rtr_port)
+
+    pub_port = conf.ports.dkv_pub
+
+    @property
+    def pub_addr(self):
+        return 'tcp://%s:%s' % (self.cluster_addr, self.pub_port)
+
+    def unicast(self, *args, **kwargs):
+        return self._node.unicast(self, *args, **kwargs)
+
+    """ Heartbeat """
+
+    #def receive_beat(self, meta):
+    #    pass
 
 
 class NodeState(xworkflows.Workflow):
@@ -64,7 +127,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
     debug = False
 
     _default_encoder_cls = EJSONEncoder
-    _default_managers = [HeartbeatManager, SequenceManager, TransactionManager]
+    _default_managers = [HeartbeatManager, SequenceManager, TransactionManager, KeyValueManager]
     if debug:
         _default_managers += [DebuggerManager]
 
@@ -89,23 +152,33 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         # encoder
         self.encoder = kwargs['encoder']
 
-        # peers
-        self.peers = dict()
-
-        # sockets
-        self.rtr = None
-        self.pub = None
-        self.sub = None
-        self._socks = dict()
-
         # event handlers
         self.handlers = dict()
 
+        # peers
+        self.peers = dict()
+
+        """ Sockets """
+
         # 0MQ init
-        if not hasattr(self, 'ctx'):
+        if not self._ctx:
             self._ctx = zmq.Context.instance()
-        if not hasattr(self, 'poller'):
+        if not self._poller:
             self._poller = zmq.Poller()
+
+        # dict of sockets to poll
+        self._socks = dict()
+
+        # router socket
+        rtr = self.rtr = self._ctx.socket(zmq.ROUTER)
+        rtr.setsockopt(zmq.IDENTITY, self.uuid)
+        self._add_sock(rtr, self._on_rtr_received)
+
+        # publisher socket
+        self.pub = self._ctx.socket(zmq.PUB)
+
+        for sock in (self.rtr, self.pub):
+            sock.linger = 0
 
         """ Managers """
 
@@ -119,7 +192,8 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         #self.battery = ReactorBattery()
 
         for cls in managers:
-            self.log.debug('Loading manager %s', cls)
+            if self.debug:
+                self.log.debug('Loading manager %s', cls)
             cls(self)
             #self.battery.load_objects(
             #    self.events, node_managers, 'Manager', self)
@@ -159,22 +233,26 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
 
     def add_handler(self, channel_name, handler):
         if not channel_name in self.handlers:
-            #self.log.debug('Add channel: %s', channel_name)
+            if self.debug:
+                self.log.debug('Add channel: %s', channel_name)
             self.handlers[channel_name] = list()
 
         if handler not in self.handlers[channel_name]:
             # handler = weakref.proxy(handler)
-            self.log.debug('Add handler: %s chan=%s', handler, channel_name)
+            if self.debug:
+                self.log.debug('Add handler: %s chan=%s', handler, channel_name)
             self.handlers[channel_name].append(handler)
 
     def remove_handler(self, channel_name, handler):
         if channel_name in self.handlers:
             if handler in self.handlers[channel_name]:
-                self.log.debug(
-                    'Remove handler: %s chan=%s', handler, channel_name)
+                if self.debug:
+                    self.log.debug(
+                        'Remove handler: %s chan=%s', handler, channel_name)
                 self.handlers[channel_name].remove(handler)
             if not self.handlers[channel_name]:
-                #self.log.debug('Remove channel: %s', channel_name)
+                if self.debug:
+                    self.log.debug('Remove channel: %s', channel_name)
                 self.handlers.pop(channel_name)
 
     """ Run """
@@ -184,6 +262,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
             managers = self.managers.iteritems()
         for k, v in managers:
             if not getattr(v, 'started', None):
+                #if self.debug:
                 self.log.debug('Spawning Manager %s: %s', k, v)
                 v.link(self.remove_manager)
                 v.start()
@@ -212,61 +291,57 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         self._poller.register(sock, flags)
         self._socks[sock] = (cb, flags)
 
-    def _zmq_init(self):
-        if not self.rtr:
-            rtr = self.rtr = self._ctx.socket(zmq.ROUTER)
-            rtr.setsockopt(zmq.IDENTITY, self.uuid)
-            self._add_sock(rtr, self._on_rtr_received)
-
     @xworkflows.transition()
     def bind(self, rtr_addr, pub_addr):
-        self._zmq_init()
-        ctx = self._ctx
-        rtr = self.rtr
-
-        if self.pub:
-            self.pub.close()
-        pub = self.pub = ctx.socket(zmq.PUB)
-
-        for sock in (rtr, pub):
-            sock.linger = 0
-
-        rtr.bind(rtr_addr)
-        pub.bind(pub_addr)
+        self.rtr.bind(rtr_addr)
+        self.pub.bind(pub_addr)
 
         gevent.sleep(0.1)
 
-    def connect_peer(self, peer):
-        self.connect(peer.uuid,
-                     'tcp://%s:%s' % (peer.cluster_addr, conf.ports.dkv_rtr),
-                     'tcp://%s:%s' % (peer.cluster_addr, conf.ports.dkv_pub),
-                     )
-
     @xworkflows.transition()
-    def connect(self, uuid, rtr_addr, pub_addr):
-        """Connects to peer"""
-        self._zmq_init()
-        ctx = self._ctx
+    def connect(self):
+        self.log.info('Connecting..')
 
-        # If we already have uuid
+        peers = self.peers.copy()
+        gs = []
+        for uuid, peer in peers.iteritems():
+            g = gevent.spawn(self.connect_peer, peer)
+            gs.append(g)
+        for g in gs:
+            g.join(timeout=10.0)
+
+    def add_peer(self, peer):
+        uuid = str(peer.uuid)
+
+        # TODO I don't believe this is the correct way of handling this.
+        # We should just ensure the connection is still alive.
+        # Then again, this is really just a corner case.
+        #
+        # If we already have uuid, replace it
+        if peer.uuid in self.peers:
+            self.peers[uuid].shutdown()
+
+        if self.debug:
+            self.log.debug('Adding peer: %s', peer)
+        self.peers[uuid] = peer
+        self.connect_peer(peer)
+
+    def remove_peer(self, peer):
+        self.log.info('Removing peer: %s', peer)
+        uuid = str(peer.uuid)
         if uuid in self.peers:
-            self.peers[uuid].sub.close()
+            del self.peers[uuid]
+
+    def connect_peer(self, peer):
+        """Connects to peer"""
+
+        self.log.info('Connecting to peer: %s', peer)
 
         # Connect router
-        self.rtr.connect(rtr_addr)
-
-        # Connect subscriber
-        sub = ctx.socket(zmq.SUB)
-        for sock in (sub, ):
-            sock.linger = 0
-        sub.setsockopt(zmq.SUBSCRIBE, b'')
-        sub.connect(pub_addr)
+        self.rtr.connect(peer.rtr_addr)
 
         # Add subscriber socket to our sock repertoire
-        self._add_sock(sub, self._on_sub_received)
-
-        # Add peer object
-        self.peers[uuid] = dict(sub=sub, rtr_addr=rtr_addr, pub_addr=pub_addr)
+        self._add_sock(peer.sub, self._on_sub_received)
 
         # Set timeout
         # t = gevent.Timeout(seconds=30)
@@ -278,9 +353,17 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         gevent.sleep(0.1)
 
     def shutdown(self):
+        self.log.info('Shuttind down Node: %s', self)
+
+        # peer sub socks
         for s, sv in self._socks.iteritems():
             s.close()
-        self._socks = dict()
+
+        # extraneous socks
+        for attr in ('pub', ):
+            s = getattr(self, attr, None)
+            if s is not None:
+                s.close()
 
     def broadcast(self, channel_name, message_type, *parts):
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
@@ -289,32 +372,54 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         l.extend(self.encoder.encode(self.uuid, message_type, parts))
         self.pub.send_multipart(l)
 
-    def unicast(self, to_uuid, channel_name, message_type, *parts):
-        if to_uuid == self.uuid:
+    def get_peer(self, peer_or_uuid, exception=PeerUnknown):
+        peer = None
+        if not isinstance(peer_or_uuid, Peer):
+            peer = self.peers.get(peer_or_uuid)
+        else:
+            peer = peer_or_uuid
+        if not peer and exception:
+            raise exception(peer_or_uuid)
+        return peer
+
+    def unicast(self, peer, channel_name, message_type, *parts):
+        peer = self.get_peer(peer)
+
+        if peer.uuid == self.uuid:
             self.dispatch(
                 self.uuid, channel_name, message_type, parts)
             return
+
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
             parts = parts[0]
-        l = [str(to_uuid), str(channel_name)]
+
+        l = [str(peer.uuid), str(channel_name)]
         l.extend(self.encoder.encode(self.uuid, message_type, parts))
+
         self.rtr.send_multipart(l)
 
-    def _dispatch(self, from_uuid, channel_name, message_type, parts):
-        self.log.debug('Dispatch: from=%s chan=%s msg_type=%s parts=%s',
-         from_uuid, channel_name, message_type, parts)
+    def _dispatch(self, from_peer, channel_name, message_type, parts, _looped=None):
+        peer = self.get_peer(from_peer, exception=None)
+        if peer is None:
+            self.log.error('Ignoring dispatch call with an unknown peer: %s', from_peer)
+            return
+
+        if self.debug and not _looped:
+            self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
+                           peer, channel_name, message_type, parts)
 
         # Handle wildcard channel
         if channel_name != '*':
-            self._dispatch(from_uuid, '*', message_type, parts)
+            self._dispatch(peer, '*', message_type, parts, _looped=True)
 
         handlers = self.handlers.get(channel_name, None)
         if handlers:
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
-                    self.log.debug('Dispatching to: %s', h)
-                    gevent.spawn(f, from_uuid, *parts)
+                    #if self.debug:
+                    #self.log.debug('Dispatching to: %s', h)
+                    gevent.spawn(f, peer, *parts)
                     # break
 
     def _on_rtr_received(self, raw_parts):

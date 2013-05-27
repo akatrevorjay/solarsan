@@ -1,134 +1,63 @@
 
-from solarsan import logging
-logger = logging.getLogger(__name__)
+from solarsan import logging, LogMixin
 from solarsan.exceptions import NodeNotReadyError
 
 from .base import _BaseManager
 
 import gevent
 #import zmq.green as zmq
-from datetime import datetime
+from datetime import datetime, timedelta
 import xworkflows
 from collections import deque, Counter
 
 
-class HeartbeatManager(_BaseManager):
-    # TODO Lower later
-    beat_every = 10.0
+class HeartbeatManager(_BaseManager, LogMixin):
 
-    running = None
-    active = None
+    debug = False
+    tick_length = 1.0
+    tick_timeout = 5.0
+    heartbeat_ttl = timedelta(seconds=tick_length * 2)
 
-    def _run(self):
-        self.running = True
-        while self.running:
-            gevent.sleep(self.beat_every)
-            if self.active:
-                gevent.sleep(self.beat_every_sec)
-                gevent.spawn(self.beat)
-                gevent.spawn(self.bring_out_yer_dead)
+    """ Run """
 
-    """ Heartbeat """
+    def _tick(self):
+        if self.debug:
+            self.log.debug('Tick')
+        #if not self._node.active:
+        #    return
+        self.beat()
+        self.bring_out_yer_dead()
 
-    @property
-    def _meta(self):
-        meta = dict()
-
-        if self.active:
-            meta['cur_sequence'] = self._sequence
-
-        return meta
-
-    def beat(self):
-        meta = self._meta
-        logger.debug('Sending heartbeat: meta=%s', meta)
-        self.broadcast('ping', meta)
-        del meta
-
-    def receive_ping(self, peer, meta):
-        logger.info('Heartbeat from %s: meta=%s', peer, meta)
-
-        cur_seq = meta.get('cur_sequence')
-        if cur_seq:
-            logger.info('cur_seq=%s', cur_seq)
-            #if cur_seq != self._sequence
-
-    def bring_out_yer_dead(self):
-        # TODO Check for peer timeouts
-        return
-
-
-'''
-class HeartbeatSequenceManager(_BaseManager):
-    # TODO Lower later
-    beat_every = 10.0
-
-    def __init__(self, node):
-        self._sequence = -1
-        _BaseManager.__init__(self, node)
-        self.sequence = 0
-
-        node.seq = self
-
-    def _run(self):
-        self.running = True
-        while self.running:
-            gevent.sleep(self.beat_every)
-            self.beat()
-            #gevent.spawn(self.bring_out_yer_dead)
-            self.bring_out_yer_dead()
-
-    """ Heartbeat """
+    """ Helpers """
 
     @property
     def _meta(self):
         meta = dict()
 
-        if self._check(exception=False):
-            meta['cur_sequence'] = self._sequence
+        #if self._node.active:
+        if True:
+            meta['sequence'] = dict(current=self._node.seq.current)
 
         return meta
 
     def beat(self):
         meta = self._meta
-        logger.debug('Sending heartbeat: meta=%s', meta)
-        self.broadcast('ping', meta)
+        if self.debug:
+            self.log.debug('Sending heartbeat: meta=%s', meta)
+        self.broadcast('beat', meta)
         del meta
 
+    def receive_beat(self, peer, meta):
+        if self.debug:
+            self.log.debug('Heartbeat from %s: meta=%s', peer, meta)
+        peer.last_heartbeat_at = datetime.now()
+        #peer.receive_beat(meta)
+
     def bring_out_yer_dead(self):
-        # TODO Check for peer timeouts
-        return
-
-    def receive_ping(self, peer, meta):
-        logger.info('Heartbeat from %s: meta=%s', peer, meta)
-
-        cur_seq = meta.get('cur_sequence')
-        if cur_seq:
-            logger.info('cur_seq=%s', cur_seq)
-            #if cur_seq != self._sequence
-
-    """ Sequence """
-
-    @property
-    def sequence(self):
-        self._check()
-        return self._sequence
-
-    @sequence.setter
-    def sequence(self, value):
-        self._sequence = value
-        self.ts = datetime.now()
-
-    def _check(self, exception=True):
-        if self._sequence < 0:
-            if exception:
-                raise NodeNotReadyError
-            else:
-                return False
-        return True
-
-    def allocate(self):
-        self._check()
-        self.sequence += 1
-        return self.sequence
-'''
+        for peer in self._node.peers.values():
+            last_heartbeat_at = getattr(peer, 'last_heartbeat_at', None)
+            if last_heartbeat_at is None:
+                continue
+            if last_heartbeat_at + self.heartbeat_ttl < datetime.now():
+                self.log.error('Have not gotten any heartbeats from %s in too long; marking as dead.', peer)
+                peer.shutdown()

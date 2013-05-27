@@ -129,3 +129,16 @@ class MachineError(SolarSanError):
 
 class StateDoesNotExist(MachineError):
     """State does not exist in StateMachine"""
+
+
+"""
+Peer
+"""
+
+
+class Peer(SolarSanError):
+    """Generic Peer Error"""
+
+
+class PeerUnknown(Peer):
+    """Peer Unknown Error"""

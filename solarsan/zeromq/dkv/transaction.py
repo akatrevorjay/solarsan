@@ -93,9 +93,13 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
         return self.sequence
 
     def store(self):
-        # TODO Make this WORK
-        self.log.error('TODO Storing transaction %s.', self.uuid)
-        pass
+        self.log.info('Storing transaction %s', self)
+
+        payload = self.payload
+        self._node.kv.set(payload['key'], payload)
+
+        self.log.debug('Stored transaction %s', self)
+
 
     """ Helpers """
 

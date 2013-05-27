@@ -17,7 +17,6 @@ import sha
 import jsonpickle
 
 
-
 nodes_config = dict()
 
 try:
@@ -77,18 +76,25 @@ def bind_node(what):
     n.start()
     n.bind(bind_fmt % c.rtr, bind_fmt % c.pub)
 
+
 def connect_node(n, to_n):
     (name, c, n) = get_node_stuffs(n)
     (to_name, to_c, to_n) = get_node_stuffs(to_n)
     to_uuid = to_n.uuid
     del to_n
-    n.connect(to_uuid, connect_fmt % to_c.rtr, connect_fmt % to_c.pub)
+    p = node.Peer(to_uuid)
+    p.cluster_addr = '127.0.0.1'
+    p.rtr_port = to_c.rtr
+    p.pub_port = to_c.pub
+    p.connect(n)
 
 
 def send_message(n):
     logger.info('Sending message')
     m = message.Message()
-    m['omg'] = True
+    m['key'] = 'omg'
+    m['value'] = True
+    m['SHAFT!'] = 'BLAFT!'
     t = transaction.Transaction(n, payload=m)
     t.start()
     del t

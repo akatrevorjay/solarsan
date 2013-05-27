@@ -1,5 +1,5 @@
 
-from solarsan import logging
+from solarsan import logging, LogMixin
 logger = logging.getLogger(__name__)
 
 import gevent
@@ -56,27 +56,28 @@ class NodePlugin(type):
 
 
 
-class _BaseManager(gevent.Greenlet, Reactor):
-    #__metaclass__ = NodePlugin
+class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
     channel = None
 
     def __init__(self, node, **kwargs):
+        if hasattr(self, 'pre_init'):
+            self.pre_init(node, **kwargs)
+
         gevent.Greenlet.__init__(self)
-        Reactor.__init__(self, node.events, node, **kwargs)
 
         self._node = node
         self._set_channel(kwargs.pop('channel', None))
         self._node.add_manager(self)
         self._add_handler()
 
-    #def init(self, node, **kwargs):
-    #    pass
+        # This actually calls self.init
+        Reactor.__init__(self, node.events, node, **kwargs)
 
-    def _run(self):
-        """What gets spawned to run this manager. Default is a do-nothing around sleep."""
-        self.running = True
-        while self.running:
-            gevent.sleep(0.1)
+        if hasattr(self, 'post_init'):
+            self.post_init(node, **kwargs)
+
+    def init(self, node, **kwargs):
+        pass
 
     def _set_channel(self, channel=None):
         if not channel:
@@ -88,6 +89,33 @@ class _BaseManager(gevent.Greenlet, Reactor):
             if channel.endswith('Manager'):
                 channel = channel.rsplit('Manager', 1)[0]
         self.channel = channel
+
+    """ Run """
+
+    tick_length = 1
+    tick_timeout = None
+
+    def _tick(self):
+        """What gets ran at each tick length in the _run loop."""
+        pass
+
+    def _run(self):
+        """What gets spawned to run this manager. Defaults to a quick ticker that spawns
+        self._tick every self.time_length seconds, with a timeout of self.time_timeout.
+        """
+        self.running = True
+        tick_length = getattr(self, 'tick_length')
+        tick_timeout = getattr(self, 'tick_timeout')
+
+        while self.running:
+            gevent.sleep(tick_length)
+
+            g = gevent.spawn(self._tick)
+            g.join(timeout=tick_timeout)
+
+            if not g.dead:
+                self.log.error('Tick timed out.')
+                g.kill()
 
     """ Handlers """
 
