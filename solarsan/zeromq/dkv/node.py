@@ -301,8 +301,8 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         self.rtr.send_multipart(l)
 
     def _dispatch(self, from_uuid, channel_name, message_type, parts):
-        # self.log.debug('Dispatch: from=%s chan=%s msg_type=%s parts=%s',
-        # from_uuid, channel_name, message_type, parts)
+        self.log.debug('Dispatch: from=%s chan=%s msg_type=%s parts=%s',
+         from_uuid, channel_name, message_type, parts)
 
         # Handle wildcard channel
         if channel_name != '*':
@@ -313,8 +313,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
-                    # self.log.debug('Dispatching to: %s', h)
-                    # f(from_uuid, *parts)
+                    self.log.debug('Dispatching to: %s', h)
                     gevent.spawn(f, from_uuid, *parts)
                     # break
 
