@@ -1,5 +1,5 @@
 
-from solarsan import LogMixin
+from solarsan import LogMixin, pp
 from solarsan.exceptions import SolarSanError
 
 from .base import _BaseManager
@@ -16,7 +16,10 @@ class KeyValueStorage(dict):
     pass
 
 
-class KeyValueManager(_BaseManager, Reactor, LogMixin):
+class KeyValueManager(_BaseManager, Reactor):
+    #debug = False
+    debug = True
+
     store = KeyValueStorage()
 
     def __init__(self, node):
@@ -41,3 +44,9 @@ class KeyValueManager(_BaseManager, Reactor, LogMixin):
 
     #def update(self, data):
     #    self.store.update(data)
+
+    tick_length = 5.0
+
+    def _tick(self):
+        if self.debug:
+            pp(self.store)
