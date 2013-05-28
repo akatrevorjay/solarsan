@@ -290,7 +290,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
                     cb, flags = sv
                     if s in socks and socks[s] == flags:
                         cb(s.recv_multipart())
-            gevent.sleep(0)
+            gevent.sleep(0.1)
 
     def _add_sock(self, sock, cb, flags=zmq.POLLIN):
         self._poller.register(sock, flags)

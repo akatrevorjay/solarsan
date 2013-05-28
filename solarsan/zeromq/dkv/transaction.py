@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 # from copy import copy
 # import weakref
 import xworkflows
+from .message import Message
 
 
 class _BaseTransaction(gevent.Greenlet, LogMixin):
@@ -48,6 +49,8 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
             return
         for k in self._serialize_attrs:
             setattr(self, k, datadict.get(k))
+        if not isinstance(self.payload, Message):
+            self.payload = Message(**self.payload)
 
     def _run(self):
         self.running = True
@@ -308,8 +311,8 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
 
     @xworkflows.transition()
     def commit(self):
-        self.log.info('Committing tx %s from %s (sequence=%s).',
-                      self, self.sender, self.sequence)
+        self.log.info('Committing tx %s (sequence=%s).',
+                      self, self.sequence)
         self.store()
 
     #@xworkflows.after_transition('commit')
@@ -329,8 +332,6 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
         """Sent by sender to indicate abortlation of this tx"""
         if peer != self.sender:
             return
-        # self.log.info('Transaction %s received abort from %s.', self, peer)
-        # gevent.spawn(self.abort).join()
         self.abort()
 
     def receive_commit(self, peer, sequence):
@@ -338,8 +339,6 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
         if str(peer.uuid) != self.sender:
             self.log.error('Received commit from sender %s that does not match proposer %s', peer, self.sender)
             return
-        # self.log.info('Transaction %s received commit from %s (sequence=%s).', self, peer, sequence)
-        # gevent.spawn(self.commit).join()
         self.commit()
 
 
