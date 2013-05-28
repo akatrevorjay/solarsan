@@ -25,13 +25,14 @@ class SequenceSet(object):
         pass
 
 
-class SequenceManager(_BaseManager, LogMixin, xworkflows.WorkflowEnabled):
-    send_seq = 10.0
-
+class SequenceManager(_BaseManager, xworkflows.WorkflowEnabled):
     def __init__(self, node):
         _BaseManager.__init__(self, node)
 
+        # Global
         self.seq = Counter(['cur', 'pending'])
+        # Per key
+        self.key_seq = Counter()
 
         # self.last_accepted = -1
         # self.store = defaultdict(deque)
@@ -45,14 +46,18 @@ class SequenceManager(_BaseManager, LogMixin, xworkflows.WorkflowEnabled):
 
         self._node.seq = self
 
-    def _run(self):
-        self.running = True
-        while self.running:
-            gevent.sleep(self.send_seq)
-            if self._node.active:
-                # TODO Send out sequence to peers
-                self.broadcast('sequence_beat', dict(sequence=self.sequence,
-                                                     pending=self.pending))
+    tick_length = 1.0
+
+    def _tick(self):
+        if self._node.active:
+            # TODO Send out sequence to peers
+            self.broadcast('sequence_beat', dict(seq=self.current,
+                                                 key_seq=self.key_seq,
+                                                 #pending=self.pending,
+                                                 ))
+
+    def receive_sequence_beat(self, peer, data):
+        self.log.debug('Received sequence beat: %s', data)
 
     """ Machine """
 
@@ -81,8 +86,7 @@ class SequenceManager(_BaseManager, LogMixin, xworkflows.WorkflowEnabled):
     """ Allocators """
 
     def key_current(self, key):
-        if key in self.seq:
-            return self.key_seq
+        return self.key_seq[key]
 
     """ Allocators (global) """
 

@@ -40,7 +40,8 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
             self._update(kwargs)
 
     def _post_init(self):
-        self._add_handler()
+        #self._add_handler()
+        return
 
     def _update(self, datadict):
         if not datadict:
@@ -56,10 +57,10 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
 
     @classmethod
     def _stop(cls, self):
-        #self.log.debug('Stopping tx %s', self.uuid)
+        # self.log.debug('Stopping tx %s', self)
         if self.sequence:
             self._node.seq.release_pending(self.sequence)
-        self._remove_handler()
+        #self._remove_handler()
         self.kill()
 
     """ Tofro dict """
@@ -76,29 +77,22 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
 
     """ Handlers """
 
-    def _add_handler(self):
-        self.channel_tx = '%s:%s' % (self.channel, self.uuid)
-        return self._node.add_handler(self.channel_tx, self)
+    #def _add_handler(self):
+    #    self.channel_tx = '%s:%s' % (self.channel, self)
+    #    return self._node.add_handler(self.channel_tx, self)
 
-    def _remove_handler(self):
-        return self._node.remove_handler(self.channel_tx, self)
+    #def _remove_handler(self):
+    #    return self._node.remove_handler(self.channel_tx, self)
 
     """ Actions """
 
-    def allocate_sequence(self):
-        if not self.sequence:
-            #self.sequence = self._node.seq.allocate_pending()
-            self.sequence = self._node.seq.pending_tx(self)
-        return self.sequence
-
     def store(self):
-        #self.log.info('Storing tx %s', self)
+        # self.log.info('Storing tx %s', self)
 
         payload = self.payload
-        self._node.kv.set(payload['key'], payload)
+        self._node.kv.set(payload['key'], payload, seq=self.sequence)
 
         self.log.debug('Stored tx %s', self)
-
 
     """ Helpers """
 
@@ -126,7 +120,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             ('proposal',    'Proposal'),
             ('voting',      'Voting'),
             ('commit',      'Commit'),
-            ('cancel',      'Cancelled'),
+            ('abort',      'Abortled'),
             ('done',        'Done'),
         )
         transitions = (
@@ -135,8 +129,8 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             ('propose', 'init', 'proposal'),
             ('receive_vote', 'proposal', 'voting'),
             ('commit', 'voting', 'commit'),
-            ('cancel', ('init', 'proposal', 'voting', 'commit'), 'cancel'),
-            ('done', ('cancel', 'commit'), 'done'),
+            ('abort', ('init', 'proposal', 'voting', 'commit'), 'abort'),
+            ('done', ('abort', 'commit'), 'done'),
         )
 
     state = State()
@@ -163,31 +157,35 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             # gevent.spawn(self.propose).join()
             self.propose()
             self.event_done.get()
-            self._run_timeout.cancel()
+            self._run_timeout.abort()
         except gevent.Timeout as e:
             self.log.error(
-                'Timeout waiting for votes on tx %s: %s', self.uuid, e)
+                'Timeout waiting for votes on tx %s: %s', self, e)
 
     """ Actions """
 
     @xworkflows.transition()
     def propose(self):
         """Flood peers with proposal for us to get stored."""
-        self.allocate_sequence()
+        if not self.sequence:
+            # self.sequence = self._node.seq.allocate_pending()
+            self.sequence = self._node.seq.pending_tx(self)
+
         self.broadcast('proposal', self.uuid, self.to_dict())
 
     @xworkflows.transition()
-    def cancel(self):
-        """Cancel (proposed) tx."""
-        self.log.warning('Cancelling proposed tx %s', self.uuid)
-        self.broadcast('cancel', self.uuid)
+    def abort(self):
+        """Abort (proposed) tx."""
+        self.log.warning('Aborting proposed tx %s', self.uuid)
+        self.broadcast('abort', self.uuid)
         self.done()
 
     @xworkflows.transition()
     def commit(self):
         """Commit (proposed) tx."""
         self.log.info('Committing proposed tx %s', self.uuid)
-        self.broadcast('commit', self.uuid, channel=self.channel_tx)
+        #self.broadcast('commit', self.uuid, channel=self.channel_tx)
+        self.broadcast('commit', self.uuid)
 
     @xworkflows.on_enter_state('commit')
     def enter_commit(self, r):
@@ -196,16 +194,21 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
     #@xworkflows.transition()
     @xworkflows.on_enter_state('done')
     def enter_done(self, r):
-        self.log.debug('Done with tx %s.', self.uuid)
+        #self.log.debug('Done with tx %s.', self.uuid)
         self.event_done.set()
 
     """ Handlers """
 
     @xworkflows.transition()
-    def receive_vote(self, peer, accept, meta):
+    def receive_vote(self, peer, uuid, accept, meta):
+        if uuid != self.uuid:
+            self.log.debug('Received vote for uuid that is not mine: %s mine=%s', uuid, self.uuid)
+            return
+
         """Sent by each peer that receives a proposal courtesy of self.propose()."""
-        self.log.info('Transaction %s received vote from %s: %s (sequence=%s).',
-                    self.uuid, peer, accept, meta['sequence'])
+        self.log.info(
+            'Transaction %s received vote from %s: %s (sequence=%s).',
+            self.uuid, peer, accept, meta['sequence'])
         # self.log.debug('meta=%s', meta)
 
         self._votes[peer] = dict(
@@ -221,35 +224,38 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             for k, v in self._votes.iteritems():
                 if not v['accept']:
                     self.log.error(
-                        'Cancelling tx %s: peer %s did not accept.', self.uuid, k)
+                        'Aborting tx %s: peer %s did not accept.', self, k)
                     raise PeerDidNotAccept
 
                 if not v['sequence'] == self.sequence:
                     self.log.error(
-                        'cancelling tx %s: peer %s sequence did not match (%s!=%s).',
-                        self.uuid, k, self.sequence, v['sequence'])
+                        'Aborting tx %s: peer %s sequence did not match (%s!=%s).',
+                        self, k, self.sequence, v['sequence'])
                     raise PeerSequenceDidNotMatch
             self.commit()
 
     def __repr__(self):
         return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)
 
+
 class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     class State(xworkflows.Workflow):
+        #initial_state = 'prepare'
         initial_state = 'proposal'
         states = (
+            #('prepare',     'Prepare'),
             ('proposal',    'Proposal'),
             ('voting',      'Voting'),
             ('commit',      'Commit'),
-            ('cancel',      'Cancelled'),
+            ('abort',      'Abortled'),
             ('done',        'Done'),
         )
         transitions = (
             ('vote', 'proposal', 'voting'),
             ('commit', 'voting', 'commit'),
-            ('cancel', ('proposal', 'voting', 'commit'), 'cancel'),
-            ('done', ('cancel', 'commit'), 'done'),
+            ('abort', ('proposal', 'voting', 'commit'), 'abort'),
+            ('done', ('abort', 'commit'), 'done'),
         )
 
     state = State()
@@ -266,36 +272,40 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
         try:
             gevent.spawn(self.vote)
             self.event_done.get()
-            self._run_timeout.cancel()
+            self._run_timeout.abort()
         except gevent.Timeout as e:
             self.log.error(
-                'Timeout waiting for votes on tx %s: %s', self.uuid, e)
+                'Timeout waiting for votes on tx %s: %s', self, e)
 
     """ Actions """
+
+    @property
+    def _vote_meta(self):
+        # self.sequence = self._node.seq.allocate_pending()
+        seq = self._node.seq.pending_tx(self, self.sequence)
+
+        cur_seq = self._node.seq.current
+        return dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)
 
     @xworkflows.transition()
     def vote(self):
         # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
-
         accept = self.sequence
-        seq = self.allocate_sequence(self.sequence)
-        cur_seq = self._node.seq.current
-
-        meta = dict(ts=datetime.now(), sequence=seq, cur_sequence=cur_seq)
-        self.log.debug('Sending vote for tx %s: meta=%s', self, meta)
-        self.unicast(self.sender, 'vote',
-                     accept, meta, channel=self.channel_tx)
+        meta = self._vote_meta
+        self.log.debug(
+            'Sending vote for tx %s: accept=%s meta=%s', self, accept, meta)
+        self.unicast(self.sender, 'vote', self.uuid, accept, meta)
 
     @xworkflows.transition()
-    def cancel(self):
-        self.log.warning('Cancelling tx %s from %s (sequence=%s).',
-                       self.uuid, self.sender, self.sequence)
+    def abort(self):
+        self.log.warning('Aborting tx %s from %s (sequence=%s).',
+                         self, self.sender, self.sequence)
         self.done()
 
     @xworkflows.transition()
     def commit(self):
         self.log.info('Committing tx %s from %s (sequence=%s).',
-                    self.uuid, self.sender, self.sequence)
+                      self, self.sender, self.sequence)
         self.store()
 
     #@xworkflows.after_transition('commit')
@@ -306,24 +316,24 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     #@xworkflows.transition()
     @xworkflows.on_enter_state('done')
     def enter_done(self, r):
-        # self.log.debug('Done with tx %s.', self.uuid)
+        # self.log.debug('Done with tx %s.', self)
         self.event_done.set()
 
     """ Handlers """
 
-    def receive_cancel(self, peer):
-        """Sent by sender to indicate cancellation of this tx"""
+    def receive_abort(self, peer):
+        """Sent by sender to indicate abortlation of this tx"""
         if peer != self.sender:
             return
-        # self.log.info('Transaction %s received cancel from %s.', self.uuid, peer)
-        # gevent.spawn(self.cancel).join()
-        self.cancel()
+        # self.log.info('Transaction %s received abort from %s.', self, peer)
+        # gevent.spawn(self.abort).join()
+        self.abort()
 
     def receive_commit(self, peer, sequence):
         """Sent by sender to indicate tx as good to commit."""
         if peer != self.sender:
             return
-        # self.log.info('Transaction %s received commit from %s (sequence=%s).', self.uuid, peer, sequence)
+        # self.log.info('Transaction %s received commit from %s (sequence=%s).', self, peer, sequence)
         # gevent.spawn(self.commit).join()
         self.commit()
 

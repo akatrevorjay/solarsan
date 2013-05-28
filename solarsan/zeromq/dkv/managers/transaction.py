@@ -1,6 +1,5 @@
 
 from solarsan import logging
-logger = logging.getLogger(__name__)
 #from solarsan.exceptions import TransactionError, PeerDidNotAccept, PeerSequenceDidNotMatch
 
 from .base import _BaseManager
@@ -15,7 +14,6 @@ class TransactionManager(_BaseManager):
     def __init__(self, node):
         _BaseManager.__init__(self, node)
         self.pending = dict()
-        self.store = dict()
 
     """ Pending transaction interface """
 
@@ -32,7 +30,7 @@ class TransactionManager(_BaseManager):
     """ Handlers """
 
     def _dead_tx(self, tx):
-        logger.debug('Dead tx: %s', tx.uuid)
+        self.log.debug('Dead tx: %s', tx.uuid)
         self.pop(tx)
         del tx
 
@@ -40,8 +38,8 @@ class TransactionManager(_BaseManager):
     #    return self._dead_tx(tx)
 
     def receive_proposal(self, peer, tx_uuid, tx_dict):
-        logger.info('Got transaction proposal from %s: %s', peer, tx_uuid)
-        logger.debug('tx_dict=%s', tx_dict)
+        self.log.info('Got transaction proposal from %s: %s', peer, tx_uuid)
+        self.log.debug('tx_dict=%s', tx_dict)
 
         tx = ReceiveTransaction.from_dict(self._node, peer, tx_dict)
         #self.append(tx)

@@ -206,7 +206,9 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
 
     @property
     def is_ready(self):
-        return self.state.is_ready
+        # TODO HACK
+        #return self.state.is_ready
+        return True
 
     active = is_ready
 

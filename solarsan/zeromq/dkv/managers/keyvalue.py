@@ -1,5 +1,6 @@
 
 from solarsan import LogMixin
+from solarsan.exceptions import SolarSanError
 
 from .base import _BaseManager
 
@@ -25,8 +26,14 @@ class KeyValueManager(_BaseManager, Reactor, LogMixin):
     def get(self, k, d=None):
         return self.store.get(k, d)
 
-    def set(self, k, v):
+    def set(self, k, v, seq):
+        # TODO do this better, locking, and this either needs merged into this
+        # or moved.
+        cur = self._node.seq.current
+        if seq <= cur:
+            raise SolarSanError("Sequence=%s is not greater than current=%s", seq, cur)
         self.store[k] = v
+        self._node.seq.current = seq
 
     def pop(self, k, d=None):
         return self.store.pop(k, d)
