@@ -179,16 +179,16 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
     @xworkflows.transition()
     def abort(self):
         """Abort (proposed) tx."""
-        self.log.warning('Aborting proposed tx %s', self.uuid)
+        self.log.warning('Aborting tx %s', self)
         self.broadcast('abort', self.uuid)
         self.done()
 
     @xworkflows.transition()
     def commit(self):
         """Commit (proposed) tx."""
-        self.log.info('Committing proposed tx %s', self.uuid)
-        #self.broadcast('commit', self.uuid, channel=self.channel_tx)
-        self.broadcast('commit', self.uuid)
+        self.log.info('Committing tx %s', self)
+        self.broadcast('commit', self.sequence, channel=self.channel_tx)
+        self.store()
 
     @xworkflows.on_enter_state('commit')
     def enter_commit(self, r):

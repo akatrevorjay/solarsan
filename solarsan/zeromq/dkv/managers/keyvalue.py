@@ -33,7 +33,8 @@ class KeyValueManager(_BaseManager, Reactor, LogMixin):
         if seq <= cur:
             raise SolarSanError("Sequence=%s is not greater than current=%s", seq, cur)
         self.store[k] = v
-        self._node.seq.current = seq
+        # TODO HACK THIS DOESNT BELONG HERE
+        self._node.seq.seq['cur'] = seq
 
     def pop(self, k, d=None):
         return self.store.pop(k, d)
