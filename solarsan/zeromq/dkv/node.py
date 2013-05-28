@@ -422,8 +422,8 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
-                    if self.debug:
-                        self.log.debug('Dispatching to: %s', h)
+                    #if self.debug:
+                    #    self.log.debug('Dispatching to: %s', h)
                     gevent.spawn(f, peer, *parts)
                     # break
 

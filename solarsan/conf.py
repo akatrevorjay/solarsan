@@ -126,7 +126,7 @@ LOGGING = {
             '()': 'colorlog.ColoredFormatter',
             'datefmt': '%H:%M:%S',
             #'format': "%(log_color)s%(levelname)-5s%(reset)s %(blue)s%(message)s"
-            'format': '%(yellow)s[%(log_color)s%(asctime)s%(yellow)s] {%(reset)s%(name)s%(yellow)s} [%(log_color)s%(levelname)s%(yellow)s] %(reset)s%(message)s %(bold)s%(purple)s@%(cyan)s%(funcName)s%(green)s:%(red)s%(lineno)d',
+            'format': '%(yellow)s[%(log_color)s%(asctime)s%(yellow)s] {%(log_color)s%(name)s%(yellow)s} [%(log_color)s%(levelname)s%(yellow)s] %(reset)s%(message)s %(bold)s%(purple)s@%(cyan)s%(funcName)s%(green)s:%(red)s%(lineno)d',
         },
         'std_solarsan': {
             'datefmt': '%H:%M:%S',
