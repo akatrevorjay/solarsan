@@ -20,7 +20,7 @@ class HeartbeatManager(_BaseManager, LogMixin):
 
     """ Run """
 
-    def _tick(self):
+    def _tick_HACK(self):
         if self.debug:
             self.log.debug('Tick')
         #if not self._node.active:

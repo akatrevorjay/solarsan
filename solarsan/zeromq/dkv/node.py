@@ -116,7 +116,7 @@ class NodeState(xworkflows.Workflow):
     )
 
 
-class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
+class Node(LogMixin, gevent.Greenlet, Reactor):
 
     '''
     Messages are handled by adding instances to the handlers list. The
@@ -126,7 +126,8 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
     parts of the ZeroMQ message.
     '''
 
-    debug = False
+    #debug = False
+    debug = True
 
     _default_encoder_cls = EJSONEncoder
     _default_managers = [HeartbeatManager, SequenceManager, TransactionManager, KeyValueManager]
@@ -202,7 +203,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
 
     """ State """
 
-    state = NodeState()
+    #state = NodeState()
 
     @property
     def is_ready(self):
@@ -272,7 +273,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
                 v.start()
         gevent.sleep(0)
 
-    @xworkflows.transition()
+    #@xworkflows.transition()
     def start(self):
         #self.bind()
         return gevent.Greenlet.start(self)
@@ -295,14 +296,14 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         self._poller.register(sock, flags)
         self._socks[sock] = (cb, flags)
 
-    @xworkflows.transition()
+    #@xworkflows.transition()
     def bind(self, rtr_addr, pub_addr):
         self.rtr.bind(rtr_addr)
         self.pub.bind(pub_addr)
 
         gevent.sleep(0.1)
 
-    @xworkflows.transition()
+    #@xworkflows.transition()
     def connect(self):
         self.log.info('Connecting..')
 
@@ -421,8 +422,8 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
-                    #if self.debug:
-                    #self.log.debug('Dispatching to: %s', h)
+                    if self.debug:
+                        self.log.debug('Dispatching to: %s', h)
                     gevent.spawn(f, peer, *parts)
                     # break
 

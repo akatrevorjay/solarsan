@@ -48,7 +48,7 @@ class SequenceManager(_BaseManager, xworkflows.WorkflowEnabled):
 
     tick_length = 1.0
 
-    def _tick(self):
+    def _tick_HACK(self):
         if self._node.active:
             # TODO Send out sequence to peers
             self.broadcast('sequence_beat', dict(seq=self.current,

@@ -16,4 +16,5 @@ class DebuggerManager(_BaseManager):
         return object.__getattribute__(self, key)
 
     def _receive_debug(self, key, *parts):
-        self.log.debug('Debugger %s: %s', key, parts, stack=2)
+        #self.log.debug('Debugger %s: %s', key, parts, stack=2)
+        self.log.debug('Debugger %s: %s', key, parts)

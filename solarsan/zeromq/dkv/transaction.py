@@ -40,8 +40,8 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
             self._update(kwargs)
 
     def _post_init(self):
-        #self._add_handler()
-        return
+        self._add_handler()
+        #return
 
     def _update(self, datadict):
         if not datadict:
@@ -60,7 +60,7 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
         # self.log.debug('Stopping tx %s', self)
         if self.sequence:
             self._node.seq.release_pending(self.sequence)
-        #self._remove_handler()
+        self._remove_handler()
         self.kill()
 
     """ Tofro dict """
@@ -77,12 +77,14 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
 
     """ Handlers """
 
-    #def _add_handler(self):
-    #    self.channel_tx = '%s:%s' % (self.channel, self)
-    #    return self._node.add_handler(self.channel_tx, self)
+    def _add_handler(self):
+        self.channel_tx = '%s:%s' % (self.channel, self.uuid)
+        self._node.add_handler(self.channel_tx, self)
+        self._node.add_handler(self.channel, self)
 
-    #def _remove_handler(self):
-    #    return self._node.remove_handler(self.channel_tx, self)
+    def _remove_handler(self):
+        self._node.remove_handler(self.channel_tx, self)
+        self._node.remove_handler(self.channel, self)
 
     """ Actions """
 
@@ -127,7 +129,8 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             #('start', 'init', 'start'),
             #('propose', 'start', 'proposal'),
             ('propose', 'init', 'proposal'),
-            ('receive_vote', 'proposal', 'voting'),
+            #('receive_vote', 'proposal', 'voting'),
+            ('voting', 'proposal', 'voting'),
             ('commit', 'voting', 'commit'),
             ('abort', ('init', 'proposal', 'voting', 'commit'), 'abort'),
             ('done', ('abort', 'commit'), 'done'),
@@ -157,7 +160,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             # gevent.spawn(self.propose).join()
             self.propose()
             self.event_done.get()
-            self._run_timeout.abort()
+            self._run_timeout.cancel()
         except gevent.Timeout as e:
             self.log.error(
                 'Timeout waiting for votes on tx %s: %s', self, e)
@@ -199,16 +202,14 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     """ Handlers """
 
-    @xworkflows.transition()
-    def receive_vote(self, peer, uuid, accept, meta):
-        if uuid != self.uuid:
-            self.log.debug('Received vote for uuid that is not mine: %s mine=%s', uuid, self.uuid)
-            return
+    #@xworkflows.transition()
+    def receive_vote(self, peer, accept, meta):
+        self.voting()
 
         """Sent by each peer that receives a proposal courtesy of self.propose()."""
         self.log.info(
-            'Transaction %s received vote from %s: %s (sequence=%s).',
-            self.uuid, peer, accept, meta['sequence'])
+            'Received vote on %s from %s: accept=%s meta=%s',
+            self, peer, accept, meta)
         # self.log.debug('meta=%s', meta)
 
         self._votes[peer] = dict(
@@ -217,7 +218,9 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             cur_sequence=meta['cur_sequence'],
         )
 
-    @xworkflows.after_transition('receive_vote')
+        self.check_if_done()
+
+    #@xworkflows.after_transition('receive_vote')
     def check_if_done(self, *args):
         # self.log.debug('args=%s', args)
         if len(self._votes) == len(self._node.peers):
@@ -290,11 +293,12 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     @xworkflows.transition()
     def vote(self):
         # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
-        accept = self.sequence
+        accept = self.sequence > self._node.seq.current
         meta = self._vote_meta
         self.log.debug(
             'Sending vote for tx %s: accept=%s meta=%s', self, accept, meta)
-        self.unicast(self.sender, 'vote', self.uuid, accept, meta)
+        #self.unicast(self.sender, 'vote', self.uuid, accept, meta, channel=self.channel_tx)
+        self.broadcast('vote', accept, meta, channel=self.channel_tx)
 
     @xworkflows.transition()
     def abort(self):
