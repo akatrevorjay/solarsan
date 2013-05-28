@@ -51,9 +51,8 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
 
     def _run(self):
         self.running = True
-        self._run_timeout = timeout = gevent.Timeout(
-            seconds=self._timeout.seconds)
-        timeout.start()
+        self._run_timeout = gevent.Timeout(seconds=self._timeout.seconds)
+        self._run_timeout.start()
 
     @classmethod
     def _stop(cls, self):
@@ -142,7 +141,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     def __init__(self, node, **kwargs):
         _BaseTransaction.__init__(self, node, **kwargs)
-        self.sender = self._node.uuid
+        self.sender = str(self._node.uuid)
 
         if not self.uuid:
             self.uuid = uuid4().get_hex()
@@ -164,6 +163,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
         except gevent.Timeout as e:
             self.log.error(
                 'Timeout waiting for votes on tx %s: %s', self, e)
+            self.abort()
 
     """ Actions """
 
@@ -180,8 +180,8 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
     def abort(self):
         """Abort (proposed) tx."""
         self.log.warning('Aborting tx %s', self)
-        self.broadcast('abort', self.uuid)
-        self.done()
+        self.broadcast('abort', channel=self.channel_tx)
+        #self.done()
 
     @xworkflows.transition()
     def commit(self):
@@ -275,7 +275,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
         try:
             gevent.spawn(self.vote)
             self.event_done.get()
-            self._run_timeout.abort()
+            self._run_timeout.cancel()
         except gevent.Timeout as e:
             self.log.error(
                 'Timeout waiting for votes on tx %s: %s', self, e)
@@ -335,7 +335,8 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
 
     def receive_commit(self, peer, sequence):
         """Sent by sender to indicate tx as good to commit."""
-        if peer != self.sender:
+        if str(peer.uuid) != self.sender:
+            self.log.error('Received commit from sender %s that does not match proposer %s', peer, self.sender)
             return
         # self.log.info('Transaction %s received commit from %s (sequence=%s).', self, peer, sequence)
         # gevent.spawn(self.commit).join()

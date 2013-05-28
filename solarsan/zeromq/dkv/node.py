@@ -413,9 +413,13 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
             self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
                            peer, channel_name, message_type, parts)
 
+        kwargs = dict()
+
         # Handle wildcard channel
         if channel_name != '*':
-            self._dispatch(peer, '*', message_type, parts, _looped=True)
+            self._dispatch(peer, '*', message_type, parts, _looped=channel_name)
+        else:
+            kwargs['channel'] = _looped
 
         handlers = self.handlers.get(channel_name, None)
         if handlers:
@@ -424,7 +428,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
                 if f:
                     #if self.debug:
                     #    self.log.debug('Dispatching to: %s', h)
-                    gevent.spawn(f, peer, *parts)
+                    gevent.spawn(f, peer, *parts, **kwargs)
                     # break
 
     def _on_rtr_received(self, raw_parts):

@@ -94,7 +94,8 @@ def send_message(n):
     m = message.Message()
     m['key'] = 'omg'
     m['value'] = True
-    m['SHAFT!'] = 'BLAFT!'
+    m['SHAFT!'] = "Hes a bad mother.. see BLAFT!"
+    m['BLAFT!'] = 'SHUT YO MOUTH'
     t = transaction.Transaction(n, payload=m)
     t.start()
     del t

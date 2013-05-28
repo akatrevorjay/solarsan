@@ -13,8 +13,9 @@ connect_node(n, 'b')
 #gevent.spawn_later(30, send_message, n)
 #gevent.spawn_later(60, send_message, n)
 
+gevent.sleep(1)
 
 while True:
     #logger.info('top of loop')
-    gevent.sleep(10)
     gevent.spawn(send_message, n)
+    gevent.sleep(6)

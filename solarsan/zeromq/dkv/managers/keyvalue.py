@@ -45,7 +45,7 @@ class KeyValueManager(_BaseManager, Reactor):
     #def update(self, data):
     #    self.store.update(data)
 
-    tick_length = 5.0
+    tick_length = 2.5
 
     def _tick(self):
         if self.debug:

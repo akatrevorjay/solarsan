@@ -1,13 +1,10 @@
 
-from solarsan import logging, LogMeta
-logger = logging.getLogger(__name__)
-#from solarsan.exceptions import NodeError
+from solarsan import pp
 from .base import _BaseManager
 from functools import partial
 
 
 class DebuggerManager(_BaseManager):
-    __metaclass__ = LogMeta
     channel = '*'
 
     def __getattribute__(self, key):
@@ -15,6 +12,10 @@ class DebuggerManager(_BaseManager):
             setattr(self, key, partial(self._receive_debug, key))
         return object.__getattribute__(self, key)
 
-    def _receive_debug(self, key, *parts):
-        #self.log.debug('Debugger %s: %s', key, parts, stack=2)
-        self.log.debug('Debugger %s: %s', key, parts)
+    def _receive_debug(self, key, peer, *parts, **kwargs):
+        key = key.split('receive_', 1)[1]
+        channel = kwargs.pop('channel')
+        #self.log.debug('Debugger [%s] %s: parts=%s kwargs=%s', channel, key, parts, kwargs)
+        print ""
+        pp([dict(channel=channel, from_peer=peer, key=key, parts=parts, kwargs=kwargs)])
+        print ""
