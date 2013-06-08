@@ -8,6 +8,26 @@ class Debugger(_BaseManager):
     channel = '*'
     ignore_channels = ('Heart', )
 
+    backdoor = True
+    backdoor_listen = '127.0.0.1:0'
+
+    def init(self, node, **kwargs):
+        self.bind(self.on_node_ready, 'node_ready')
+
+    def on_node_ready(self, event, node):
+        if self.backdoor:
+            self.backdoor_init()
+
+    def backdoor_init(self):
+        from gevent.backdoor import BackdoorServer
+
+        host, port = self.backdoor_listen.split(':', 1)
+        port = int(port)
+
+        self.bd = BackdoorServer((host, port), locals=dict(node=self._node))
+        self.bd.start()
+        self.log.debug('Initialized backdoor %s', self.bd)
+
     def __getattribute__(self, key):
         if not hasattr(self, key) and key.startswith('receive_'):
             setattr(self, key, partial(self._receive_debug, key))

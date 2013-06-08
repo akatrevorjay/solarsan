@@ -19,10 +19,11 @@ class Heart(_BaseManager):
     """ Run """
 
     def _tick(self):
+        self._node.wait_until_ready()
+
         if self.debug:
             self.log.debug('Tick')
-        #if not self._node.active:
-        #    return
+
         self.beat()
         self.bring_out_yer_dead()
 

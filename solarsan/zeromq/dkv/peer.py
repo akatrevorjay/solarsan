@@ -7,44 +7,44 @@ import gevent
 import zmq.green as zmq
 import weakref
 import xworkflows
+from reflex.base import Reactor
 
 
-class PeerState(xworkflows.Workflow):
-    initial_state = 'init'
-    states = (
-        ('init',            'Initial state'),
-        ('connecting',      'Connecting state'),
-        ('greeting',        'Greeting state'),
-        ('ready',           'Ready state'),
-
-        # TODO event system for peers, maybe peer managers per se?
-        # that way we can avoid shit like this, relying on a node plugin
-        # to handle part of our state, just a simple, init() ready() would
-        # suffice IMO
-        # TODO with above plugin or event system, this should become a state
-        # relying upon status of all of them, more generic terms, could even
-        # use 'greeted' or some shit.
-        ('syncing',         'Sync state'),
-    )
-    transitions = (
-        ('start', 'init', 'connecting'),
-        ('connect', ('init', 'connecting'), 'connecting'),
-        ('_connected', 'connecting', 'greeting'),
-        ('receive_greet', 'greeting', 'syncing'),
-        ('_synced', 'syncing', 'ready'),
-
-        ('shutdown', [x[0] for x in states], 'init')
-    )
-
-
-class Peer(LogMixin, xworkflows.WorkflowEnabled):
+class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
     uuid = None
     cluster_addr = None
     is_local = None
 
     connected = None
 
-    state = PeerState()
+    class State(xworkflows.Workflow):
+        initial_state = 'init'
+        states = (
+            ('init',            'Initial state'),
+            ('connecting',      'Connecting state'),
+            ('greeting',        'Greeting state'),
+            ('ready',           'Ready state'),
+
+            # TODO event system for peers, maybe peer managers per se?
+            # that way we can avoid shit like this, relying on a node plugin
+            # to handle part of our state, just a simple, init() ready() would
+            # suffice IMO
+            # TODO with above plugin or event system, this should become a state
+            # relying upon status of all of them, more generic terms, could even
+            # use 'greeted' or some shit.
+            ('syncing',         'Sync state'),
+        )
+        transitions = (
+            ('start', 'init', 'connecting'),
+            ('connect', ('init', 'connecting'), 'connecting'),
+            ('_connected', 'connecting', 'greeting'),
+            ('receive_greet', 'greeting', 'syncing'),
+            ('_synced', 'syncing', 'ready'),
+
+            ('shutdown', [x[0] for x in states], 'init')
+        )
+
+    state = State()
 
     def __init__(self, uuid):
         self.uuid = uuid
@@ -67,6 +67,9 @@ class Peer(LogMixin, xworkflows.WorkflowEnabled):
 
         self._node = weakref.proxy(node)
 
+        #Reactor.__init__(self, node.events)
+        #self.bind(self._on_node_ready, 'node_ready')
+
         self.sub = sub = self._node._ctx.socket(zmq.SUB)
         for sock in (sub, ):
             sock.linger = 0
@@ -76,8 +79,12 @@ class Peer(LogMixin, xworkflows.WorkflowEnabled):
 
         self._node.add_peer(self)
 
+    #def _on_node_ready(self, event, node):
+    #    self.log.debug('Node is ready!')
+
     def receive_beat(self, meta):
         if not self.connected:
+            self._node.wait_until_ready()
             self._connected()
 
     @xworkflows.transition()

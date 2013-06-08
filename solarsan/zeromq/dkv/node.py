@@ -4,6 +4,9 @@ logger = logging.getLogger(__name__)
 from solarsan.exceptions import NodeError, PeerUnknown
 
 import gevent
+import gevent.coros
+import gevent.event
+
 import zmq.green as zmq
 from uuid import uuid4
 # from datetime import datetime
@@ -159,6 +162,7 @@ class _DispatcherMixin:
 
 
 class _PeersMixin:
+    debug_peers = False
     peers = None
 
     def __init__(self):
@@ -177,7 +181,7 @@ class _PeersMixin:
             g.join(timeout=10.0)
 
     def add_peer(self, peer):
-        if self.debug:
+        if self.debug_peers:
             self.log.debug('Adding peer: %s', peer)
         uuid = str(peer.uuid)
 
@@ -305,25 +309,6 @@ class _CommunicationsMixin:
     #    self.connect(peer_uuid, router=peer_router)
 
 
-class NodeState(xworkflows.Workflow):
-    initial_state = 'init'
-    states = (
-        ('init',            'Initial state'),
-        ('starting',        'Starting state'),
-        #('connecting',      'Connecting state'),
-        #('greeting',        'Greeting state'),
-        #('syncing',         'Sync state'),
-        ('ready',           'Ready state'),
-    )
-    transitions = (
-        ('start', 'init', 'starting'),
-        ('bind', 'starting', 'ready'),
-        #('connect', 'connecting', 'connecting'),
-        #('connected', 'connecting', 'greeting'),
-        #('greeted', 'greeting', 'syncing'),
-        #('synced', 'syncing', 'ready'),
-    )
-
 
 class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
            _DispatcherMixin, _PeersMixin, _CommunicationsMixin,
@@ -336,10 +321,9 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
     if debug:
         _default_managers += [Debugger]
 
-    def __init__(self, uuid=None, encoder=_default_encoder_cls()):
+    def __init__(self, uuid=None, encoder=_default_encoder_cls(), events=EventManager()):
         gevent.Greenlet.__init__(self)
-
-        self.events = EventManager()
+        self.events = events
         Reactor.__init__(self, self.events, uuid=uuid, encoder=encoder)
 
     def init(self, *args, **kwargs):
@@ -348,6 +332,8 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
         if not uuid:
             uuid = uuid4().get_hex()
         self.uuid = str(uuid)
+
+        self.event_ready = gevent.event.AsyncResult()
 
         _PeersMixin.__init__(self)
 
@@ -362,15 +348,32 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
 
     """ State """
 
-    state = NodeState()
+    class State(xworkflows.Workflow):
+        initial_state = 'init'
+        states = (
+            ('init',            'Initial state'),
+            ('starting',        'Starting state'),
+            ('ready',           'Ready state'),
+        )
+        transitions = (
+            ('start', 'init', 'starting'),
+            ('bind', 'starting', 'ready'),
+        )
+
+    state = State()
 
     @property
     def is_ready(self):
-        # TODO HACK
-        # return self.state.is_ready
-        return True
+        return self.state.is_ready()
+        #return self.event_ready.is_set()
 
-    active = is_ready
+    @xworkflows.on_enter_state('ready')
+    def _on_ready(self, *args):
+        self.trigger(Event('node_ready'), self)
+        self.event_ready.set()
+
+    def wait_until_ready(self, timeout=None):
+        return self.event_ready.wait(timeout=timeout)
 
     """ Run """
 
