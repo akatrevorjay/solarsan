@@ -6,8 +6,8 @@ from solarsan.exceptions import NodeError, PeerUnknown
 import gevent
 import zmq.green as zmq
 from uuid import uuid4
-# from datetime import datetime
-# from functools import partial
+#from datetime import datetime
+#from functools import partial
 import weakref
 import xworkflows
 
@@ -20,12 +20,11 @@ from reflex.control import Callable, Event, EventManager, \
 from .encoder import EJSONEncoder
 from .peer import Peer
 
-from .managers.heartbeat import HeartbeatManager
-from .managers.sequence import SequenceManager
+from .managers.heartbeat import Heart
+from .managers.sequence import Sequencer
 from .managers.transaction import TransactionManager
-from .managers.debugger import DebuggerManager
+from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
-
 
 
 class NodeState(xworkflows.Workflow):
@@ -33,14 +32,14 @@ class NodeState(xworkflows.Workflow):
     states = (
         ('init',            'Initial state'),
         ('starting',        'Starting state'),
-        ('connecting',      'Connecting state'),
-        ('greeting',        'Greeting state'),
-        ('syncing',         'Sync state'),
+        #('connecting',      'Connecting state'),
+        #('greeting',        'Greeting state'),
+        #('syncing',         'Sync state'),
         ('ready',           'Ready state'),
     )
     transitions = (
         ('start', 'init', 'starting'),
-        ('bind', 'starting', 'connecting'),
+        ('bind', 'starting', 'ready'),
         #('connect', 'connecting', 'connecting'),
         #('connected', 'connecting', 'greeting'),
         #('greeted', 'greeting', 'syncing'),
@@ -53,18 +52,18 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
     '''
     Messages are handled by adding instances to the handlers list. The
     first instance that contains a method named 'receive_<message_type>'
-    will have that method called. The first argument is always the message
-    sender's uuid. The remaining positional arguments are filled with the
-    parts of the ZeroMQ message.
+    will have that method called. The first argument is always the Peer.
+    The remaining positional arguments are filled with the parts of the
+    zmq message.
     '''
 
     #debug = False
     debug = True
 
     _default_encoder_cls = EJSONEncoder
-    _default_managers = [HeartbeatManager, SequenceManager, TransactionManager, KeyValueManager]
+    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager]
     if debug:
-        _default_managers += [DebuggerManager]
+        _default_managers += [Debugger]
 
     uuid = None
     peers = None

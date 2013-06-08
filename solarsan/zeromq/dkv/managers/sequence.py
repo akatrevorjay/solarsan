@@ -1,18 +1,12 @@
 
-from solarsan import logging, LogMixin
-logger = logging.getLogger(__name__)
 from solarsan.exceptions import NodeNotReadyError
-
 from .base import _BaseManager
 
 import gevent
 import gevent.coros
-# import zmq.green as zmq
-
-from datetime import datetime
 import xworkflows
+#from datetime import datetime
 from collections import deque, Counter, defaultdict
-
 import weakref
 
 
@@ -25,7 +19,7 @@ class SequenceSet(object):
         pass
 
 
-class SequenceManager(_BaseManager, xworkflows.WorkflowEnabled):
+class Sequencer(_BaseManager, xworkflows.WorkflowEnabled):
     def __init__(self, node):
         _BaseManager.__init__(self, node)
 

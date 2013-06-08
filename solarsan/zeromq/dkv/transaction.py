@@ -1,11 +1,9 @@
 
-from solarsan import logging, LogMixin
-logger = logging.getLogger(__name__)
+from solarsan import LogMixin
 from solarsan.exceptions import TransactionError, PeerDidNotAccept, PeerSequenceDidNotMatch
 
 import gevent
 import gevent.event
-import zmq.green as zmq
 from uuid import uuid4
 from datetime import datetime, timedelta
 # from copy import copy
@@ -124,7 +122,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             ('proposal',    'Proposal'),
             ('voting',      'Voting'),
             ('commit',      'Commit'),
-            ('abort',      'Abortled'),
+            ('abort',       'Aborted'),
             ('done',        'Done'),
         )
         transitions = (
@@ -254,7 +252,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
             ('proposal',    'Proposal'),
             ('voting',      'Voting'),
             ('commit',      'Commit'),
-            ('abort',      'Abortled'),
+            ('abort',       'Aborted'),
             ('done',        'Done'),
         )
         transitions = (
@@ -320,7 +318,6 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     def enter_commit(self, r):
         self.done()
 
-    #@xworkflows.transition()
     @xworkflows.on_enter_state('done')
     def enter_done(self, r):
         # self.log.debug('Done with tx %s.', self)
@@ -340,53 +337,3 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
             self.log.error('Received commit from sender %s that does not match proposer %s', peer, self.sender)
             return
         self.commit()
-
-
-'''
-class OldTransaction:
-
-    """ Old Actions """
-
-    def publish(self, sock):
-        """Broadcast message to all peers.
-        @param sock: publisher socket
-        """
-        sock.send('TXN_PENDING', zmq.SNDMORE)
-        sock.send_json(self.to_dict())
-
-    def pending_recv(cls, data, agent=None):
-        self = cls(None, agent=agent, data=data)
-        return self
-
-    def vote_recv(self, peer, msg):
-        sequence = int(msg[0])
-
-        self.replies[peer.uuid] = sequence
-        vote = self.votes.get(sequence, 0)
-        self.votes[sequence] = vote + 1
-
-        # TODO Auto-commit here if we have a unanimous vote.
-        # ^ need to get the peer count.
-        if len(self.votes) >= self._agent.peer_count:
-            self.commit(sequence)
-
-    @property
-    def max_sequence_vote(self):
-        if self.votes:
-            return max(set(self.votes.keys()))
-
-    def commit(self, sequence):
-        sequence = int(sequence)
-        self.publisher.send('TXN_COMMIT', zmq.SNDMORE)
-        self.publisher.send(str(sequence))
-        self.sequence = sequence
-        self.store()
-
-    def commit_recv(self, peer, msg):
-        self.sequence = msg[0]
-        self.store()
-
-    def store(self):
-        # self._agent.kvmap.append(self.payload)
-        pass
-'''

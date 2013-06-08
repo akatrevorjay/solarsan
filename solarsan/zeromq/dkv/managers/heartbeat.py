@@ -1,7 +1,5 @@
 
-from solarsan import logging, LogMixin
 from solarsan.exceptions import NodeNotReadyError
-
 from .base import _BaseManager
 
 import gevent
@@ -11,7 +9,7 @@ import xworkflows
 from collections import deque, Counter
 
 
-class HeartbeatManager(_BaseManager, LogMixin):
+class Heart(_BaseManager):
 
     debug = False
     tick_length = 1.0

@@ -1,5 +1,5 @@
 
-from solarsan import LogMixin, pp
+from solarsan import pp
 from solarsan.exceptions import SolarSanError
 
 from .base import _BaseManager
@@ -7,16 +7,14 @@ from .base import _BaseManager
 from collections import Counter, OrderedDict, defaultdict, deque
 from gevent.queue import Queue, LifoQueue, PriorityQueue, JoinableQueue
 
-from ..message import Message
-
-from reflex.base import Reactor
+#from ..message import Message
 
 
 class KeyValueStorage(dict):
     pass
 
 
-class KeyValueManager(_BaseManager, Reactor):
+class KeyValueManager(_BaseManager):
     #debug = False
     debug = True
 

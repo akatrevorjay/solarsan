@@ -3,62 +3,15 @@ from solarsan import logging, LogMixin
 logger = logging.getLogger(__name__)
 
 import gevent
-#from datetime import datetime
-#from functools import partial
-#import weakref
-
-#from .channel import Channel
 from reflex.base import Reactor
 
 
 """
-Base
+Manager
 """
 
 
-class NodePlugin(type):
-    _registry = set()
-
-    def __new__(meta, name, bases, dct):
-        ret = type.__new__(meta, name, bases, dct)
-        meta._registry.add(ret)
-        return ret
-
-    #def __init__(cls, name, bases, dct):
-    #    dct['log'] = logging.getLogger('%s.%s' % (_get_caller_module_name(), name))
-    #    super(LogMetaAttr, cls).__init__(name, bases, dct)
-
-    #def __call__(cls, *args, **kwargs):
-    #    if 'log' not in kwargs:
-    #        kwargs['log'] = logging.getLogger('%s.%s' % (_get_caller_module_name(), cls.__name__))
-    #    return type.__call__(cls, *args, **kwargs)
-
-    #class __metaclass__(type):
-    #    def __init__(cls, name, bases, dict):
-    #        NodePlugin._registry.add((name, cls))
-    #        return type.__init__(name, bases, dict)
-
-
-## in your plugin modules
-#class SpamPlugin(Plugin):
-#    pass
-
-#class BaconPlugin(Plugin):
-#    pass
-
-## in your plugin loader
-## import all plugin modules
-
-## loop over registered plugins
-#for name, cls in registry:
-#    if cls is not Plugin:
-#    print name, cls
-
-
-
 class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
-    channel = None
-
     def __init__(self, node, **kwargs):
         if hasattr(self, 'pre_init'):
             self.pre_init(node, **kwargs)
@@ -81,9 +34,9 @@ class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
 
     def _set_channel(self, channel=None):
         if not channel:
-            channel = self.channel
+            channel = getattr(self, 'channel', None)
         if not channel:
-            channel = self.__class__.channel
+            channel = getattr(self.__class__, 'channel', None)
         if not channel:
             channel = self.__class__.__name__
             if channel.endswith('Manager'):
@@ -100,18 +53,16 @@ class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
         pass
 
     def _run(self):
-        """What gets spawned to run this manager. Defaults to a quick ticker that spawns
+        """What gets spawned to run this manager. Defaults to a ticker that spawns
         self._tick every self.time_length seconds, with a timeout of self.time_timeout.
         """
         self.running = True
-        tick_length = getattr(self, 'tick_length')
-        tick_timeout = getattr(self, 'tick_timeout')
 
         while self.running:
-            gevent.sleep(tick_length)
+            gevent.sleep(self.tick_length)
 
             g = gevent.spawn(self._tick)
-            g.join(timeout=tick_timeout)
+            g.join(timeout=self.tick_timeout)
 
             if not g.dead:
                 self.log.error('Tick timed out.')
@@ -138,3 +89,47 @@ class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
     def unicast(self, peer, message_type, *parts, **kwargs):
         channel = kwargs.pop('channel', self.channel)
         return self._node.unicast(peer, channel, message_type, *parts)
+
+
+"""
+Plugin (antequated atm)
+"""
+
+
+#class NodePlugin(type):
+#    _registry = set()
+
+#    def __new__(meta, name, bases, dct):
+#        ret = type.__new__(meta, name, bases, dct)
+#        meta._registry.add(ret)
+#        return ret
+
+#    #def __init__(cls, name, bases, dct):
+#    #    dct['log'] = logging.getLogger('%s.%s' % (_get_caller_module_name(), name))
+#    #    super(LogMetaAttr, cls).__init__(name, bases, dct)
+
+#    #def __call__(cls, *args, **kwargs):
+#    #    if 'log' not in kwargs:
+#    #        kwargs['log'] = logging.getLogger('%s.%s' % (_get_caller_module_name(), cls.__name__))
+#    #    return type.__call__(cls, *args, **kwargs)
+
+#    #class __metaclass__(type):
+#    #    def __init__(cls, name, bases, dict):
+#    #        NodePlugin._registry.add((name, cls))
+#    #        return type.__init__(name, bases, dict)
+
+
+## in your plugin modules
+#class SpamPlugin(Plugin):
+#    pass
+
+#class BaconPlugin(Plugin):
+#    pass
+
+## in your plugin loader
+## import all plugin modules
+
+## loop over registered plugins
+#for name, cls in registry:
+#    if cls is not Plugin:
+#    print name, cls

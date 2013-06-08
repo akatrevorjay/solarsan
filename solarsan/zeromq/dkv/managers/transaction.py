@@ -1,5 +1,4 @@
 
-from solarsan import logging
 #from solarsan.exceptions import TransactionError, PeerDidNotAccept, PeerSequenceDidNotMatch
 
 from .base import _BaseManager
@@ -30,7 +29,7 @@ class TransactionManager(_BaseManager):
     """ Handlers """
 
     def _dead_tx(self, tx):
-        self.log.debug('Dead tx: %s', tx.uuid)
+        #self.log.debug('Dead tx: %s', tx.uuid)
         self.pop(tx)
         del tx
 

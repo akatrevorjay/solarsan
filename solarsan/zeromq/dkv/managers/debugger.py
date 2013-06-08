@@ -4,10 +4,9 @@ from .base import _BaseManager
 from functools import partial
 
 
-class DebuggerManager(_BaseManager):
+class Debugger(_BaseManager):
     channel = '*'
-
-    ignore_channels = ('Heartbeat', )
+    ignore_channels = ('Heart', )
 
     def __getattribute__(self, key):
         if not hasattr(self, key) and key.startswith('receive_'):

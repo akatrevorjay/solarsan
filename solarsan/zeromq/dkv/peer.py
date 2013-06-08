@@ -51,6 +51,9 @@ class Peer(LogMixin, xworkflows.WorkflowEnabled):
         self.is_local = False
         self.connected = False
 
+    def __repr__(self):
+        return "<%s uuid='%s'>" % (self.__class__.__name__, str(self.uuid))
+
     """ Connection """
 
     def _connect_sub(self):
