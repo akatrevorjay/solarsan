@@ -4,7 +4,7 @@ class _BaseDict(dict):
         dict.__init__(self, **kwargs)
 
     def __repr__(self):
-        return '<%s "%s">' % (self.__class__.__name__, dict.__repr__(self))
+        return '<%s %s>' % (self.__class__.__name__, dict.__repr__(self))
 
     def __setattr__(self, k, v):
         if k.startswith('_'):
