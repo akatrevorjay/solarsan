@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 from solarsan.zeromq.dkv.test_listener import *
 logger = logging.getLogger(__name__)
