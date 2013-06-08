@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import gevent.monkey
 gevent.monkey.patch_all()
@@ -31,7 +32,8 @@ bind_fmt = 'tcp://*:%s'
 connect_fmt = 'tcp://127.0.0.1:%s'
 
 
-NODE_LIST = set(['a', 'b', 'c'])
+#NODE_LIST = set(['a', 'b', 'c'])
+NODE_LIST = set(['a', 'b'])
 logger.info('node_list=%s', NODE_LIST)
 
 
@@ -80,7 +82,7 @@ def bind_node(what):
     name, c, n = get_node_stuffs(what)
     logger.debug('Binding node %s to %s', n, c)
     n.start()
-    n.bind(bind_fmt % c.rtr, bind_fmt % c.pub)
+    n.bind_listeners(bind_fmt % c.rtr, bind_fmt % c.pub)
 
 
 def connect_nodes(n, *to_ns):
@@ -109,11 +111,19 @@ def send_message(n):
 
 
 def main():
-    na = get_node('a')
-    nb = get_node('b')
-    connect_node(na, nb)
-    connect_node(nb, na)
+    ns = [get_node(name) for name in NODE_LIST]
+
+    for n in ns:
+        peer_list = NODE_LIST.difference(set([n._node_name]))
+        bind_node(n)
+        connect_nodes(n, *peer_list)
+
+    for n in ns:
+        n.wait_until_ready()
 
     while True:
         gevent.sleep(1)
         # t.propose()
+
+if __name__ == '__main__':
+    main()
