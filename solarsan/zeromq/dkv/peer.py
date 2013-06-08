@@ -3,21 +3,53 @@ from solarsan import logging, conf, LogMeta, LogMixin
 logger = logging.getLogger(__name__)
 #from solarsan.exceptions import NodeError
 
-import weakref
+import gevent
 import zmq.green as zmq
-#import gevent
+import weakref
+import xworkflows
 
-#from .base import _BaseDict
+
+class PeerState(xworkflows.Workflow):
+    initial_state = 'init'
+    states = (
+        ('init',            'Initial state'),
+        ('connecting',      'Connecting state'),
+        ('greeting',        'Greeting state'),
+        ('ready',           'Ready state'),
+
+        # TODO event system for peers, maybe peer managers per se?
+        # that way we can avoid shit like this, relying on a node plugin
+        # to handle part of our state, just a simple, init() ready() would
+        # suffice IMO
+        # TODO with above plugin or event system, this should become a state
+        # relying upon status of all of them, more generic terms, could even
+        # use 'greeted' or some shit.
+        ('syncing',         'Sync state'),
+    )
+    transitions = (
+        ('start', 'init', 'connecting'),
+        ('connect', ('init', 'connecting'), 'connecting'),
+        ('_connected', 'connecting', 'greeting'),
+        ('receive_greet', 'greeting', 'syncing'),
+        ('_synced', 'syncing', 'ready'),
+
+        ('shutdown', [x[0] for x in states], 'init')
+    )
 
 
-class Peer(LogMixin):
+class Peer(LogMixin, xworkflows.WorkflowEnabled):
     uuid = None
     cluster_addr = None
     is_local = None
 
+    connected = None
+
+    state = PeerState()
+
     def __init__(self, uuid):
         self.uuid = uuid
         self.is_local = False
+        self.connected = False
 
     """ Connection """
 
@@ -25,6 +57,7 @@ class Peer(LogMixin):
         # Connect subscriber
         self.sub.connect(self.pub_addr)
 
+    @xworkflows.transition()
     def connect(self, node):
         #if self.debug:
         self.log.debug('Connecting to peer: %s', self)
@@ -40,12 +73,45 @@ class Peer(LogMixin):
 
         self._node.add_peer(self)
 
+    def receive_beat(self, meta):
+        if not self.connected:
+            self._connected()
+
+    @xworkflows.transition()
+    def _connected(self):
+        self.log.info('Connected to %s', self)
+        self.connected = True
+        gevent.spawn(self.greet)
+
+    def greet(self):
+        self.log.debug('Greeting %s', self)
+        # TODO actually greet, remove this hackery
+        gevent.spawn(self.receive_greet)
+
+    @xworkflows.transition()
+    def receive_greet(self):
+        self.log.debug('Received greet from %s', self)
+        gevent.spawn(self._sync)
+
+    def _sync(self):
+        self.log.debug('Syncing %s', self)
+        # TODO Sync
+        gevent.spawn_later(2, self._synced)
+
+    @xworkflows.transition()
+    def _synced(self):
+        self.log.debug('Completed syncing %s', self)
+
+    @xworkflows.transition()
     def shutdown(self):
-        #if self.debug:
         self.log.debug('Shutting down peer: %s', self)
 
         if hasattr(self, '_node'):
             self._node.remove_peer(self)
+        self._disconnect()
+
+    def _disconnect(self):
+        self.log.debug('Disconnecting from peer: %s', self)
         if hasattr(self, 'sub'):
             self.sub.close()
 

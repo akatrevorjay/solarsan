@@ -20,7 +20,7 @@ class HeartbeatManager(_BaseManager, LogMixin):
 
     """ Run """
 
-    def _tick_HACK(self):
+    def _tick(self):
         if self.debug:
             self.log.debug('Tick')
         #if not self._node.active:
@@ -51,7 +51,8 @@ class HeartbeatManager(_BaseManager, LogMixin):
         if self.debug:
             self.log.debug('Heartbeat from %s: meta=%s', peer, meta)
         peer.last_heartbeat_at = datetime.now()
-        #peer.receive_beat(meta)
+        if getattr(peer, 'receive_beat', None):
+            peer.receive_beat(meta)
 
     def bring_out_yer_dead(self):
         for peer in self._node.peers.values():
@@ -60,4 +61,9 @@ class HeartbeatManager(_BaseManager, LogMixin):
                 continue
             if last_heartbeat_at + self.heartbeat_ttl < datetime.now():
                 self.log.error('Have not gotten any heartbeats from %s in too long; marking as dead.', peer)
-                peer.shutdown()
+                # TODO Maybe it's better to mark peer as "disconnected" and not
+                # shut it down and remove it for an amount of time? idk,
+                # discovery would alleviate that after all. Stick with
+                # discovery and removal.
+                # TODO HACK for development (we expect disconnections!)
+                #peer.shutdown()

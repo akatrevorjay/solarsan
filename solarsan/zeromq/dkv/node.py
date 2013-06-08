@@ -1,12 +1,7 @@
 
-from solarsan import logging, conf, LogMeta, LogMixin
+from solarsan import logging, conf, LogMixin
 logger = logging.getLogger(__name__)
 from solarsan.exceptions import NodeError, PeerUnknown
-
-from .encoder import EJSONEncoder
-
-# from .message import MessageContainer
-# from .channel import Channel
 
 import gevent
 import zmq.green as zmq
@@ -14,14 +9,16 @@ from uuid import uuid4
 # from datetime import datetime
 # from functools import partial
 import weakref
+import xworkflows
 
 from reflex.base import Reactor, Binding, Ruleset
 from reflex.control import Callable, Event, EventManager, \
     PackageBattery, ReactorBattery, RulesetBattery
 
-import xworkflows
-
-from . import managers as node_managers
+#from .message import MessageContainer
+#from .channel import Channel
+from .encoder import EJSONEncoder
+from .peer import Peer
 
 from .managers.heartbeat import HeartbeatManager
 from .managers.sequence import SequenceManager
@@ -29,7 +26,6 @@ from .managers.transaction import TransactionManager
 from .managers.debugger import DebuggerManager
 from .managers.keyvalue import KeyValueManager
 
-from .peer import Peer
 
 
 class NodeState(xworkflows.Workflow):
@@ -44,15 +40,15 @@ class NodeState(xworkflows.Workflow):
     )
     transitions = (
         ('start', 'init', 'starting'),
-        ('bind', ('init', 'starting'), 'connecting'),
-        ('connect', 'connecting', 'connecting'),
-        ('connected', 'connecting', 'greeting'),
-        ('greeted', 'greeting', 'syncing'),
-        ('synced', 'syncing', 'ready'),
+        ('bind', 'starting', 'connecting'),
+        #('connect', 'connecting', 'connecting'),
+        #('connected', 'connecting', 'greeting'),
+        #('greeted', 'greeting', 'syncing'),
+        #('synced', 'syncing', 'ready'),
     )
 
 
-class Node(LogMixin, gevent.Greenlet, Reactor):
+class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
 
     '''
     Messages are handled by adding instances to the handlers list. The
@@ -128,18 +124,14 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
             managers = []
         managers += self._default_managers
 
-        #self.battery = ReactorBattery()
-
         for cls in managers:
             if self.debug:
                 self.log.debug('Loading manager %s', cls)
             cls(self)
-            #self.battery.load_objects(
-            #    self.events, node_managers, 'Manager', self)
 
     """ State """
 
-    #state = NodeState()
+    state = NodeState()
 
     @property
     def is_ready(self):
@@ -209,7 +201,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
                 v.start()
         gevent.sleep(0)
 
-    #@xworkflows.transition()
+    @xworkflows.transition()
     def start(self):
         #self.bind()
         return gevent.Greenlet.start(self)
@@ -232,14 +224,13 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
         self._poller.register(sock, flags)
         self._socks[sock] = (cb, flags)
 
-    #@xworkflows.transition()
+    @xworkflows.transition()
     def bind(self, rtr_addr, pub_addr):
         self.rtr.bind(rtr_addr)
         self.pub.bind(pub_addr)
 
         gevent.sleep(0.1)
 
-    #@xworkflows.transition()
     def connect(self):
         self.log.info('Connecting..')
 
@@ -252,6 +243,8 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
             g.join(timeout=10.0)
 
     def add_peer(self, peer):
+        if self.debug:
+            self.log.debug('Adding peer: %s', peer)
         uuid = str(peer.uuid)
 
         # TODO I don't believe this is the correct way of handling this.
@@ -262,8 +255,6 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
         if peer.uuid in self.peers:
             self.peers[uuid].shutdown()
 
-        if self.debug:
-            self.log.debug('Adding peer: %s', peer)
         self.peers[uuid] = peer
         self.connect_peer(peer)
 
@@ -271,6 +262,7 @@ class Node(LogMixin, gevent.Greenlet, Reactor):
         self.log.info('Removing peer: %s', peer)
         uuid = str(peer.uuid)
         if uuid in self.peers:
+            del peer
             del self.peers[uuid]
 
     def connect_peer(self, peer):
