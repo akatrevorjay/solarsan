@@ -294,7 +294,8 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     @xworkflows.transition()
     def vote(self):
         # TODO COMPARE SEQUENCE TO MAKE SURE ITS OK BEFORE ACCEPTANCE
-        accept = self.sequence > self._node.seq.current
+        #accept = self.sequence > self._node.seq.current
+        accept = self.sequence == self._node.seq.current + 1
         meta = self._vote_meta
         self.log.debug(
             'Sending vote for tx %s: accept=%s meta=%s', self, accept, meta)
