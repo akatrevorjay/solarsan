@@ -3,7 +3,7 @@ from solarsan.exceptions import NodeNotReadyError
 from .base import _BaseManager
 
 import gevent
-#import zmq.green as zmq
+# import zmq.green as zmq
 from datetime import datetime, timedelta
 import xworkflows
 from collections import deque, Counter
@@ -15,6 +15,10 @@ class Heart(_BaseManager):
     tick_length = 1.0
     tick_timeout = 5.0
     heartbeat_ttl = timedelta(seconds=tick_length * 2)
+
+    # TODO HACK for development (we expect disconnections!)
+    neutered = True
+    neutered_log = True
 
     """ Run """
 
@@ -33,7 +37,7 @@ class Heart(_BaseManager):
     def _meta(self):
         meta = dict()
 
-        #if self._node.active:
+        # if self._node.active:
         if True:
             meta['sequence'] = dict(current=self._node.seq.current)
 
@@ -59,10 +63,12 @@ class Heart(_BaseManager):
             if last_heartbeat_at is None:
                 continue
             if last_heartbeat_at + self.heartbeat_ttl < datetime.now():
-                self.log.error('Have not gotten any heartbeats from %s in too long; marking as dead.', peer)
+                if not self.neutered_log:
+                    self.log.error(
+                        'Have not gotten any heartbeats from %s in too long; marking as dead.', peer)
                 # TODO Maybe it's better to mark peer as "disconnected" and not
                 # shut it down and remove it for an amount of time? idk,
                 # discovery would alleviate that after all. Stick with
                 # discovery and removal.
-                # TODO HACK for development (we expect disconnections!)
-                #peer.shutdown()
+                if not self.neutered:
+                    peer.shutdown()
