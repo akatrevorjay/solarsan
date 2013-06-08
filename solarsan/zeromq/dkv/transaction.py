@@ -130,7 +130,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             #('propose', 'start', 'proposal'),
             ('propose', 'init', 'proposal'),
             #('receive_vote', 'proposal', 'voting'),
-            ('voting', 'proposal', 'voting'),
+            ('voting', ('proposal', 'voting'), 'voting'),
             ('commit', 'voting', 'commit'),
             ('abort', ('init', 'proposal', 'voting', 'commit'), 'abort'),
             ('done', ('abort', 'commit'), 'done'),
