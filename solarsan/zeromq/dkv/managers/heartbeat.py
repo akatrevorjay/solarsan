@@ -17,8 +17,8 @@ class Heart(_BaseManager):
     heartbeat_ttl = timedelta(seconds=tick_length * 2)
 
     # TODO HACK for development (we expect disconnections!)
-    neutered = True
-    neutered_log = True
+    neutered = False
+    neutered_log = False
 
     """ Run """
 
