@@ -6,17 +6,17 @@ from solarsan.exceptions import NodeError, PeerUnknown
 import gevent
 import zmq.green as zmq
 from uuid import uuid4
-#from datetime import datetime
-#from functools import partial
+# from datetime import datetime
+# from functools import partial
 import weakref
 import xworkflows
 
 from reflex.base import Reactor, Binding, Ruleset
-from reflex.control import Callable, Event, EventManager, \
-    PackageBattery, ReactorBattery, RulesetBattery
+from reflex.control import Callable, Event, PackageBattery, ReactorBattery, RulesetBattery
+from reflex.control import EventManager as _BaseEventManager
 
-#from .message import MessageContainer
-#from .channel import Channel
+# from .message import MessageContainer
+# from .channel import Channel
 from .encoder import EJSONEncoder
 from .peer import Peer
 
@@ -27,27 +27,15 @@ from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
 
 
-class NodeState(xworkflows.Workflow):
-    initial_state = 'init'
-    states = (
-        ('init',            'Initial state'),
-        ('starting',        'Starting state'),
-        #('connecting',      'Connecting state'),
-        #('greeting',        'Greeting state'),
-        #('syncing',         'Sync state'),
-        ('ready',           'Ready state'),
-    )
-    transitions = (
-        ('start', 'init', 'starting'),
-        ('bind', 'starting', 'ready'),
-        #('connect', 'connecting', 'connecting'),
-        #('connected', 'connecting', 'greeting'),
-        #('greeted', 'greeting', 'syncing'),
-        #('synced', 'syncing', 'ready'),
-    )
+
+class EventManager(_BaseEventManager, LogMixin):
+
+    def __init__(self, *args, **kwargs):
+        _BaseEventManager.__init__(
+            self, self.log.info, self.log.debug, *args, **kwargs)
 
 
-class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
+class _DispatcherMixin:
 
     '''
     Messages are handled by adding instances to the handlers list. The
@@ -57,68 +45,42 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
     zmq message.
     '''
 
-    #debug = False
-    debug = True
-
-    _default_encoder_cls = EJSONEncoder
-    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager]
-    if debug:
-        _default_managers += [Debugger]
-
-    uuid = None
-    peers = None
-    _socks = None
-    _ctx = None
-    _poller = None
-
-    def __init__(self, uuid=None, encoder=_default_encoder_cls()):
-        gevent.Greenlet.__init__(self)
-        self.events = EventManager()
-        Reactor.__init__(self, self.events, uuid=uuid, encoder=encoder)
-
-    def init(self, *args, **kwargs):
-        # uuid
-        uuid = kwargs.get('uuid')
-        if not uuid:
-            uuid = uuid4().get_hex()
-        self.uuid = str(uuid)
-
-        # encoder
-        self.encoder = kwargs['encoder']
-
+    def __init__(self):
         # event handlers
         self.handlers = dict()
 
-        # peers
-        self.peers = dict()
+    """ Handlers """
 
-        """ Sockets """
+    def add_handler(self, channel_name, handler):
+        if not channel_name in self.handlers:
+            if self.debug:
+                self.log.debug('Add channel: %s', channel_name)
+            self.handlers[channel_name] = list()
 
-        # 0MQ init
-        if not self._ctx:
-            self._ctx = zmq.Context.instance()
-        if not self._poller:
-            self._poller = zmq.Poller()
+        if handler not in self.handlers[channel_name]:
+            # handler = weakref.proxy(handler)
+            if self.debug:
+                self.log.debug(
+                    'Add handler: %s chan=%s', handler, channel_name)
+            self.handlers[channel_name].append(handler)
 
-        # dict of sockets to poll
-        self._socks = dict()
+    def remove_handler(self, channel_name, handler):
+        if channel_name in self.handlers:
+            if handler in self.handlers[channel_name]:
+                if self.debug:
+                    self.log.debug(
+                        'Remove handler: %s chan=%s', handler, channel_name)
+                self.handlers[channel_name].remove(handler)
+            if not self.handlers[channel_name]:
+                if self.debug:
+                    self.log.debug('Remove channel: %s', channel_name)
+                self.handlers.pop(channel_name)
 
-        # router socket
-        rtr = self.rtr = self._ctx.socket(zmq.ROUTER)
-        rtr.setsockopt(zmq.IDENTITY, self.uuid)
-        self._add_sock(rtr, self._on_rtr_received)
-
-        # publisher socket
-        self.pub = self._ctx.socket(zmq.PUB)
-
-        for sock in (self.rtr, self.pub):
-            sock.linger = 0
-
+    def init_managers(self, *managers):
         """ Managers """
 
         self.managers = dict()
 
-        managers = kwargs.get('managers')
         if not managers:
             managers = []
         managers += self._default_managers
@@ -127,18 +89,6 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
             if self.debug:
                 self.log.debug('Loading manager %s', cls)
             cls(self)
-
-    """ State """
-
-    state = NodeState()
-
-    @property
-    def is_ready(self):
-        # TODO HACK
-        #return self.state.is_ready
-        return True
-
-    active = is_ready
 
     """ Managers """
 
@@ -161,74 +111,54 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         if name in self.managers:
             del self.managers[name]
 
-    """ Handlers """
-
-    def add_handler(self, channel_name, handler):
-        if not channel_name in self.handlers:
-            if self.debug:
-                self.log.debug('Add channel: %s', channel_name)
-            self.handlers[channel_name] = list()
-
-        if handler not in self.handlers[channel_name]:
-            # handler = weakref.proxy(handler)
-            if self.debug:
-                self.log.debug('Add handler: %s chan=%s', handler, channel_name)
-            self.handlers[channel_name].append(handler)
-
-    def remove_handler(self, channel_name, handler):
-        if channel_name in self.handlers:
-            if handler in self.handlers[channel_name]:
-                if self.debug:
-                    self.log.debug(
-                        'Remove handler: %s chan=%s', handler, channel_name)
-                self.handlers[channel_name].remove(handler)
-            if not self.handlers[channel_name]:
-                if self.debug:
-                    self.log.debug('Remove channel: %s', channel_name)
-                self.handlers.pop(channel_name)
-
-    """ Run """
-
     def _start_managers(self, *managers):
         if not managers:
             managers = self.managers.iteritems()
         for k, v in managers:
             if not getattr(v, 'started', None):
-                #if self.debug:
+                # if self.debug:
                 self.log.debug('Spawning Manager %s: %s', k, v)
                 v.link(self.remove_manager)
                 v.start()
         gevent.sleep(0)
 
-    @xworkflows.transition()
-    def start(self):
-        #self.bind()
-        return gevent.Greenlet.start(self)
+    def _dispatch(self, from_peer, channel_name, message_type, parts, _looped=None):
+        peer = self.get_peer(from_peer, exception=None)
+        if peer is None:
+            self.log.error(
+                'Ignoring dispatch call with an unknown peer: %s', from_peer)
+            return
 
-    def _run(self):
-        self.running = True
-        self._start_managers()
+        if self.debug and not _looped:
+            self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
+                           peer, channel_name, message_type, parts)
 
-        while self.running:
-            socks = dict(self._poller.poll(timeout=0))
-            if socks:
-                # self.log.debug('socks=%s', socks)
-                for s, sv in self._socks.iteritems():
-                    cb, flags = sv
-                    if s in socks and socks[s] == flags:
-                        cb(s.recv_multipart())
-            gevent.sleep(0.1)
+        kwargs = dict()
 
-    def _add_sock(self, sock, cb, flags=zmq.POLLIN):
-        self._poller.register(sock, flags)
-        self._socks[sock] = (cb, flags)
+        # Handle wildcard channel
+        if channel_name != '*':
+            self._dispatch(
+                peer, '*', message_type, parts, _looped=channel_name)
+        else:
+            kwargs['channel'] = _looped
 
-    @xworkflows.transition()
-    def bind(self, rtr_addr, pub_addr):
-        self.rtr.bind(rtr_addr)
-        self.pub.bind(pub_addr)
+        handlers = self.handlers.get(channel_name, None)
+        if handlers:
+            for h in handlers:
+                f = getattr(h, 'receive_' + message_type, None)
+                if f:
+                    # if self.debug:
+                    #    self.log.debug('Dispatching to: %s', h)
+                    gevent.spawn(f, peer, *parts, **kwargs)
+                    # break
 
-        gevent.sleep(0.1)
+
+class _PeersMixin:
+    peers = None
+
+    def __init__(self):
+        # peers
+        self.peers = dict()
 
     def connect(self):
         self.log.info('Connecting..')
@@ -284,26 +214,6 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
 
         gevent.sleep(0.1)
 
-    def shutdown(self):
-        self.log.info('Shuttind down Node: %s', self)
-
-        # peer sub socks
-        for s, sv in self._socks.iteritems():
-            s.close()
-
-        # extraneous socks
-        for attr in ('pub', ):
-            s = getattr(self, attr, None)
-            if s is not None:
-                s.close()
-
-    def broadcast(self, channel_name, message_type, *parts):
-        if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
-            parts = parts[0]
-        l = ['solarsan', str(channel_name)]
-        l.extend(self.encoder.encode(self.uuid, message_type, parts))
-        self.pub.send_multipart(l)
-
     def get_peer(self, peer_or_uuid, exception=PeerUnknown):
         peer = None
         if not isinstance(peer_or_uuid, Peer):
@@ -313,6 +223,16 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         if not peer and exception:
             raise exception(peer_or_uuid)
         return peer
+
+
+class _CommunicationsMixin:
+
+    def broadcast(self, channel_name, message_type, *parts):
+        if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
+            parts = parts[0]
+        l = ['solarsan', str(channel_name)]
+        l.extend(self.encoder.encode(self.uuid, message_type, parts))
+        self.pub.send_multipart(l)
 
     def unicast(self, peer, channel_name, message_type, *parts):
         peer = self.get_peer(peer)
@@ -329,34 +249,6 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
         l.extend(self.encoder.encode(self.uuid, message_type, parts))
 
         self.rtr.send_multipart(l)
-
-    def _dispatch(self, from_peer, channel_name, message_type, parts, _looped=None):
-        peer = self.get_peer(from_peer, exception=None)
-        if peer is None:
-            self.log.error('Ignoring dispatch call with an unknown peer: %s', from_peer)
-            return
-
-        if self.debug and not _looped:
-            self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
-                           peer, channel_name, message_type, parts)
-
-        kwargs = dict()
-
-        # Handle wildcard channel
-        if channel_name != '*':
-            self._dispatch(peer, '*', message_type, parts, _looped=channel_name)
-        else:
-            kwargs['channel'] = _looped
-
-        handlers = self.handlers.get(channel_name, None)
-        if handlers:
-            for h in handlers:
-                f = getattr(h, 'receive_' + message_type, None)
-                if f:
-                    #if self.debug:
-                    #    self.log.debug('Dispatching to: %s', h)
-                    gevent.spawn(f, peer, *parts, **kwargs)
-                    # break
 
     def _on_rtr_received(self, raw_parts):
         # discard source address. We'll use the one embedded in the message
@@ -378,5 +270,143 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled):
     #    """Connects to discovered peer"""
     #    self.connect(peer_uuid, router=peer_router)
 
+
+class NodeState(xworkflows.Workflow):
+    initial_state = 'init'
+    states = (
+        ('init',            'Initial state'),
+        ('starting',        'Starting state'),
+        #('connecting',      'Connecting state'),
+        #('greeting',        'Greeting state'),
+        #('syncing',         'Sync state'),
+        ('ready',           'Ready state'),
+    )
+    transitions = (
+        ('start', 'init', 'starting'),
+        ('bind', 'starting', 'ready'),
+        #('connect', 'connecting', 'connecting'),
+        #('connected', 'connecting', 'greeting'),
+        #('greeted', 'greeting', 'syncing'),
+        #('synced', 'syncing', 'ready'),
+    )
+
+
+class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
+           _DispatcherMixin, _PeersMixin, _CommunicationsMixin):
+
+    # debug = False
+    debug = True
+
+    _default_encoder_cls = EJSONEncoder
+    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager]
+    if debug:
+        _default_managers += [Debugger]
+
+    uuid = None
+    _socks = None
+    _ctx = None
+    _poller = None
+
+    def __init__(self, uuid=None, encoder=_default_encoder_cls()):
+        gevent.Greenlet.__init__(self)
+        self.events = EventManager()
+        Reactor.__init__(self, self.events, uuid=uuid, encoder=encoder)
+
+    def init(self, *args, **kwargs):
+        # uuid
+        uuid = kwargs.get('uuid')
+        if not uuid:
+            uuid = uuid4().get_hex()
+        self.uuid = str(uuid)
+
+        # encoder
+        self.encoder = kwargs['encoder']
+
+        _PeersMixin.__init__(self)
+
+        """ Sockets """
+
+        # 0MQ init
+        if not self._ctx:
+            self._ctx = zmq.Context.instance()
+        if not self._poller:
+            self._poller = zmq.Poller()
+
+        # dict of sockets to poll
+        self._socks = dict()
+
+        # router socket
+        rtr = self.rtr = self._ctx.socket(zmq.ROUTER)
+        rtr.setsockopt(zmq.IDENTITY, self.uuid)
+        self._add_sock(rtr, self._on_rtr_received)
+
+        # publisher socket
+        self.pub = self._ctx.socket(zmq.PUB)
+
+        for sock in (self.rtr, self.pub):
+            sock.linger = 0
+
+        """ Dispatcher """
+
+        _DispatcherMixin.__init__(self)
+        self.init_managers(*kwargs.get('managers', []))
+
     def __repr__(self):
         return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)
+
+    """ State """
+
+    state = NodeState()
+
+    @property
+    def is_ready(self):
+        # TODO HACK
+        # return self.state.is_ready
+        return True
+
+    active = is_ready
+
+    """ Run """
+
+    @xworkflows.transition()
+    def start(self):
+        # self.bind()
+        return gevent.Greenlet.start(self)
+
+    def _run(self):
+        self.running = True
+        self._start_managers()
+
+        while self.running:
+            socks = dict(self._poller.poll(timeout=0))
+            if socks:
+                # self.log.debug('socks=%s', socks)
+                for s, sv in self._socks.iteritems():
+                    cb, flags = sv
+                    if s in socks and socks[s] == flags:
+                        cb(s.recv_multipart())
+            gevent.sleep(0.1)
+
+    def _add_sock(self, sock, cb, flags=zmq.POLLIN):
+        self._poller.register(sock, flags)
+        self._socks[sock] = (cb, flags)
+
+    @xworkflows.transition()
+    def bind(self, rtr_addr, pub_addr):
+        self.rtr.bind(rtr_addr)
+        self.pub.bind(pub_addr)
+
+        gevent.sleep(0.1)
+
+    def shutdown(self):
+        self.log.info('Shutting down Node: %s', self)
+
+        # peer sub socks
+        for s, sv in self._socks.iteritems():
+            s.close()
+
+        # extraneous socks
+        for attr in ('pub', ):
+            s = getattr(self, attr, None)
+            if s is not None:
+                s.close()
