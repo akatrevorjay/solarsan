@@ -27,7 +27,6 @@ from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
 
 
-
 class EventManager(_BaseEventManager, LogMixin):
 
     def __init__(self, *args, **kwargs):
@@ -45,6 +44,11 @@ class _DispatcherMixin:
     zmq message.
     '''
 
+    debug_handler = False
+    debug_channel = False
+    debug_dispatch = False
+    debug_managers = False
+
     def __init__(self):
         # event handlers
         self.handlers = dict()
@@ -53,13 +57,13 @@ class _DispatcherMixin:
 
     def add_handler(self, channel_name, handler):
         if not channel_name in self.handlers:
-            if self.debug:
+            if self.debug_channel:
                 self.log.debug('Add channel: %s', channel_name)
             self.handlers[channel_name] = list()
 
         if handler not in self.handlers[channel_name]:
             # handler = weakref.proxy(handler)
-            if self.debug:
+            if self.debug_handler:
                 self.log.debug(
                     'Add handler: %s chan=%s', handler, channel_name)
             self.handlers[channel_name].append(handler)
@@ -67,12 +71,12 @@ class _DispatcherMixin:
     def remove_handler(self, channel_name, handler):
         if channel_name in self.handlers:
             if handler in self.handlers[channel_name]:
-                if self.debug:
+                if self.debug_handler:
                     self.log.debug(
                         'Remove handler: %s chan=%s', handler, channel_name)
                 self.handlers[channel_name].remove(handler)
             if not self.handlers[channel_name]:
-                if self.debug:
+                if self.debug_channel:
                     self.log.debug('Remove channel: %s', channel_name)
                 self.handlers.pop(channel_name)
 
@@ -86,7 +90,7 @@ class _DispatcherMixin:
         managers += self._default_managers
 
         for cls in managers:
-            if self.debug:
+            if self.debug_managers:
                 self.log.debug('Loading manager %s', cls)
             cls(self)
 
@@ -116,7 +120,7 @@ class _DispatcherMixin:
             managers = self.managers.iteritems()
         for k, v in managers:
             if not getattr(v, 'started', None):
-                # if self.debug:
+                # if self.debug_managers:
                 self.log.debug('Spawning Manager %s: %s', k, v)
                 v.link(self.remove_manager)
                 v.start()
@@ -129,7 +133,7 @@ class _DispatcherMixin:
                 'Ignoring dispatch call with an unknown peer: %s', from_peer)
             return
 
-        if self.debug and not _looped:
+        if self.debug_dispatch and not _looped:
             self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
                            peer, channel_name, message_type, parts)
 
@@ -142,12 +146,13 @@ class _DispatcherMixin:
         else:
             kwargs['channel'] = _looped
 
+        # Dispatch
         handlers = self.handlers.get(channel_name, None)
         if handlers:
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
-                    # if self.debug:
+                    # if self.debug_dispatch:
                     #    self.log.debug('Dispatching to: %s', h)
                     gevent.spawn(f, peer, *parts, **kwargs)
                     # break
@@ -227,6 +232,35 @@ class _PeersMixin:
 
 class _CommunicationsMixin:
 
+    _ctx = None
+    _poller = None
+
+    def __init__(self, encoder):
+        # encoder
+        self.encoder = encoder
+
+        """ Sockets """
+
+        # 0MQ init
+        if not getattr(self, '_ctx', None):
+            self._ctx = zmq.Context.instance()
+        if not getattr(self, '_poller', None):
+            self._poller = zmq.Poller()
+
+        # dict of sockets to poll
+        self._socks = dict()
+
+        # router socket
+        rtr = self.rtr = self._ctx.socket(zmq.ROUTER)
+        rtr.setsockopt(zmq.IDENTITY, self.uuid)
+        self._add_sock(rtr, self._on_rtr_received)
+
+        # publisher socket
+        self.pub = self._ctx.socket(zmq.PUB)
+
+        for sock in (self.rtr, self.pub):
+            sock.linger = 0
+
     def broadcast(self, channel_name, message_type, *parts):
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
             parts = parts[0]
@@ -291,10 +325,10 @@ class NodeState(xworkflows.Workflow):
     )
 
 
-class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
-           _DispatcherMixin, _PeersMixin, _CommunicationsMixin):
+class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
+           _DispatcherMixin, _PeersMixin, _CommunicationsMixin,
+           LogMixin):
 
-    # debug = False
     debug = True
 
     _default_encoder_cls = EJSONEncoder
@@ -302,13 +336,9 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
     if debug:
         _default_managers += [Debugger]
 
-    uuid = None
-    _socks = None
-    _ctx = None
-    _poller = None
-
     def __init__(self, uuid=None, encoder=_default_encoder_cls()):
         gevent.Greenlet.__init__(self)
+
         self.events = EventManager()
         Reactor.__init__(self, self.events, uuid=uuid, encoder=encoder)
 
@@ -319,37 +349,13 @@ class Node(LogMixin, gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
             uuid = uuid4().get_hex()
         self.uuid = str(uuid)
 
-        # encoder
-        self.encoder = kwargs['encoder']
-
         _PeersMixin.__init__(self)
 
-        """ Sockets """
-
-        # 0MQ init
-        if not self._ctx:
-            self._ctx = zmq.Context.instance()
-        if not self._poller:
-            self._poller = zmq.Poller()
-
-        # dict of sockets to poll
-        self._socks = dict()
-
-        # router socket
-        rtr = self.rtr = self._ctx.socket(zmq.ROUTER)
-        rtr.setsockopt(zmq.IDENTITY, self.uuid)
-        self._add_sock(rtr, self._on_rtr_received)
-
-        # publisher socket
-        self.pub = self._ctx.socket(zmq.PUB)
-
-        for sock in (self.rtr, self.pub):
-            sock.linger = 0
-
-        """ Dispatcher """
+        _CommunicationsMixin.__init__(self, kwargs['encoder'])
 
         _DispatcherMixin.__init__(self)
-        self.init_managers(*kwargs.get('managers', []))
+        managers = kwargs.get('managers', [])
+        self.init_managers(*managers)
 
     def __repr__(self):
         return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)

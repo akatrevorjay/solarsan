@@ -3,6 +3,7 @@ from solarsan import pp, LogMixin
 from solarsan.exceptions import SolarSanError
 
 from .base import _BaseManager
+from ..base import _BaseDict
 
 from collections import Counter, OrderedDict, defaultdict, deque
 from gevent.queue import Queue, LifoQueue, PriorityQueue, JoinableQueue
@@ -27,11 +28,31 @@ class KeyOutOfSequenceError(KeyConflictError):
     """Sequence out of order"""
 
 
+def popattr(obj, k, default=None):
+    v = getattr(obj, k, default)
+    if hasattr(obj, k):
+        delattr(obj, k)
+    return v
+
+
 class KeyValueStorage(dict, LogMixin):
 
     """If memory usage becomes a problem, could only store simpler keyvals on set(),
     and convert back into a Message on get()
     """
+
+    # ^ That may actually make better sense...
+    def set_message(self, msg, gseq, sender, ts):
+        h = _BaseDict()
+        for attr in ('key', 'value', 'uuid'):
+            h[attr] = popattr(msg, attr)
+
+        #self.set(h.key, h.value, uuid=h.uuid, gseq=gseq, sender=sender, ts=ts)
+        self.set(h.key, h.value)
+
+    def get_message(self, msg):
+        pass
+
     debug = True
 
     def __init__(self):
