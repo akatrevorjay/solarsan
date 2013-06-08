@@ -309,7 +309,6 @@ class _CommunicationsMixin:
     #    self.connect(peer_uuid, router=peer_router)
 
 
-
 class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
            _DispatcherMixin, _PeersMixin, _CommunicationsMixin,
            LogMixin):
@@ -357,7 +356,7 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
         )
         transitions = (
             ('start', 'init', 'starting'),
-            ('bind', 'starting', 'ready'),
+            ('bind_listeners', 'starting', 'ready'),
         )
 
     state = State()
@@ -401,7 +400,7 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
         self._socks[sock] = (cb, flags)
 
     @xworkflows.transition()
-    def bind(self, rtr_addr, pub_addr):
+    def bind_listeners(self, rtr_addr, pub_addr):
         self.rtr.bind(rtr_addr)
         self.pub.bind(pub_addr)
 
