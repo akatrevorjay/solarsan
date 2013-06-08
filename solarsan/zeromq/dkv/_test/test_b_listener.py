@@ -1,13 +1,9 @@
 
-from solarsan.zeromq.dkv.test import *
+from test_b import *
 logger = logging.getLogger(__name__)
 
 
-n = get_node('b')
-bind_node(n)
-connect_node(n, 'a')
-
-
-while True:
-    logger.info('top of loop')
-    gevent.sleep(10)
+if __name__ == '__main__':
+    while True:
+        logger.info('top of loop')
+        gevent.sleep(10)

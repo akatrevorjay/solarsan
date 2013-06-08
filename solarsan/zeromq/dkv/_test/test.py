@@ -2,7 +2,7 @@
 import gevent.monkey
 gevent.monkey.patch_all()
 
-from solarsan import logging, conf
+from solarsan import logging, conf, pp
 logger = logging.getLogger(__name__)
 logger = logging.LoggerAdapter(logger, {'context': None})
 from solarsan.utils.files import slurp, burp
@@ -12,7 +12,7 @@ from solarsan.utils.files import slurp, burp
 from solarsan.zeromq.dkv import node, message, transaction, encoder
 
 import gevent
-from bunch import Bunch
+from solarsan.zeromq.dkv.base import _BaseDict as Bunch
 import sha
 import jsonpickle
 
@@ -22,13 +22,17 @@ nodes_config = dict()
 try:
     nodes_config = jsonpickle.decode(slurp('/tmp/nodes.json'))
 except IOError as e:
-    #raise e
-     pass
+    # raise e
+    pass
 
 nodes = dict()
 
 bind_fmt = 'tcp://*:%s'
 connect_fmt = 'tcp://127.0.0.1:%s'
+
+
+NODE_LIST = set(['a', 'b', 'c'])
+logger.info('node_list=%s', NODE_LIST)
 
 
 def get_node_config(node):
@@ -38,11 +42,12 @@ def get_node_config(node):
     if node not in nodes_config:
         x = len(nodes_config)
         uuid = sha.new(node).hexdigest()
-        nodes_config[node] = Bunch(name=node, uuid=uuid, x=x, rtr=conf.ports.dkv_rtr + (
-            5*x), pub=conf.ports.dkv_pub + (5*x))
+        nodes_config[node] = Bunch(name=node, uuid=uuid, x=x,
+                                   rtr=conf.ports.dkv_rtr + (10*x), pub=conf.ports.dkv_pub + (10*x),
+                                   backdoor=7000 + (10*x))
         burp('/tmp/nodes.json', jsonpickle.encode(nodes_config))
         logger.info("Got node '%s' config: %s",
-                    node, uuid, nodes_config[node])
+                    node, uuid, dict(nodes_config[node]))
     return nodes_config[node]
 
 
@@ -54,7 +59,8 @@ def get_node(name):
         c = get_node_config(name)
         n = nodes[name] = node.Node(uuid=c.uuid)
         n._node_name = c.name
-        logger.info('Got node %s', n)
+        n.managers['Debugger'].backdoor_listen = '127.0.0.1:%s' % c.backdoor
+        logger.info('Got node %s config: %s', n, dict(c))
     return nodes[name]
 
 
@@ -77,16 +83,17 @@ def bind_node(what):
     n.bind(bind_fmt % c.rtr, bind_fmt % c.pub)
 
 
-def connect_node(n, to_n):
-    (name, c, n) = get_node_stuffs(n)
-    (to_name, to_c, to_n) = get_node_stuffs(to_n)
-    to_uuid = to_n.uuid
-    del to_n
-    p = node.Peer(to_uuid)
-    p.cluster_addr = '127.0.0.1'
-    p.rtr_port = to_c.rtr
-    p.pub_port = to_c.pub
-    p.connect(n)
+def connect_nodes(n, *to_ns):
+    for to_n in to_ns:
+        (name, c, n) = get_node_stuffs(n)
+        (to_name, to_c, to_n) = get_node_stuffs(to_n)
+        to_uuid = to_n.uuid
+        del to_n
+        p = node.Peer(to_uuid)
+        p.cluster_addr = '127.0.0.1'
+        p.rtr_port = to_c.rtr
+        p.pub_port = to_c.pub
+        p.connect(n)
 
 
 def send_message(n):

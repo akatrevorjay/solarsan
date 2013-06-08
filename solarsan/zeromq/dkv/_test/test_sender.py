@@ -9,8 +9,7 @@ if __name__ == '__main__':
     #gevent.spawn_later(30, send_message, n)
     #gevent.spawn_later(60, send_message, n)
 
-
     while True:
-        #logger.info('top of loop')
+        logger.info('top of loop')
         gevent.spawn(send_message, n)
         gevent.sleep(6)
