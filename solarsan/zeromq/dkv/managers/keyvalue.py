@@ -1,5 +1,5 @@
 
-from solarsan import pp
+from solarsan import pp, LogMixin
 from solarsan.exceptions import SolarSanError
 
 from .base import _BaseManager
@@ -7,15 +7,79 @@ from .base import _BaseManager
 from collections import Counter, OrderedDict, defaultdict, deque
 from gevent.queue import Queue, LifoQueue, PriorityQueue, JoinableQueue
 
-#from ..message import Message
+# from ..message import Message
+
+from datetime import datetime
 
 
-class KeyValueStorage(dict):
-    pass
+class KeyValueError(SolarSanError):
+
+    """Generic Key Value Error"""
+
+
+class KeyConflictError(KeyValueError):
+
+    """Conflict between existing data and merge"""
+
+
+class KeyOutOfSequenceError(KeyConflictError):
+
+    """Sequence out of order"""
+
+
+class KeyValueStorage(dict, LogMixin):
+
+    """If memory usage becomes a problem, could only store simpler keyvals on set(),
+    and convert back into a Message on get()
+    """
+    debug = True
+
+    def __init__(self):
+        self.kseqs = Counter()
+        self.ktimestamps = dict()
+
+    def get_timestamp(self, k):
+        return self.ktimestamps[k]
+
+    def get_seq(self, k):
+        return self.kseqs[k]
+
+    def check_for_conflict(self, k, seq):
+        if seq <= self.kseqs[k]:
+            raise KeyOutOfSequenceError
+
+    def set(self, k, v, seq=None, force=False, timestamp=None):
+        if seq and not force:
+            self.check_for_conflict(k, seq)
+        else:
+            seq = self.kseqs[k] + 1
+
+        # value
+        dict.__setitem__(self, k, v)
+        # sequence
+        self.kseqs[k] = seq
+        # timestamp
+        if not timestamp:
+            timestamp = datetime.now()
+        self.ktimestamps[k] = timestamp
+
+        if self.debug:
+            self.log.debug('Set %s=%s (seq=%s, ts=%s)', k, v, seq, timestamp)
+
+    __setitem__ = set
+
+    def remove(self, k):
+        dict.__delitem__(self, k)
+        if k in self.kseqs:
+            del self.kseqs[k]
+        if k in self.ktimestamps:
+            del self.ktimestamps[k]
+
+    __delitem__ = remove
 
 
 class KeyValueManager(_BaseManager):
-    #debug = False
+    # debug = False
     debug = True
 
     store = KeyValueStorage()
@@ -32,7 +96,8 @@ class KeyValueManager(_BaseManager):
         # or moved.
         cur = self._node.seq.current
         if seq <= cur:
-            raise SolarSanError("Sequence=%s is not greater than current=%s", seq, cur)
+            raise SolarSanError(
+                "Sequence=%s is not greater than current=%s", seq, cur)
         self.store[k] = v
         # TODO HACK THIS DOESNT BELONG HERE
         self._node.seq.seq['cur'] = seq
@@ -40,7 +105,7 @@ class KeyValueManager(_BaseManager):
     def pop(self, k, d=None):
         return self.store.pop(k, d)
 
-    #def update(self, data):
+    # def update(self, data):
     #    self.store.update(data)
 
     tick_length = 2.5
