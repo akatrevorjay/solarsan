@@ -14,6 +14,7 @@ class Heart(_BaseManager):
     debug = False
     tick_length = 1.0
     tick_timeout = 5.0
+    tick_wait_until_node_ready = False
     heartbeat_ttl = timedelta(seconds=tick_length * 2)
 
     # TODO HACK for development (we expect disconnections!)
@@ -23,13 +24,13 @@ class Heart(_BaseManager):
     """ Run """
 
     def _tick(self):
-        self._node.wait_until_ready()
-
         if self.debug:
             self.log.debug('Tick')
 
         self.beat()
-        self.bring_out_yer_dead()
+
+        if self._node.is_connected:
+            self.bring_out_yer_dead()
 
     """ Helpers """
 

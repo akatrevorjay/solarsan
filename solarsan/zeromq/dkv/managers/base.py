@@ -47,6 +47,7 @@ class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
 
     tick_length = 1
     tick_timeout = None
+    tick_wait_until_node_ready = True
 
     def _tick(self):
         """What gets ran at each tick length in the _run loop."""
@@ -57,6 +58,9 @@ class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
         self._tick every self.time_length seconds, with a timeout of self.time_timeout.
         """
         self.running = True
+
+        if self.tick_wait_until_node_ready:
+            self._node.wait_until_ready()
 
         while self.running:
             gevent.sleep(self.tick_length)

@@ -14,9 +14,12 @@ from uuid import uuid4
 import weakref
 import xworkflows
 
-from reflex.base import Reactor, Binding, Ruleset
-from reflex.control import Callable, Event, PackageBattery, ReactorBattery, RulesetBattery
-from reflex.control import EventManager as _BaseEventManager
+# from reflex.base import Reactor, Binding, Ruleset
+from reflex.data import Event
+from reflex.base import Reactor
+# from reflex.control import EventManager as _BaseEventManager
+from reflex.control import EventManager
+from reflex.control import PackageBattery, ReactorBattery, RulesetBattery
 
 # from .message import MessageContainer
 # from .channel import Channel
@@ -30,14 +33,14 @@ from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
 
 
-class EventManager(_BaseEventManager, LogMixin):
+# class EventManager(_BaseEventManager, LogMixin):
+#
+#    def __init__(self, *args, **kwargs):
+#        _BaseEventManager.__init__(
+#            self, self.log.info, self.log.debug, *args, **kwargs)
 
-    def __init__(self, *args, **kwargs):
-        _BaseEventManager.__init__(
-            self, self.log.info, self.log.debug, *args, **kwargs)
 
-
-class _DispatcherMixin:
+class _DispatcherMixin(Reactor):
 
     '''
     Messages are handled by adding instances to the handlers list. The
@@ -169,6 +172,9 @@ class _PeersMixin:
         # peers
         self.peers = dict()
 
+        # bind peer_ready event
+        self.bind(self._on_peer_ready, 'peer_ready')
+
     def connect(self):
         self.log.info('Connecting..')
 
@@ -178,7 +184,8 @@ class _PeersMixin:
             g = gevent.spawn(self.connect_peer, peer)
             gs.append(g)
         for g in gs:
-            g.join(timeout=10.0)
+            # g.join(timeout=10)
+            g.join()
 
     def add_peer(self, peer):
         if self.debug_peers:
@@ -200,7 +207,6 @@ class _PeersMixin:
         self.log.info('Removing peer: %s', peer)
         uuid = str(peer.uuid)
         if uuid in self.peers:
-            del peer
             del self.peers[uuid]
 
     def connect_peer(self, peer):
@@ -232,6 +238,13 @@ class _PeersMixin:
         if not peer and exception:
             raise exception(peer_or_uuid)
         return peer
+
+    def _on_peer_ready(self, event, peer):
+        # TODO THIS IS SPAGHETTI BULLSHIT. CLEAN IT UP, NAMES IN PARTICULAR!
+        self.log.debug('Peer ready: %s', peer)
+        self.log.debug('Event: %s', event)
+        if not self.is_ready:
+            self.synced()
 
 
 class _CommunicationsMixin:
@@ -309,7 +322,7 @@ class _CommunicationsMixin:
     #    self.connect(peer_uuid, router=peer_router)
 
 
-class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
+class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
            _DispatcherMixin, _PeersMixin, _CommunicationsMixin,
            LogMixin):
 
@@ -320,7 +333,14 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
     if debug:
         _default_managers += [Debugger]
 
-    def __init__(self, uuid=None, encoder=_default_encoder_cls(), events=EventManager()):
+    events = None
+    uuid = None
+
+    event_syncing = None
+    event_ready = None
+
+    def __init__(self, uuid=None, encoder=_default_encoder_cls(),
+                 events=EventManager(stdout=logger.warning, stddebug=logger.debug)):
         gevent.Greenlet.__init__(self)
         self.events = events
         Reactor.__init__(self, self.events, uuid=uuid, encoder=encoder)
@@ -332,6 +352,7 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
             uuid = uuid4().get_hex()
         self.uuid = str(uuid)
 
+        self.event_syncing = gevent.event.AsyncResult()
         self.event_ready = gevent.event.AsyncResult()
 
         _PeersMixin.__init__(self)
@@ -352,23 +373,39 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
         states = (
             ('init',            'Initial state'),
             ('starting',        'Starting state'),
+            ('syncing',         'Syncing state'),
             ('ready',           'Ready state'),
         )
         transitions = (
             ('start', 'init', 'starting'),
-            ('bind_listeners', 'starting', 'ready'),
+            ('bind_listeners', 'starting', 'syncing'),
+            ('synced', 'syncing', 'ready'),
         )
 
     state = State()
 
     @property
     def is_ready(self):
-        return self.state.is_ready()
-        #return self.event_ready.is_set()
+        return self.state.is_ready
+        # return self.event_ready.is_set()
+
+    @property
+    def is_connected(self):
+        # TODO This is stupid, make connected an event of some sort or better
+        # yet, KEEP TRACK OF READY PEERS DIFFERENTLY FROM SAY CONNECTING ONES
+        return self.state.is_ready or self.state.is_syncing
+
+    def wait_until_syncing(self, timeout=None):
+        return self.event_syncing.wait(timeout=timeout)
+
+    @xworkflows.on_enter_state('syncing')
+    def _on_syncing(self, *args):
+        # self.trigger(Event('node_syncing'), self)
+        self.event_syncing.set()
 
     @xworkflows.on_enter_state('ready')
     def _on_ready(self, *args):
-        self.trigger(Event('node_ready'), self)
+        # self.trigger(Event('node_ready'), self)
         self.event_ready.set()
 
     def wait_until_ready(self, timeout=None):
@@ -378,7 +415,6 @@ class Node(gevent.Greenlet, Reactor, xworkflows.WorkflowEnabled,
 
     @xworkflows.transition()
     def start(self):
-        # self.bind()
         return gevent.Greenlet.start(self)
 
     def _run(self):

@@ -12,11 +12,13 @@ class Debugger(_BaseManager):
     backdoor_listen = '127.0.0.1:0'
 
     def init(self, node, **kwargs):
+        self.log.debug('Debugger init')
         self.bind(self.on_node_ready, 'node_ready')
 
     def on_node_ready(self, event, node):
-        if self.backdoor:
-            self.backdoor_init()
+        self.log.debug('Node ready')
+        #if self.backdoor:
+        #    self.backdoor_init()
 
     def backdoor_init(self):
         from gevent.backdoor import BackdoorServer
