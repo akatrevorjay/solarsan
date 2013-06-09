@@ -66,16 +66,20 @@ def get_node(name):
     return nodes[name]
 
 
-def get_node_stuffs(what):
+def get_node_stuffs(what, node=True):
     if isinstance(what, basestring):
         name = what
     else:
         name = what._node_name
 
     c = get_node_config(name)
-    n = get_node(name)
 
-    return (name, c, n)
+    parts = [name, c]
+    if node:
+        n = get_node(name)
+        parts.append(n)
+
+    return parts
 
 
 def bind_node(what):
@@ -86,11 +90,12 @@ def bind_node(what):
 
 
 def connect_nodes(n, *to_ns):
+    (name, c) = get_node_stuffs(n, node=False)
+
     for to_n in to_ns:
-        (name, c, n) = get_node_stuffs(n)
-        (to_name, to_c, to_n) = get_node_stuffs(to_n)
-        to_uuid = to_n.uuid
-        del to_n
+        (to_name, to_c) = get_node_stuffs(to_n, node=False)
+        to_uuid = to_c.uuid
+
         p = node.Peer(to_uuid)
         p.cluster_addr = '127.0.0.1'
         p.rtr_port = to_c.rtr
@@ -125,5 +130,5 @@ def main():
         gevent.sleep(1)
         # t.propose()
 
-if __name__ == '__main__':
-    main()
+#if __name__ == '__main__':
+#    main()
