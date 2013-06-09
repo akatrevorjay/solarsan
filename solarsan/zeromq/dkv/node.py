@@ -53,7 +53,6 @@ class _DispatcherMixin(Reactor):
     debug_handler = False
     debug_channel = False
     debug_dispatch = False
-    debug_managers = False
 
     def __init__(self):
         # event handlers
@@ -86,6 +85,45 @@ class _DispatcherMixin(Reactor):
                     self.log.debug('Remove channel: %s', channel_name)
                 self.handlers.pop(channel_name)
 
+    def _dispatch(self, from_peer, channel_name, message_type, parts, one_shot=False, _looped=None):
+        peer = self.get_peer(from_peer, exception=None)
+        if peer is None:
+            self.log.error(
+                'Ignoring dispatch call with an unknown peer: %s', from_peer)
+            return
+
+        if self.debug_dispatch and not _looped:
+            self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
+                           peer, channel_name, message_type, parts)
+
+        kwargs = dict()
+
+        # Handle wildcard channel
+        if not _looped:
+            self._dispatch(
+                peer, '*', message_type, parts, _looped=channel_name)
+        else:
+            kwargs['channel'] = _looped
+
+        # Dispatch
+        handlers = self.handlers.get(channel_name, None)
+        if handlers:
+            for h in handlers:
+                f = getattr(h, 'receive_' + message_type, None)
+                if f:
+                    if self.debug_dispatch:
+                        self.log.debug('Dispatching to: %s', h)
+
+                    gevent.spawn(f, peer, *parts, **kwargs)
+
+                    # Handle one_shot
+                    if one_shot and not _looped:
+                        break
+
+
+class _ManagersMixin:
+    debug_managers = False
+
     def init_managers(self, *managers):
         """ Managers """
 
@@ -99,8 +137,6 @@ class _DispatcherMixin(Reactor):
             if self.debug_managers:
                 self.log.debug('Loading manager %s', cls)
             cls(self)
-
-    """ Managers """
 
     def add_manager(self, manager, name=None):
         if not name:
@@ -131,37 +167,6 @@ class _DispatcherMixin(Reactor):
                 v.link(self.remove_manager)
                 v.start()
         gevent.sleep(0)
-
-    def _dispatch(self, from_peer, channel_name, message_type, parts, _looped=None):
-        peer = self.get_peer(from_peer, exception=None)
-        if peer is None:
-            self.log.error(
-                'Ignoring dispatch call with an unknown peer: %s', from_peer)
-            return
-
-        if self.debug_dispatch and not _looped:
-            self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
-                           peer, channel_name, message_type, parts)
-
-        kwargs = dict()
-
-        # Handle wildcard channel
-        if channel_name != '*':
-            self._dispatch(
-                peer, '*', message_type, parts, _looped=channel_name)
-        else:
-            kwargs['channel'] = _looped
-
-        # Dispatch
-        handlers = self.handlers.get(channel_name, None)
-        if handlers:
-            for h in handlers:
-                f = getattr(h, 'receive_' + message_type, None)
-                if f:
-                    # if self.debug_dispatch:
-                    #    self.log.debug('Dispatching to: %s', h)
-                    gevent.spawn(f, peer, *parts, **kwargs)
-                    # break
 
 
 class _PeersMixin:
@@ -321,9 +326,27 @@ class _CommunicationsMixin:
     #    """Connects to discovered peer"""
     #    self.connect(peer_uuid, router=peer_router)
 
+    def _add_sock(self, sock, cb, flags=zmq.POLLIN):
+        self._poller.register(sock, flags)
+        self._socks[sock] = (cb, flags)
+
+    def shutdown(self):
+        self.log.info('Shutting down Node: %s', self)
+
+        # peer sub socks
+        for s, sv in self._socks.iteritems():
+            s.close()
+
+        # extraneous socks
+        for attr in ('pub', ):
+            s = getattr(self, attr, None)
+            if s is not None:
+                s.close()
+
 
 class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
            _DispatcherMixin, _PeersMixin, _CommunicationsMixin,
+           _ManagersMixin,
            LogMixin):
 
     debug = True
@@ -387,7 +410,10 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
     @property
     def is_ready(self):
         return self.state.is_ready
-        # return self.event_ready.is_set()
+
+    @property
+    def is_syncing(self):
+        return self.state.is_syncing
 
     @property
     def is_connected(self):
@@ -431,26 +457,9 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
                         cb(s.recv_multipart())
             gevent.sleep(0.1)
 
-    def _add_sock(self, sock, cb, flags=zmq.POLLIN):
-        self._poller.register(sock, flags)
-        self._socks[sock] = (cb, flags)
-
     @xworkflows.transition()
     def bind_listeners(self, rtr_addr, pub_addr):
         self.rtr.bind(rtr_addr)
         self.pub.bind(pub_addr)
 
         gevent.sleep(0.1)
-
-    def shutdown(self):
-        self.log.info('Shutting down Node: %s', self)
-
-        # peer sub socks
-        for s, sv in self._socks.iteritems():
-            s.close()
-
-        # extraneous socks
-        for attr in ('pub', ):
-            s = getattr(self, attr, None)
-            if s is not None:
-                s.close()

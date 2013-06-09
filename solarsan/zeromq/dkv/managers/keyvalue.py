@@ -85,7 +85,7 @@ class KeyValueStorage(dict, LogMixin):
         self.ktimestamps[k] = timestamp
 
         if self.debug:
-            self.log.debug('Set %s=%s (seq=%s, ts=%s)', k, v, seq, timestamp)
+            self.log.debug('Set %s=%s (kseq=%s, ts=%s)', k, v, seq, timestamp)
 
     __setitem__ = set
 

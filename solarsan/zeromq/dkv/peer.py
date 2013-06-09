@@ -1,7 +1,7 @@
 
 from solarsan import logging, conf, LogMixin
 logger = logging.getLogger(__name__)
-#from solarsan.exceptions import NodeError
+# from solarsan.exceptions import NodeError
 
 import gevent
 import gevent.coros
@@ -56,7 +56,18 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
         self.connected = False
 
     def __repr__(self):
-        return "<%s uuid='%s'>" % (self.__class__.__name__, str(self.uuid))
+        meta = dict(
+            uuid=str(self.uuid),
+            #cluster_addr=self.cluster_addr,
+            rtr_port=self.rtr_port,
+            pub_port=self.pub_port,
+            #connected=self.connected,
+            #is_local=self.is_local,
+            state=self.state,
+        )
+
+        parts = ['%s=%s' % (k, v) for k, v in meta.iteritems()]
+        return "<%s %s>" % (self.__class__.__name__, ', '.join(parts))
 
     """ Connection """
 
@@ -66,17 +77,17 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
 
     @xworkflows.transition()
     def connect(self, node):
-        #if self.debug:
+        # if self.debug:
         self.log.debug('Connecting to peer: %s', self)
 
         self._node = weakref.proxy(node)
 
         Reactor.__init__(self, node.events)
-        self.bind(self._on_node_ready, 'node_syncing')
+        self.bind(self._on_node_syncing, 'node_syncing')
         self.bind(self._on_node_ready, 'node_ready')
 
-        if hasattr(self, 'sub'):
-            delattr(self, 'sub')
+        #if hasattr(self, 'sub'):
+        #    delattr(self, 'sub')
         self.sub = sub = self._node._ctx.socket(zmq.SUB)
         for sock in (sub, ):
             sock.linger = 0
@@ -94,15 +105,20 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
 
     def receive_beat(self, meta):
         """ Heartbeat """
+        #if self.debug:
+        #    self.log.debug('Got beat')
         if not self.connected:
             self._node.wait_until_syncing()
-            self.connected = True
+            # gevent.sleep(0.1)
             gevent.spawn(self._connected)
+            #self._connected()
 
     @xworkflows.transition()
     def _connected(self):
         self.log.info('Connected to %s', self)
-        gevent.spawn(self.greet)
+        self.connected = True
+        # gevent.spawn(self.greet)
+        self.greet()
 
     def greet(self):
         self.log.debug('Greeting %s', self)
@@ -136,13 +152,14 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
             self._node.remove_peer(self)
 
     def _disconnect(self):
-        self.log.debug('Disconnecting from peer: %s', self)
-        if hasattr(self, 'sub'):
-            # This is not supported by ZMQ. God speed.
-            #self.sub.close()
-            # Deleting the attribute will help it get GCd, which automatically
-            # closes it.
-            delattr(self, 'sub')
+        #self.log.debug('Disconnecting from peer: %s', self)
+        #if hasattr(self, 'sub'):
+        #    # This is not supported by ZMQ. God speed.
+        #    # self.sub.close()
+        #    # Deleting the attribute will help it get GCd, which automatically
+        #    # closes it.
+        #    delattr(self, 'sub')
+        pass
 
     """ Helpers """
 
@@ -162,4 +179,3 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
 
     def unicast(self, channel, message_type, *parts, **kwargs):
         return self._node.unicast(self, channel, message_type, *parts, **kwargs)
-
