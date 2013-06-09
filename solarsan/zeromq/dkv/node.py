@@ -400,12 +400,12 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
 
     @xworkflows.on_enter_state('syncing')
     def _on_syncing(self, *args):
-        # self.trigger(Event('node_syncing'), self)
+        self.trigger(Event('node_syncing'), self)
         self.event_syncing.set()
 
     @xworkflows.on_enter_state('ready')
     def _on_ready(self, *args):
-        # self.trigger(Event('node_ready'), self)
+        self.trigger(Event('node_ready'), self)
         self.event_ready.set()
 
     def wait_until_ready(self, timeout=None):

@@ -71,11 +71,12 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
 
         self._node = weakref.proxy(node)
 
-        self.event_ready = gevent.event.AsyncResult()
-
         Reactor.__init__(self, node.events)
-        #self.bind(self._on_node_ready, 'node_ready')
+        self.bind(self._on_node_ready, 'node_syncing')
+        self.bind(self._on_node_ready, 'node_ready')
 
+        if hasattr(self, 'sub'):
+            delattr(self, 'sub')
         self.sub = sub = self._node._ctx.socket(zmq.SUB)
         for sock in (sub, ):
             sock.linger = 0
@@ -85,50 +86,42 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
 
         self._node.add_peer(self)
 
-    #def _on_node_ready(self, event, node):
-    #    self.log.debug('Node is ready!')
+    def _on_node_syncing(self, event, node):
+        self.log.debug('Node is syncing!')
+
+    def _on_node_ready(self, event, node):
+        self.log.debug('Node is ready!')
 
     def receive_beat(self, meta):
         """ Heartbeat """
         if not self.connected:
             self._node.wait_until_syncing()
-            self._connected()
+            self.connected = True
+            gevent.spawn(self._connected)
 
     @xworkflows.transition()
     def _connected(self):
         self.log.info('Connected to %s', self)
-        self.connected = True
-        #gevent.spawn(self.greet)
-
-    @xworkflows.after_transition('_connected')
-    def _after_connected(self, r):
-        self.greet()
+        gevent.spawn(self.greet)
 
     def greet(self):
         self.log.debug('Greeting %s', self)
         # TODO actually greet, remove this hackery
-        #gevent.spawn(self.receive_greet)
-        self.receive_greet()
+        gevent.spawn(self.receive_greet)
 
     @xworkflows.transition()
     def receive_greet(self):
         self.log.debug('Received greet from %s', self)
-        #gevent.spawn(self._sync)
-        self._sync()
+        gevent.spawn(self._sync)
 
     def _sync(self):
         self.log.debug('Syncing %s', self)
         # TODO Sync
-        #gevent.spawn_later(2, self._synced)
-
-    @xworkflows.after_transition('receive_greet')
-    def _after_receive_greet(self, r):
-        self._synced()
+        gevent.spawn_later(2, self._synced)
 
     @xworkflows.on_enter_state('ready')
     def _on_ready(self, *args):
         self.trigger(Event('peer_ready'), self)
-        self.event_ready.set()
 
     @xworkflows.transition()
     def _synced(self):
@@ -145,7 +138,11 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
     def _disconnect(self):
         self.log.debug('Disconnecting from peer: %s', self)
         if hasattr(self, 'sub'):
-            self.sub.close()
+            # This is not supported by ZMQ. God speed.
+            #self.sub.close()
+            # Deleting the attribute will help it get GCd, which automatically
+            # closes it.
+            delattr(self, 'sub')
 
     """ Helpers """
 
