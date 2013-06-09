@@ -13,12 +13,18 @@ class Debugger(_BaseManager):
 
     def init(self, node, **kwargs):
         self.log.debug('Debugger init')
+        # TODO DEBUG HACKERY
         self.bind(self.on_node_ready, 'node_ready')
 
     def on_node_ready(self, event, node):
         self.log.debug('Node ready')
-        #if self.backdoor:
-        #    self.backdoor_init()
+
+    def _run(self):
+        # Launch backdoor
+        # It's got electrolytes
+        if self.backdoor:
+            self.backdoor_init()
+        _BaseManager._run(self)
 
     def backdoor_init(self):
         from gevent.backdoor import BackdoorServer
