@@ -26,7 +26,7 @@ from reflex.control import PackageBattery, ReactorBattery, RulesetBattery
 from .encoder import EJSONEncoder
 from .peer import Peer
 
-from .managers.heartbeat import Heart
+from .managers.heartbeat import Heart, Syncer
 from .managers.sequence import Sequencer
 from .managers.transaction import TransactionManager
 from .managers.debugger import Debugger
@@ -352,7 +352,7 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
     debug = True
 
     _default_encoder_cls = EJSONEncoder
-    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager, Greeter]
+    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager, Greeter, Syncer]
     if debug:
         _default_managers += [Debugger]
 

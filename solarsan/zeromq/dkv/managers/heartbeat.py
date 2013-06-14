@@ -1,12 +1,13 @@
 
-from solarsan.exceptions import NodeNotReadyError
+#from solarsan.exceptions import NodeNotReadyError
 from .base import _BaseManager
 
 import gevent
 # import zmq.green as zmq
 from datetime import datetime, timedelta
-import xworkflows
-from collections import deque, Counter
+#import xworkflows
+#from collections import deque, Counter
+from reflex.data import Event
 
 
 class Heart(_BaseManager):
@@ -73,3 +74,27 @@ class Heart(_BaseManager):
                 # discovery and removal.
                 if not self.neutered:
                     peer.shutdown()
+
+
+class Syncer(_BaseManager):
+
+    def __init__(self, node):
+        _BaseManager.__init__(self, node)
+
+        self.bind(self._on_peer_syncing, 'peer_syncing')
+
+        self._node.greeter = self
+
+    def _on_peer_syncing(self, event, peer):
+        self.log.debug('Event: %s peer=%s', event, peer)
+        self.peer_sync(peer)
+
+    def peer_sync(self, peer):
+        self.log.debug('Syncing %s', peer)
+
+        # TODO Sync
+        self.trigger(Event('peer_synced'), peer)
+        gevent.spawn_later(2, peer._synced)
+
+    def receive_sync(self, peer, sync, *args, **kwargs):
+        self.log.debug('Received SYNC from %s: sync=%s args=%s kwargs=%s', peer, sync, args, kwargs)

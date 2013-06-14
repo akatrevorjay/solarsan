@@ -125,12 +125,10 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
     @xworkflows.transition()
     def receive_greet(self):
         self.log.debug('Received greet from %s', self)
-        gevent.spawn(self._sync)
 
-    def _sync(self):
-        self.log.debug('Syncing %s', self)
-        # TODO Sync
-        gevent.spawn_later(2, self._synced)
+    @xworkflows.on_enter_state('syncing')
+    def _on_enter_syncing(self, r):
+        self.trigger(Event('peer_syncing'), self)
 
     @xworkflows.on_enter_state('ready')
     def _on_ready(self, *args):
