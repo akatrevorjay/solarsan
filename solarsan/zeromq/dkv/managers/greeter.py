@@ -1,6 +1,7 @@
 
 from .base import _BaseManager
 import gevent
+from reflex.data import Event
 
 
 class Greeter(_BaseManager):
@@ -8,10 +9,19 @@ class Greeter(_BaseManager):
     debug = False
 
     # TODO event on connect, use that to start sending greets
+    # TODO Start greeter manager ticks, send greets every second until
+    # we get one back.
 
     def __init__(self, node):
         _BaseManager.__init__(self, node)
+
+        self.bind(self._on_peer_connected, 'peer_connected')
+
         self._node.greeter = self
+
+    def _on_peer_connected(self, event, peer):
+        self.log.debug('Event: %s is connected', peer)
+        gevent.spawn(self.greet, peer)
 
     """ Greet """
 
@@ -31,4 +41,4 @@ class Greeter(_BaseManager):
 
         #if not is_reply:
         if True:
-            peer.greet(is_reply=True)
+            self.greet(peer, is_reply=True)

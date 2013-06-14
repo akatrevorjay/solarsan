@@ -118,13 +118,9 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
         self.log.info('Connected to %s', self)
         self.connected = True
 
-        # TODO event on connect, use that to start sending greets
-
-        # HACKERY
-        self.greet()
-
-    def greet(self, is_reply=False):
-        return self._node.greeter.greet(self, is_reply)
+    @xworkflows.after_transition('_connected')
+    def _after_connected(self, r):
+        self.trigger(Event('peer_connected'), self)
 
     @xworkflows.transition()
     def receive_greet(self):
