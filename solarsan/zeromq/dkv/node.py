@@ -31,7 +31,7 @@ from .managers.sequence import Sequencer
 from .managers.transaction import TransactionManager
 from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
-
+from .managers.greeter import Greeter
 
 # class EventManager(_BaseEventManager, LogMixin):
 #
@@ -352,7 +352,7 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
     debug = True
 
     _default_encoder_cls = EJSONEncoder
-    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager]
+    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager, Greeter]
     if debug:
         _default_managers += [Debugger]
 

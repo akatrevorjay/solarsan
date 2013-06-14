@@ -117,13 +117,14 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
     def _connected(self):
         self.log.info('Connected to %s', self)
         self.connected = True
-        # gevent.spawn(self.greet)
+
+        # TODO event on connect, use that to start sending greets
+
+        # HACKERY
         self.greet()
 
-    def greet(self):
-        self.log.debug('Greeting %s', self)
-        # TODO actually greet, remove this hackery
-        gevent.spawn(self.receive_greet)
+    def greet(self, is_reply=False):
+        return self._node.greeter.greet(self, is_reply)
 
     @xworkflows.transition()
     def receive_greet(self):
