@@ -11,11 +11,10 @@ import socket
 import errno
 import struct
 
-beaconv1 = struct.Struct('3sB16sH')
-beaconv2 = struct.Struct('3sB16sHBB4s')
+beaconv3 = struct.Struct('8sB40sHBB4s')
 
 T_TO_I = {
-    #'udp': 1,
+    'udp': 3,
     'tcp': 1,
     'pgm': 2,
 }
@@ -41,6 +40,7 @@ class Discovery(_BaseManager):
 
     def _tick(self):
         self._send_beacon()
+        gevent.sleep(0)
         self._recv_beacon()
 
     def discovered_peer(self, uuid):
@@ -90,7 +90,6 @@ class Discovery(_BaseManager):
             self.service_addr_bytes = NULL_IP
 
         #self._node._add_sock(self.broadcaster, self._on_broadcaster_received)
-
         #gevent.spawn(self._send_loop)
         #gevent.spawn(self._recv_loop)
 
@@ -110,8 +109,8 @@ class Discovery(_BaseManager):
         """
         self.log.debug('Sending discovery beacon')
 
-        beacon = beaconv2.pack(
-            'ZRE', 2, self._node.uuid,
+        beacon = beaconv3.pack(
+            'SolarSan', 3, self._node.uuid,
             self.service_port,
             T_TO_I[self.service_transport],
             self.service_socket_type,
@@ -141,7 +140,7 @@ class Discovery(_BaseManager):
         while True:
             try:
                 data, (peer_addr, port) = self.broadcaster.recvfrom(
-                    beaconv2.size)
+                    beaconv3.size)
             except socket.error as e:
                 if e.args[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     self.log.exception('Error recving beacon:', e)
@@ -149,28 +148,20 @@ class Discovery(_BaseManager):
                 return
 
             try:
-                if len(data) == beaconv1.size:
-                    greet, ver, peer_id, peer_port = beaconv2.unpack(data)
-                    # greet, ver, peer_id, peer_port = beaconv1.unpack(data)
-                    peer_transport = 1
-                    peer_socket_type = zmq.ROUTER
-                    peer_socket_address = NULL_IP
-                    if ver != 1:
-                        continue
-                else:
-                    greet, ver, peer_id, peer_port, \
-                        peer_transport, peer_socket_type, \
-                        peer_socket_address = beaconv2.unpack(data)
-                    if ver != 2:
-                        continue
+                greet, ver, peer_id, peer_port, \
+                    peer_transport, peer_socket_type, \
+                    peer_socket_address = beaconv3.unpack(data)
+                if ver != 3:
+                    continue
             except Exception:
                 continue
 
-            if greet != 'ZRE':
+            if greet != 'SolarSan':
                 continue
 
-            if peer_id == self._node.uuid:
-                continue
+            # TODO HACK
+            #if peer_id == self._node.uuid:
+            #    continue
 
             if peer_socket_address != NULL_IP:
                 peer_addr = socket.inet_ntoa(peer_socket_address)
@@ -179,6 +170,8 @@ class Discovery(_BaseManager):
 
             self.handle_beacon(peer_id, peer_transport, peer_addr,
                                peer_port, peer_socket_type)
+
+            gevent.sleep(0)
 
     def handle_beacon(self, *args):
         self.log.debug('args=%s', args)
