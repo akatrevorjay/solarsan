@@ -34,8 +34,6 @@ class Discovery(_BaseManager):
     def __init__(self, node):
         _BaseManager.__init__(self, node)
 
-        self.bind(self._on_peer_discovered, 'peer_discovered')
-
         self._node.discovery = self
 
     def _tick(self):
@@ -50,9 +48,6 @@ class Discovery(_BaseManager):
         peer = 'TODO'
 
         self.trigger(Event('peer_discovered'), peer)
-
-    def _on_peer_discovered(self, peer):
-        self.log.debug('Event: Discovered peer %s', peer)
 
     """ Beacon """
 
@@ -89,20 +84,9 @@ class Discovery(_BaseManager):
         else:
             self.service_addr_bytes = NULL_IP
 
-        #self._node._add_sock(self.broadcaster, self._on_broadcaster_received)
-        #gevent.spawn(self._send_loop)
-        #gevent.spawn(self._recv_loop)
-
     def _on_broadcaster_received(self, raw_parts):
         self.log.debug('Received beacon')
         return
-
-    beacon_interval = 5.0
-
-    def _send_loop(self):
-        while True:
-            self._send_beacon()
-            gevent.sleep(self.beacon_interval)
 
     def _send_beacon(self):
         """sends udp beacons at intervals.
@@ -128,11 +112,6 @@ class Discovery(_BaseManager):
 
         # TODO Check for losts where again?
         #self._check_for_losts()
-
-    def _recv_loop(self):
-        while True:
-            self._recv_beacon()
-            gevent.sleep(0.1)
 
     def _recv_beacon(self):
         """received udp beacons
@@ -174,7 +153,7 @@ class Discovery(_BaseManager):
             gevent.sleep(0)
 
     def handle_beacon(self, *args):
-        self.log.debug('args=%s', args)
+        self.trigger(Event('peer_discovered'), *args)
 
     def _check_for_losts(self):
         # check for losts
@@ -191,36 +170,6 @@ class Discovery(_BaseManager):
                 self._on_peer_lost(peer)
 
                 del self.peers[peer_id]
-
-
-# class _Beacon(gevent.Greenlet, LogMixin):
-
-#    send_every = 5.0
-
-#    def __init__(self):
-#        self.running = False
-
-#    def start(self):
-#        self.log.debug('Starting beacon %s', self)
-#        return gevent.Greenlet.start(self)
-
-#    def _run(self):
-#        self.running = True
-#        while self.running:
-#            self.send()
-#            gevent.sleep(self.send_every)
-
-#    def send(self):
-#        self.log.debug('Sending beacon')
-# TODO send beacon
-
-
-# class _DiscoveryMixin:
-#    def __init__(self):
-#        self.beacon = _Beacon()
-
-# def start(self):
-# self.beacon.start()
 
 
 class Greeter(_BaseManager):

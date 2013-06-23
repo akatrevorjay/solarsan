@@ -346,7 +346,10 @@ class _CommunicationsMixin:
 
 class _DiscoveryMixin:
     def __init__(self):
-        pass
+        self.bind(self._on_peer_discovered, 'peer_discovered')
+
+    def _on_peer_discovered(self, event, *args):
+        self.log.debug('Event: %s args=%s', event, args)
 
 
 class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
