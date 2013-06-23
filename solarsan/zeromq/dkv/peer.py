@@ -42,7 +42,8 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
             ('start', 'init', 'connecting'),
             ('connect', ('init', 'connecting'), 'connecting'),
             ('_connected', 'connecting', 'greeting'),
-            ('receive_greet', 'greeting', 'syncing'),
+            # TODO don't send during syncing as we've already greeted
+            ('receive_greet', ('syncing', 'greeting'), 'syncing'),
             ('_synced', 'syncing', 'ready'),
 
             ('shutdown', [x[0] for x in states], 'init')
@@ -124,6 +125,12 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
 
     @xworkflows.transition()
     def receive_greet(self):
+        #if not self.state.is_greeting:
+        #    self.log.debug('Received greet from %s while not greeting', self)
+        #    raise xworkflows.AbortTransition
+        if self.state.is_syncing:
+            self.log.warning('Received greet from %s while already syncing', self)
+            raise xworkflows.AbortTransition
         self.log.debug('Received greet from %s', self)
 
     @xworkflows.on_enter_state('syncing')

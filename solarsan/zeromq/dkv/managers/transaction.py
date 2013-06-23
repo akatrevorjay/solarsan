@@ -6,7 +6,7 @@ from ..transaction import ReceiveTransaction
 
 import gevent
 
-from collections import deque, Counter
+#from collections import deque, Counter
 
 
 class TransactionManager(_BaseManager):
@@ -28,14 +28,6 @@ class TransactionManager(_BaseManager):
 
     """ Handlers """
 
-    def _dead_tx(self, tx):
-        #self.log.debug('Dead tx: %s', tx.uuid)
-        self.pop(tx)
-        del tx
-
-    #def _exception_tx(self, tx):
-    #    return self._dead_tx(tx)
-
     def receive_proposal(self, peer, tx_uuid, tx_dict):
         self.log.info('Got transaction proposal from %s: %s', peer, tx_uuid)
         self.log.debug('tx_dict=%s', tx_dict)
@@ -43,9 +35,17 @@ class TransactionManager(_BaseManager):
         tx = ReceiveTransaction.from_dict(self._node, peer, tx_dict)
         #self.append(tx)
 
-        def gen_tx(self, tx):
-            tx.link(self._dead_tx)
-            #tx.link_exception(self._exception_tx)
-            tx.start()
+        gevent.spawn(self._start_tx, tx)
 
-        gevent.spawn(gen_tx, self, tx)
+    def _start_tx(self, tx):
+        tx.link(self._dead_tx)
+        tx.link_exception(self._dead_tx_exception)
+        tx.start()
+
+    def _dead_tx(self, tx, exception=False):
+        self.log.debug('Dead tx: %s (exception=%s)', tx.uuid, exception)
+        self.pop(tx)
+        del tx
+
+    def _dead_tx_exception(self, tx):
+        return self._dead_tx(tx, exception=True)

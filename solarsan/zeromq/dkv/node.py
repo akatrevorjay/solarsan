@@ -26,12 +26,12 @@ from reflex.control import PackageBattery, ReactorBattery, RulesetBattery
 from .encoder import EJSONEncoder
 from .peer import Peer
 
-from .managers.heartbeat import Heart, Syncer
+from .managers.heartbeat import Heart
 from .managers.sequence import Sequencer
 from .managers.transaction import TransactionManager
 from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
-from .managers.greeter import Greeter
+from .managers.greeter import Greeter, Syncer, Discovery
 
 # class EventManager(_BaseEventManager, LogMixin):
 #
@@ -344,15 +344,20 @@ class _CommunicationsMixin:
                 s.close()
 
 
+class _DiscoveryMixin:
+    def __init__(self):
+        pass
+
+
 class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
-           _DispatcherMixin, _PeersMixin, _CommunicationsMixin,
+           _DispatcherMixin, _PeersMixin, _CommunicationsMixin, _DiscoveryMixin,
            _ManagersMixin,
            LogMixin):
 
     debug = True
 
     _default_encoder_cls = EJSONEncoder
-    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager, Greeter, Syncer]
+    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager, Greeter, Syncer, Discovery]
     if debug:
         _default_managers += [Debugger]
 
@@ -385,6 +390,8 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
         _DispatcherMixin.__init__(self)
         managers = kwargs.get('managers', [])
         self.init_managers(*managers)
+
+        _DiscoveryMixin.__init__(self)
 
     def __repr__(self):
         return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)

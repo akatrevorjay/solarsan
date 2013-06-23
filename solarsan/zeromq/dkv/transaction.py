@@ -23,7 +23,7 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
     sequence = None
 
     _serialize_attrs = ['uuid', 'ts', 'payload', 'sender', 'sequence']
-    _timeout = timedelta(seconds=5)
+    _timeout = timedelta(seconds=1)
 
     channel = 'Transaction'
 
@@ -169,17 +169,16 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     """ Actions """
 
-    def ensure_sequence_is_set(self):
-        if not self.sequence:
-            # self.sequence = self._node.seq.allocate_pending()
-            self.sequence = self._node.seq.pending_tx(self)
-
     is_peerless = None
 
     @xworkflows.transition()
     def propose(self):
         """Flood peers with proposal for us to get stored."""
-        self.ensure_sequence_is_set()
+
+        # Ensure sequence is set
+        if not self.sequence:
+            # self.sequence = self._node.seq.allocate_pending()
+            self.sequence = self._node.seq.pending_tx(self)
 
         self.is_peerless = not bool(self._node.peers)
 
@@ -191,7 +190,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             self.is_peerless = True
 
     @xworkflows.after_transition('propose')
-    def enter_proposal(self, r):
+    def _after_propose(self, r):
         if self.is_peerless:
             self.log.debug('Committing tx %s as it is peerless.', self)
             self.commit()

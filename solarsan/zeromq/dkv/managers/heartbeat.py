@@ -74,30 +74,3 @@ class Heart(_BaseManager):
                 # discovery and removal.
                 if not self.neutered:
                     peer.shutdown()
-
-
-class Syncer(_BaseManager):
-
-    def __init__(self, node):
-        _BaseManager.__init__(self, node)
-
-        self.bind(self._on_peer_syncing, 'peer_syncing')
-
-        self._node.greeter = self
-
-    def _on_peer_syncing(self, event, peer):
-        self.log.debug('Event: %s peer=%s', event, peer)
-        self.peer_sync(peer)
-
-    def peer_sync(self, peer):
-        self.log.debug('Syncing %s', peer)
-
-        sync = self._node.kv.store.copy()
-        self.log.debug('sync=%s', sync)
-        self.unicast(peer, 'sync', sync)
-
-    def receive_sync(self, peer, sync, *args, **kwargs):
-        self.log.debug('Received SYNC from %s: sync=%s args=%s kwargs=%s', peer, sync, args, kwargs)
-
-        self.trigger(Event('peer_synced'), peer)
-        gevent.spawn_later(2, peer._synced)

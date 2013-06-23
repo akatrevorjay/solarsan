@@ -59,8 +59,12 @@ class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
         """
         self.running = True
 
+        self._on_start()
+
         if self.tick_wait_until_node_ready:
             self._node.wait_until_ready()
+
+        self._on_start_ticks()
 
         while self.running:
             gevent.sleep(self.tick_length)
@@ -71,6 +75,12 @@ class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
             if not g.dead:
                 self.log.error('Tick timed out.')
                 g.kill()
+
+    def _on_start(self):
+        pass
+
+    def _on_start_ticks(self):
+        pass
 
     """ Handlers """
 
