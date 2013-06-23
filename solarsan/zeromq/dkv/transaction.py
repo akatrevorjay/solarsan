@@ -126,12 +126,12 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             ('done',        'Done'),
         )
         transitions = (
-            #('start', 'init', 'start'),
-            #('propose', 'start', 'proposal'),
             ('propose', 'init', 'proposal'),
             #('receive_vote', 'proposal', 'voting'),
             ('voting', ('proposal', 'voting'), 'voting'),
-            ('commit', 'voting', 'commit'),
+            # Careful when in proposal state, thats only valid if peerless
+            ('commit', ('proposal', 'voting'), 'commit'),
+
             ('abort', ('init', 'proposal', 'voting', 'commit'), 'abort'),
             ('done', ('abort', 'commit'), 'done'),
         )
@@ -158,6 +158,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
         try:
             # gevent.spawn(self.propose).join()
+
             self.propose()
             self.event_done.get()
             self._run_timeout.cancel()
@@ -168,14 +169,32 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     """ Actions """
 
-    @xworkflows.transition()
-    def propose(self):
-        """Flood peers with proposal for us to get stored."""
+    def ensure_sequence_is_set(self):
         if not self.sequence:
             # self.sequence = self._node.seq.allocate_pending()
             self.sequence = self._node.seq.pending_tx(self)
 
-        self.broadcast('proposal', self.uuid, self.to_dict())
+    is_peerless = None
+
+    @xworkflows.transition()
+    def propose(self):
+        """Flood peers with proposal for us to get stored."""
+        self.ensure_sequence_is_set()
+
+        self.is_peerless = not bool(self._node.peers)
+
+        if not self.is_peerless:
+            # With peers, propose and wait for votes
+            self.broadcast('proposal', self.uuid, self.to_dict())
+        else:
+            # Without any peers, we simply commit.
+            self.is_peerless = True
+
+    @xworkflows.after_transition('propose')
+    def enter_proposal(self, r):
+        if self.is_peerless:
+            self.log.debug('Committing tx %s as it is peerless.', self)
+            self.commit()
 
     @xworkflows.transition()
     def abort(self):
@@ -187,6 +206,12 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
     @xworkflows.transition()
     def commit(self):
         """Commit (proposed) tx."""
+
+        # If we're in an proposal state, and not peerless, suicide
+        if self.state.is_proposal:
+            if not self.is_peerless:
+                raise xworkflows.InvalidTransitionError
+
         self.log.info('Committing tx %s', self)
         self.broadcast('commit', self.sequence, channel=self.channel_tx)
         self.store()

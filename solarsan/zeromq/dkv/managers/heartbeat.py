@@ -92,9 +92,12 @@ class Syncer(_BaseManager):
     def peer_sync(self, peer):
         self.log.debug('Syncing %s', peer)
 
-        # TODO Sync
-        self.trigger(Event('peer_synced'), peer)
-        gevent.spawn_later(2, peer._synced)
+        sync = self._node.kv.store.copy()
+        self.log.debug('sync=%s', sync)
+        self.unicast(peer, 'sync', sync)
 
     def receive_sync(self, peer, sync, *args, **kwargs):
         self.log.debug('Received SYNC from %s: sync=%s args=%s kwargs=%s', peer, sync, args, kwargs)
+
+        self.trigger(Event('peer_synced'), peer)
+        gevent.spawn_later(2, peer._synced)
