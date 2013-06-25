@@ -56,7 +56,7 @@ class Discovery(_BaseManager):
 
     # TODO HACK
     service_addr = '*'
-    service_port = 0
+    service_port = None
     service_transport = 'tcp'
     service_socket_type = zmq.ROUTER
 
@@ -83,6 +83,8 @@ class Discovery(_BaseManager):
                 socket.gethostbyname(self.service_addr))
         else:
             self.service_addr_bytes = NULL_IP
+
+        self.service_port = self._node.rtr_endpoint.port
 
     def _on_broadcaster_received(self, raw_parts):
         self.log.debug('Received beacon')

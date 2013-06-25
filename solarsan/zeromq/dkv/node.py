@@ -39,6 +39,8 @@ from .managers.greeter import Greeter, Syncer, Discovery
 #        _BaseEventManager.__init__(
 #            self, self.log.info, self.log.debug, *args, **kwargs)
 
+from .utils import ZmqEndpoint
+
 
 class _DispatcherMixin(Reactor):
 
@@ -468,8 +470,10 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
             gevent.sleep(0.1)
 
     @xworkflows.transition()
-    def bind_listeners(self, rtr_addr, pub_addr):
-        self.rtr.bind(rtr_addr)
-        self.pub.bind(pub_addr)
+    def bind_listeners(self, rtr_endpoint, pub_endpoint):
+        self.rtr_endpoint = ZmqEndpoint(rtr_endpoint)
+        self.rtr.bind(rtr_endpoint)
+        self.pub_endpoint = ZmqEndpoint(pub_endpoint)
+        self.pub.bind(pub_endpoint)
 
         gevent.sleep(0.1)
