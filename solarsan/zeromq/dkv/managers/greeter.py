@@ -23,6 +23,8 @@ I_TO_T = {v: k for k, v in T_TO_I.items()}
 
 NULL_IP = '\x00' * 4
 
+from ..utils import ZmqEndpoint
+
 
 class Discovery(_BaseManager):
 
@@ -113,7 +115,7 @@ class Discovery(_BaseManager):
             return
 
         # TODO Check for losts where again?
-        #self._check_for_losts()
+        # self._check_for_losts()
 
     def _recv_beacon(self):
         """received udp beacons
@@ -140,22 +142,26 @@ class Discovery(_BaseManager):
             if greet != 'SolarSan':
                 continue
 
-            # TODO HACK
-            #if peer_id == self._node.uuid:
-            #    continue
+            if str(peer_id) == self._node.uuid:
+                continue
 
             if peer_socket_address != NULL_IP:
                 peer_addr = socket.inet_ntoa(peer_socket_address)
 
             peer_transport = I_TO_T[peer_transport]
 
-            self.handle_beacon(peer_id, peer_transport, peer_addr,
-                               peer_port, peer_socket_type)
+            gevent.spawn(self.handle_beacon, str(peer_id), str(peer_transport), str(peer_addr),
+                               int(peer_port), int(peer_socket_type))
 
-            gevent.sleep(0)
+            #gevent.sleep(0)
 
-    def handle_beacon(self, *args):
-        self.trigger(Event('peer_discovered'), *args)
+    def handle_beacon(self, peer_uuid, socket_transport, socket_host, socket_port, socket_type):
+        if peer_uuid in self._node.peers:
+            # We already have this peer
+            return
+        peer_endpoint = ZmqEndpoint(
+            transport=socket_transport, host=socket_host, port=socket_port, socket_type=socket_type)
+        gevent.spawn(self.trigger, Event('peer_discovered'), peer_uuid, peer_endpoint)
 
     def _check_for_losts(self):
         # check for losts
@@ -196,7 +202,7 @@ class Greeter(_BaseManager):
     """ Greet """
 
     def greet(self, peer, is_reply=False):
-        self.log.debug('Greeting %s is_reply=%s', self, is_reply)
+        self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
         self.unicast(peer, 'greet', is_reply, self._node.uuid)
 
     def receive_greet(self, peer, is_reply, node_uuid, *args, **kwargs):

@@ -31,6 +31,9 @@ def parse_endpoint(endpoint):
 class ZmqEndpoint:
 
     def __init__(self, *args, **kwargs):
+        if 'socket_type' in kwargs:
+            self.socket_type = kwargs.pop('socket_type')
+
         if args:
             if len(args) == 1 and isinstance(args[0], basestring):
                 endpoint = args[0]

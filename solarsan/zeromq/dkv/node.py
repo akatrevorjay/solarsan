@@ -179,7 +179,6 @@ class _PeersMixin:
         # peers
         self.peers = dict()
 
-        # bind peer_ready event
         self.bind(self._on_peer_ready, 'peer_ready')
 
     def connect(self):
@@ -252,6 +251,24 @@ class _PeersMixin:
         self.log.debug('Event: %s', event)
         if not self.is_ready:
             self.synced()
+
+
+class _DiscoveryMixin:
+    def __init__(self):
+        self.bind(self._on_peer_discovered, 'peer_discovered')
+
+    def _on_peer_discovered(self, event, peer_uuid, peer_endpoint):
+        self.log.info('Discovered new Peer: %s endpoint=%s', peer_uuid, peer_endpoint.as_dict())
+        self.log.debug('Event: %s', event)
+
+        peer = Peer(str(peer_uuid))
+        # TODO HACK HACK HACK
+        peer.cluster_addr = '127.0.0.1'
+        peer.rtr_port = int(peer_endpoint.port)
+        peer.pub_port = int(peer_endpoint.port) + 1
+
+        peer.connect(self)
+        #gevent.spawn(peer.connect, self)
 
 
 class _CommunicationsMixin:
@@ -344,14 +361,6 @@ class _CommunicationsMixin:
             s = getattr(self, attr, None)
             if s is not None:
                 s.close()
-
-
-class _DiscoveryMixin:
-    def __init__(self):
-        self.bind(self._on_peer_discovered, 'peer_discovered')
-
-    def _on_peer_discovered(self, event, *args):
-        self.log.debug('Event: %s args=%s', event, args)
 
 
 class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
