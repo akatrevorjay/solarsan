@@ -76,7 +76,7 @@ class Discovery(_BaseManager):
             socket.SO_REUSEADDR,
             1)
         # Non blocking; works but we don't want it in this case.
-        #broadcaster.setblocking(0)
+        # broadcaster.setblocking(0)
         broadcaster.bind((self.beacon_addr, self.beacon_port))
         self.broadcaster = broadcaster
 
@@ -98,7 +98,7 @@ class Discovery(_BaseManager):
     def _send_beacon(self):
         """sends udp beacons at intervals.
         """
-        #self.log.debug('Sending discovery beacon')
+        # self.log.debug('Sending discovery beacon')
 
         beacon = beaconv3.pack(
             'SolarSan', 3, self._node.uuid,
@@ -153,10 +153,12 @@ class Discovery(_BaseManager):
 
             peer_transport = I_TO_T[peer_transport]
 
-            gevent.spawn(self.handle_beacon, str(peer_id), str(peer_transport), str(peer_addr),
-                               int(peer_port), int(peer_socket_type))
+            gevent.spawn(
+                self.handle_beacon, str(peer_id), str(
+                    peer_transport), str(peer_addr),
+                int(peer_port), int(peer_socket_type))
 
-            #gevent.sleep(0)
+            # gevent.sleep(0)
 
     def handle_beacon(self, peer_uuid, socket_transport, socket_host, socket_port, socket_type):
         if peer_uuid in self._node.peers:
@@ -164,7 +166,8 @@ class Discovery(_BaseManager):
             return
         peer_endpoint = ZmqEndpoint(
             transport=socket_transport, host=socket_host, port=socket_port, socket_type=socket_type)
-        gevent.spawn(self.trigger, Event('peer_discovered'), peer_uuid, peer_endpoint)
+        gevent.spawn(self.trigger, Event(
+            'peer_discovered'), peer_uuid, peer_endpoint)
 
     def _check_for_losts(self):
         # check for losts
@@ -195,7 +198,7 @@ class Greeter(_BaseManager):
         _BaseManager.__init__(self, node)
 
         self.bind(self._on_peer_connected, 'peer_connected')
-        self.bind(self._on_peer_syncing, 'peer_syncing')
+        # self.bind(self._on_peer_syncing, 'peer_syncing')
 
         self._node.greeter = self
 
@@ -205,37 +208,41 @@ class Greeter(_BaseManager):
 
     """ Greet """
 
+    # def greet_loop(self, peer, is_reply=False, timeout=10):
+    #    peer._greeter_running = True
+    #    x = 0
+    #    while getattr(peer, '_greeter_running', None):
+    #        self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
+    #        self.unicast(peer, 'greet', is_reply, self._node.uuid)
+    #        gevent.sleep(1)
+    #        if is_reply:
+    #            break
+    #        if bool(timeout) and x > timeout:
+    # TODO Why won't peers DIE
+    # gevent.spawn_later(1, peer.shutdown)
+    #            break
+    #        x += 1
+    #    if hasattr(peer, '_greeter_running'):
+    #        delattr(peer, '_greeter_running')
+
+    # def _on_peer_syncing(self, event, peer):
+    #    self.log.debug('Peer %s is syncing, stopping greeting')
+    #
+    #    if hasattr(peer, '_greeter_running'):
+    #        peer._greeter_running = False
+
     def greet(self, peer, is_reply=False, timeout=10):
-        peer._greeter_running = True
-        x = 0
-        while getattr(peer, '_greeter_running', None):
-            self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
-            self.unicast(peer, 'greet', is_reply, self._node.uuid)
-            gevent.sleep(1)
-            if is_reply:
-                break
-            if bool(timeout) and x > timeout:
-                # TODO Why won't peers DIE
-                #gevent.spawn_later(1, peer.shutdown)
-                break
-            x += 1
-        if hasattr(peer, '_greeter_running'):
-            delattr(peer, '_greeter_running')
-
-    def _on_peer_syncing(self, event, peer):
-        self.log.debug('Peer %s is syncing, stopping greeting')
-
-        if hasattr(peer, '_greeter_running'):
-            peer._greeter_running = False
+        self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
+        self.unicast(peer, 'greet', is_reply, self._node.uuid)
+        # gevent.sleep(1)
 
     def receive_greet(self, peer, is_reply, node_uuid, *args, **kwargs):
         # Temp hackery for debug log
         args = [is_reply, node_uuid]
         args.extend(args)
 
-        channel = self.channel
         self.log.debug(
-            'Received greet peer=%s args=%s kwargs=%s channel=%s', peer, args, kwargs, channel)
+            'Received greet peer=%s args=%s kwargs=%s channel=%s', peer, args, kwargs, self.channel)
 
         peer.receive_greet()
 

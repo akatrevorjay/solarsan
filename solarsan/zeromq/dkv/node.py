@@ -33,13 +33,8 @@ from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
 from .managers.greeter import Greeter, Syncer, Discovery
 
-# class EventManager(_BaseEventManager, LogMixin):
-#
-#    def __init__(self, *args, **kwargs):
-#        _BaseEventManager.__init__(
-#            self, self.log.info, self.log.debug, *args, **kwargs)
-
 from .utils import ZmqEndpoint
+from .base import _BaseDict
 
 
 class _DispatcherMixin(Reactor):
@@ -107,6 +102,14 @@ class _DispatcherMixin(Reactor):
         else:
             kwargs['channel'] = _looped
 
+        # Reactor
+        gevent.spawn(self.trigger,
+            Event('receive', [
+                ('type', message_type),
+                ('channel', channel_name),
+            ]),
+            *parts)
+
         # Dispatch
         handlers = self.handlers.get(channel_name, None)
         if handlers:
@@ -171,13 +174,42 @@ class _ManagersMixin:
         gevent.sleep(0)
 
 
+class PeerContainer(_BaseDict):
+
+    def __init__(self, node, *args, **kwargs):
+        self._node = node
+        _BaseDict.__init__(self, *args, **kwargs)
+
+    def add(self, peer):
+        self[peer.uuid] = peer
+
+    __append__ = add
+
+    def remove(self, peer_or_uuid):
+        if isinstance(peer, basestring):
+            uuid = peer
+        else:
+            uuid = str(peer.uuid)
+        del peer
+        self.pop(uuid, None)
+
+
+class Peers(_BaseDict):
+
+    def __init__(self, node):
+        self._node = node
+
+        self.connected = PeerContainer(node)
+        #self.ready = PeerContainer(node)
+
+
 class _PeersMixin:
     debug_peers = False
     peers = None
 
     def __init__(self):
-        # peers
         self.peers = dict()
+        #self.peers = Peers(self)
 
         self.bind(self._on_peer_ready, 'peer_ready')
 
@@ -212,6 +244,7 @@ class _PeersMixin:
     def remove_peer(self, peer):
         self.log.info('Removing peer: %s', peer)
         uuid = str(peer.uuid)
+
         if uuid in self.peers:
             del self.peers[uuid]
 
@@ -254,12 +287,13 @@ class _PeersMixin:
 
 
 class _DiscoveryMixin:
+
     def __init__(self):
         self.bind(self._on_peer_discovered, 'peer_discovered')
 
     def _on_peer_discovered(self, event, peer_uuid, peer_endpoint):
-        self.log.info('Discovered new Peer: %s endpoint=%s', peer_uuid, peer_endpoint.as_dict())
-        self.log.debug('Event: %s', event)
+        self.log.info('Discovered new Peer: %s endpoint=%s',
+                      peer_uuid, peer_endpoint.as_dict())
 
         peer = Peer(str(peer_uuid))
         # TODO HACK HACK HACK
@@ -267,8 +301,8 @@ class _DiscoveryMixin:
         peer.rtr_port = int(peer_endpoint.port)
         peer.pub_port = int(peer_endpoint.port) + 1
 
-        peer.connect(self)
-        #gevent.spawn(peer.connect, self)
+        #peer.connect(self)
+        gevent.spawn(peer.connect, self)
 
 
 class _CommunicationsMixin:
@@ -371,7 +405,8 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
     debug = True
 
     _default_encoder_cls = EJSONEncoder
-    _default_managers = [Heart, Sequencer, TransactionManager, KeyValueManager, Greeter, Syncer, Discovery]
+    _default_managers = [
+        Heart, Sequencer, TransactionManager, KeyValueManager, Greeter, Syncer, Discovery]
     if debug:
         _default_managers += [Debugger]
 
@@ -388,7 +423,6 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
         Reactor.__init__(self, self.events, uuid=uuid, encoder=encoder)
 
     def init(self, *args, **kwargs):
-        # uuid
         uuid = kwargs.get('uuid')
         if not uuid:
             uuid = uuid4().get_hex()
@@ -471,11 +505,12 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
         while self.running:
             socks = dict(self._poller.poll(timeout=0))
             if socks:
-                # self.log.debug('socks=%s', socks)
+                #self.log.debug('socks=%s', socks)
                 for s, sv in self._socks.iteritems():
                     cb, flags = sv
                     if s in socks and socks[s] == flags:
-                        cb(s.recv_multipart())
+                        gevent.spawn(cb, s.recv_multipart())
+                        #cb(s.recv_multipart())
             gevent.sleep(0.1)
 
     @xworkflows.transition()

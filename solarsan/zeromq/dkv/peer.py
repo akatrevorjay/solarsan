@@ -14,13 +14,8 @@ from reflex.base import Reactor
 from reflex.data import Event
 
 
-class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
-    uuid = None
+class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
     cluster_addr = None
-    is_local = None
-
-    connected = None
-    dead = None
 
     class State(xworkflows.Workflow):
         initial_state = 'init'
@@ -55,9 +50,10 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
     state = State()
 
     def __init__(self, uuid):
-        self.uuid = uuid
+        self.uuid = str(uuid)
         self.is_local = False
         self.connected = False
+        self.dead = False
 
     def __repr__(self):
         meta = dict(
@@ -113,7 +109,6 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
         #    self.log.debug('Got beat')
         if not self.connected:
             self._node.wait_until_syncing()
-            # gevent.sleep(0.1)
             gevent.spawn(self._connected)
             #self._connected()
 
@@ -128,9 +123,6 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
 
     @xworkflows.transition()
     def receive_greet(self):
-        #if not self.state.is_greeting:
-        #    self.log.debug('Received greet from %s while not greeting', self)
-        #    raise xworkflows.AbortTransition
         if self.state.is_syncing:
             self.log.warning('Received greet from %s while already syncing', self)
             raise xworkflows.AbortTransition
