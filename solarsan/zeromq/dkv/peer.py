@@ -15,7 +15,6 @@ from reflex.data import Event
 
 
 class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
-    cluster_addr = None
 
     class State(xworkflows.Workflow):
         initial_state = 'init'
@@ -49,6 +48,10 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
 
     state = State()
 
+    debug = False
+
+    cluster_addr = None
+
     def __init__(self, uuid):
         self.uuid = str(uuid)
         self.is_local = False
@@ -58,22 +61,25 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
     def __repr__(self):
         meta = dict(
             uuid=str(self.uuid),
-            #cluster_addr=self.cluster_addr,
+            # cluster_addr=self.cluster_addr,
             rtr_port=self.rtr_port,
             pub_port=self.pub_port,
-            #connected=self.connected,
-            #is_local=self.is_local,
+            # connected=self.connected,
+            # is_local=self.is_local,
             state=self.state,
         )
 
         parts = ['%s=%s' % (k, v) for k, v in meta.iteritems()]
         return "<%s %s>" % (self.__class__.__name__, ', '.join(parts))
 
+    def debug(self, *args, **kwargs):
+        if self.debug:
+            return self.log.debug(*args, **kwargs)
+
     """ Connection """
 
     @xworkflows.transition()
     def connect(self, node):
-        # if self.debug:
         self.log.debug('Connecting to peer: %s', self)
 
         Reactor.__init__(self, node.events)
@@ -82,15 +88,6 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
 
         self.bind(self._on_node_syncing, 'node_syncing')
         self.bind(self._on_node_ready, 'node_ready')
-
-        #self.sub = sub = self._node._ctx.socket(zmq.SUB)
-        #sub.linger = 0
-        #sub.setsockopt(zmq.SUBSCRIBE, b'')
-
-        # Connect subscriber
-        #sub.connect(self.pub_addr)
-
-        #self._node.sub.connect(self.pub_addr)
 
         self._node.add_peer(self)
 
@@ -102,12 +99,11 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
 
     def receive_beat(self, meta):
         """ Heartbeat """
-        #if self.debug:
-        #    self.log.debug('Got beat')
+        self.debug('Got beat')
         if not self.connected:
             self._node.wait_until_syncing()
             gevent.spawn(self._connected)
-            #self._connected()
+            # self._connected()
 
     @xworkflows.transition()
     def _connected(self):
@@ -121,7 +117,8 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
     @xworkflows.transition()
     def receive_greet(self):
         if self.state.is_syncing:
-            self.log.warning('Received greet from %s while already syncing', self)
+            self.log.warning(
+                'Received greet from %s while already syncing', self)
             raise xworkflows.AbortTransition
         self.log.debug('Received greet from %s', self)
 
@@ -149,18 +146,8 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
             self._node.remove_peer(self)
 
     def _disconnect(self):
-        #self.log.debug('Disconnecting from peer: %s', self)
+        # self.log.debug('Disconnecting from peer: %s', self)
         self.connected = False
-
-        #if hasattr(self, 'sub'):
-        #    # Disconnect subscriber
-        #    self.sub.disconnect(self.pub_addr)
-        #
-        #    # This is not supported by ZMQ. God speed.
-        #    # self.sub.close()
-        #    # Deleting the attribute will help it get GCd, which automatically
-        #    # closes it.
-        #    delattr(self, 'sub')
 
     """ Helpers """
 
