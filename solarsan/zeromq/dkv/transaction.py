@@ -253,13 +253,13 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
                 if not v['accept']:
                     self.log.error(
                         'Aborting tx %s: peer %s did not accept.', self, k)
-                    raise PeerDidNotAccept
+                    raise PeerDidNotAccept(k)
 
                 if not v['sequence'] == self.sequence:
                     self.log.error(
                         'Aborting tx %s: peer %s sequence did not match (%s!=%s).',
                         self, k, self.sequence, v['sequence'])
-                    raise PeerSequenceDidNotMatch
+                    raise PeerSequenceDidNotMatch(k)
             self.commit()
 
     def __repr__(self):

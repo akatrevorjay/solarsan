@@ -10,6 +10,8 @@ import time
 import socket
 import errno
 import struct
+import select
+
 
 beaconv3 = struct.Struct('8sB40sHBB4s')
 
@@ -40,8 +42,6 @@ class Discovery(_BaseManager):
 
     def _tick(self):
         self._send_beacon()
-        gevent.sleep(0)
-        self._recv_beacon()
 
     def discovered_peer(self, uuid):
         self.log.debug('Discovered peer')
@@ -75,7 +75,8 @@ class Discovery(_BaseManager):
             socket.SOL_SOCKET,
             socket.SO_REUSEADDR,
             1)
-        broadcaster.setblocking(0)
+        # Non blocking; works but we don't want it in this case.
+        #broadcaster.setblocking(0)
         broadcaster.bind((self.beacon_addr, self.beacon_port))
         self.broadcaster = broadcaster
 
@@ -88,6 +89,8 @@ class Discovery(_BaseManager):
 
         self.service_port = self._node.rtr_endpoint.port
 
+        gevent.spawn(self._recv_beacon)
+
     def _on_broadcaster_received(self, raw_parts):
         self.log.debug('Received beacon')
         return
@@ -95,7 +98,7 @@ class Discovery(_BaseManager):
     def _send_beacon(self):
         """sends udp beacons at intervals.
         """
-        self.log.debug('Sending discovery beacon')
+        #self.log.debug('Sending discovery beacon')
 
         beacon = beaconv3.pack(
             'SolarSan', 3, self._node.uuid,
@@ -192,6 +195,7 @@ class Greeter(_BaseManager):
         _BaseManager.__init__(self, node)
 
         self.bind(self._on_peer_connected, 'peer_connected')
+        self.bind(self._on_peer_syncing, 'peer_syncing')
 
         self._node.greeter = self
 
@@ -201,9 +205,28 @@ class Greeter(_BaseManager):
 
     """ Greet """
 
-    def greet(self, peer, is_reply=False):
-        self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
-        self.unicast(peer, 'greet', is_reply, self._node.uuid)
+    def greet(self, peer, is_reply=False, timeout=10):
+        peer._greeter_running = True
+        x = 0
+        while getattr(peer, '_greeter_running', None):
+            self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
+            self.unicast(peer, 'greet', is_reply, self._node.uuid)
+            gevent.sleep(1)
+            if is_reply:
+                break
+            if bool(timeout) and x > timeout:
+                # TODO Why won't peers DIE
+                #gevent.spawn_later(1, peer.shutdown)
+                break
+            x += 1
+        if hasattr(peer, '_greeter_running'):
+            delattr(peer, '_greeter_running')
+
+    def _on_peer_syncing(self, event, peer):
+        self.log.debug('Peer %s is syncing, stopping greeting')
+
+        if hasattr(peer, '_greeter_running'):
+            peer._greeter_running = False
 
     def receive_greet(self, peer, is_reply, node_uuid, *args, **kwargs):
         # Temp hackery for debug log

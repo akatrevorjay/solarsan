@@ -20,6 +20,7 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
     is_local = None
 
     connected = None
+    dead = None
 
     class State(xworkflows.Workflow):
         initial_state = 'init'
@@ -37,6 +38,8 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
             # relying upon status of all of them, more generic terms, could even
             # use 'greeted' or some shit.
             ('syncing',         'Sync state'),
+
+            ('dead', 'Dead state'),
         )
         transitions = (
             ('start', 'init', 'connecting'),
@@ -46,7 +49,7 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
             ('receive_greet', ('syncing', 'greeting'), 'syncing'),
             ('_synced', 'syncing', 'ready'),
 
-            ('shutdown', [x[0] for x in states], 'init')
+            ('shutdown', [x[0] for x in states], 'dead')
         )
 
     state = State()
@@ -150,18 +153,22 @@ class Peer(LogMixin, Reactor, xworkflows.WorkflowEnabled):
         self.log.debug('Shutting down peer: %s', self)
 
         self._disconnect()
+
+        self.dead = True
+
         if hasattr(self, '_node'):
             self._node.remove_peer(self)
 
     def _disconnect(self):
         #self.log.debug('Disconnecting from peer: %s', self)
+        self.connected = False
+
         #if hasattr(self, 'sub'):
         #    # This is not supported by ZMQ. God speed.
         #    # self.sub.close()
         #    # Deleting the attribute will help it get GCd, which automatically
         #    # closes it.
         #    delattr(self, 'sub')
-        pass
 
     """ Helpers """
 
