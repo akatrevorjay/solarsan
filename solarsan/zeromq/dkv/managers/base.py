@@ -14,7 +14,7 @@ Manager
 class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
     debug = False
 
-    def debug(self, *args, **kwargs):
+    def _debug(self, *args, **kwargs):
         if self.debug:
             return self.log.debug(*args, **kwargs)
 

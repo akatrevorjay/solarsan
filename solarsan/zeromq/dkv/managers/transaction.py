@@ -32,7 +32,7 @@ class TransactionManager(_BaseManager):
 
     def receive_proposal(self, peer, tx_uuid, tx_dict):
         self.log.info('Got transaction proposal from %s: %s', peer, tx_uuid)
-        self.debug('tx_dict=%s', tx_dict)
+        self._debug('tx_dict=%s', tx_dict)
 
         tx = ReceiveTransaction.from_dict(self._node, peer, tx_dict)
         #self.append(tx)
@@ -45,7 +45,7 @@ class TransactionManager(_BaseManager):
         tx.start()
 
     def _dead_tx(self, tx, exception=False):
-        self.debug('Dead tx: %s (exception=%s)', tx.uuid, exception)
+        self._debug('Dead tx: %s (exception=%s)', tx.uuid, exception)
         self.pop(tx)
         del tx
 

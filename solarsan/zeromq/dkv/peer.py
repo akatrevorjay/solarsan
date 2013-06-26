@@ -70,7 +70,7 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
         parts = ['%s=%s' % (k, v) for k, v in meta.iteritems()]
         return "<%s %s>" % (self.__class__.__name__, ', '.join(parts))
 
-    def debug(self, *args, **kwargs):
+    def _debug(self, *args, **kwargs):
         if self.debug:
             return self.log.debug(*args, **kwargs)
 
@@ -97,7 +97,7 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
 
     def receive_beat(self, meta):
         """ Heartbeat """
-        self.debug('Got beat')
+        self._debug('Got beat')
         if not self.connected:
             self._node.wait_until_syncing()
             gevent.spawn(self._connected)
