@@ -71,29 +71,26 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
 
     """ Connection """
 
-    def _connect_sub(self):
-        # Connect subscriber
-        self.sub.connect(self.pub_addr)
-
     @xworkflows.transition()
     def connect(self, node):
         # if self.debug:
         self.log.debug('Connecting to peer: %s', self)
 
+        Reactor.__init__(self, node.events)
+
         self._node = weakref.proxy(node)
 
-        Reactor.__init__(self, node.events)
         self.bind(self._on_node_syncing, 'node_syncing')
         self.bind(self._on_node_ready, 'node_ready')
 
-        #if hasattr(self, 'sub'):
-        #    delattr(self, 'sub')
-        self.sub = sub = self._node._ctx.socket(zmq.SUB)
-        for sock in (sub, ):
-            sock.linger = 0
-        sub.setsockopt(zmq.SUBSCRIBE, b'')
+        #self.sub = sub = self._node._ctx.socket(zmq.SUB)
+        #sub.linger = 0
+        #sub.setsockopt(zmq.SUBSCRIBE, b'')
 
-        self._connect_sub()
+        # Connect subscriber
+        #sub.connect(self.pub_addr)
+
+        #self._node.sub.connect(self.pub_addr)
 
         self._node.add_peer(self)
 
@@ -156,6 +153,9 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
         self.connected = False
 
         #if hasattr(self, 'sub'):
+        #    # Disconnect subscriber
+        #    self.sub.disconnect(self.pub_addr)
+        #
         #    # This is not supported by ZMQ. God speed.
         #    # self.sub.close()
         #    # Deleting the attribute will help it get GCd, which automatically

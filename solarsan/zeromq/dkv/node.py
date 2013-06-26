@@ -256,8 +256,11 @@ class _PeersMixin:
         # Connect router
         self.rtr.connect(peer.rtr_addr)
 
+        # Connect sub
+        self.sub.connect(peer.pub_addr)
+
         # Add subscriber socket to our sock repertoire
-        self._add_sock(peer.sub, self._on_sub_received)
+        #self._add_sock(peer.sub, self._on_sub_received)
 
         # Set timeout
         # t = gevent.Timeout(seconds=30)
@@ -331,9 +334,16 @@ class _CommunicationsMixin:
         self._add_sock(rtr, self._on_rtr_received)
 
         # publisher socket
-        self.pub = self._ctx.socket(zmq.PUB)
+        pub = self.pub = self._ctx.socket(zmq.PUB)
+        pub.setsockopt(zmq.IDENTITY, self.uuid)
 
-        for sock in (self.rtr, self.pub):
+        # subscriber socket
+        sub = self.sub = self._ctx.socket(zmq.SUB)
+        sub.setsockopt(zmq.SUBSCRIBE, b'')
+        self._add_sock(sub, self._on_sub_received)
+
+
+        for sock in (self.rtr, self.pub, self.sub):
             sock.linger = 0
 
     def broadcast(self, channel_name, message_type, *parts):
@@ -382,6 +392,10 @@ class _CommunicationsMixin:
     def _add_sock(self, sock, cb, flags=zmq.POLLIN):
         self._poller.register(sock, flags)
         self._socks[sock] = (cb, flags)
+
+    def _remove_sock(self, sock):
+        self._poller.unregister(sock)
+        self._socks.pop(sock, None)
 
     def shutdown(self):
         self.log.info('Shutting down Node: %s', self)
