@@ -1,13 +1,11 @@
 
 from solarsan import logging, conf, LogMixin
 logger = logging.getLogger(__name__)
-# from solarsan.exceptions import NodeError
 
 import gevent
 import gevent.coros
 import gevent.event
 
-import zmq.green as zmq
 import weakref
 import xworkflows
 from reflex.base import Reactor
