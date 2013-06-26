@@ -61,7 +61,7 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
         if self.sequence:
             self._node.seq.release_pending(self.sequence)
         self._remove_handler()
-        self.kill()
+        #self.kill()
 
     """ Tofro dict """
 
@@ -167,6 +167,9 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
                 'Timeout waiting for votes on tx %s: %s', self, e)
             self.abort()
 
+    def __repr__(self):
+        return "<%s uuid='%s'>" % (self.__class__.__name__, getattr(self, 'uuid', None))
+
     """ Actions """
 
     is_peerless = None
@@ -200,6 +203,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
         """Abort (proposed) tx."""
         self.log.warning('Aborting tx %s', self)
         self.broadcast('abort', channel=self.channel_tx)
+        self._run_timeout.cancel()
         #self.done()
 
     @xworkflows.transition()
@@ -253,17 +257,27 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
                 if not v['accept']:
                     self.log.error(
                         'Aborting tx %s: peer %s did not accept.', self, k)
-                    raise PeerDidNotAccept(k)
+                    #raise PeerDidNotAccept(k)
+                    if not self.state.is_abort:
+                        self.abort()
+                    #self.kill(exception=PeerDidNotAccept(k))
+                    self.kill()
+                    return
 
                 if not v['sequence'] == self.sequence:
                     self.log.error(
                         'Aborting tx %s: peer %s sequence did not match (%s!=%s).',
                         self, k, self.sequence, v['sequence'])
-                    raise PeerSequenceDidNotMatch(k)
+                    #raise PeerSequenceDidNotMatch(k)
+                    if not self.state.is_abort:
+                        self.abort()
+                    #self.kill(exception=PeerSequenceDidNotMatch(k))
+                    self.kill()
+                    return
             self.commit()
 
     def __repr__(self):
-        return "<%s uuid='%s'>" % (self.__class__.__name__, self.uuid)
+        return "<%s uuid='%s'>" % (self.__class__.__name__, getattr(self, 'uuid', None))
 
 
 class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
@@ -305,6 +319,9 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
             self.log.error(
                 'Timeout waiting for votes on tx %s: %s', self, e)
 
+    def __repr__(self):
+        return "<%s uuid='%s'>" % (self.__class__.__name__, getattr(self, 'uuid', None))
+
     """ Actions """
 
     @property
@@ -330,6 +347,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     def abort(self):
         self.log.warning('Aborting tx %s from %s (sequence=%s).',
                          self, self.sender, self.sequence)
+        self._run_timeout.cancel()
         self.done()
 
     @xworkflows.transition()
