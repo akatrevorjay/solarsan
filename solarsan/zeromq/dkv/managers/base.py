@@ -12,6 +12,12 @@ Manager
 
 
 class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
+    debug = False
+
+    def debug(self, *args, **kwargs):
+        if self.debug:
+            return self.log.debug(*args, **kwargs)
+
     def __init__(self, node, **kwargs):
         if hasattr(self, 'pre_init'):
             self.pre_init(node, **kwargs)
