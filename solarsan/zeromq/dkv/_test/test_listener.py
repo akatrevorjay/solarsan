@@ -25,7 +25,7 @@ logger.info('this_name=%s; peer_list=%s', this_name, peer_list)
 n = get_node(this_name)
 bind_node(n)
 #connect_nodes(n, *peer_list)
-n.wait_until_ready()
+#n.wait_until_ready()
 
 
 if __name__ == '__main__':

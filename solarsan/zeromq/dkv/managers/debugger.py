@@ -6,7 +6,7 @@ from functools import partial
 
 class Debugger(_BaseManager):
     channel = '*'
-    ignore_channels = ('Heart', )
+    ignore_channels = ('Heart', 'Transaction')
 
     backdoor = True
     backdoor_listen = '127.0.0.1:0'

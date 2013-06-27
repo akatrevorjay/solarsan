@@ -22,8 +22,8 @@ from .base import _BaseDict
 
 
 class Message(_BaseDict):
-    def __init__(self, **kwargs):
-        _BaseDict.__init__(self, **kwargs)
+    def __init__(self, *args, **kwargs):
+        _BaseDict.__init__(self, *args, **kwargs)
         if 'uuid' not in self:
             self.uuid = uuid4()
 

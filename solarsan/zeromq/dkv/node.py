@@ -241,23 +241,20 @@ class _PeersMixin:
         self.peers[uuid] = peer
         self.connect_peer(peer)
 
-    def remove_peer(self, peer):
-        self.log.info('Removing peer: %s', peer)
-        uuid = str(peer.uuid)
-
-        if uuid in self.peers:
-            del self.peers[uuid]
-
     def connect_peer(self, peer):
         """Connects to peer"""
 
         self.log.info('Connecting to peer: %s', peer)
+        gevent.sleep(1)
 
         # Connect router
-        self.rtr.connect(peer.rtr_addr)
+        self.log.debug('Connecting to peer ROUTER: %s', peer)
+        gevent.spawn(self.rtr.connect, peer.rtr_addr)
 
         # Connect sub
-        self.sub.connect(peer.pub_addr)
+        self.log.debug('Connecting to peer PUBLISHER: %s', peer)
+        #gevent.spawn_later(self.sub.connect, peer.pub_addr)
+        gevent.spawn(self.sub.connect, peer.pub_addr)
 
         # Add subscriber socket to our sock repertoire
         #self._add_sock(peer.sub, self._on_sub_received)
@@ -270,6 +267,21 @@ class _PeersMixin:
         # Upon greet received, connect to pub_addr specified
 
         gevent.sleep(0.1)
+
+    def remove_peer(self, peer):
+        self.log.info('Removing peer: %s', peer)
+        uuid = str(peer.uuid)
+
+        self.disconnect_peer(peer)
+
+        if uuid in self.peers:
+            del self.peers[uuid]
+
+    def disconnect_peer(self, peer):
+        """Disconnects from peer"""
+        self.log.info('Disconnecting from peer: %s', peer)
+        self.sub.disconnect(peer.pub_addr)
+        self.rtr.disconnect(peer.rtr_addr)
 
     def get_peer(self, peer_or_uuid, exception=PeerUnknown):
         peer = None

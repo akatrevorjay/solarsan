@@ -31,6 +31,10 @@ class TransactionManager(_BaseManager):
     """ Handlers """
 
     def receive_proposal(self, peer, tx_uuid, tx_dict):
+        if not peer.state.is_ready:
+            self.log.warning('Got tx proposal from %s: %s', peer, tx_uuid)
+            return
+
         self.log.info('Got transaction proposal from %s: %s', peer, tx_uuid)
         self._debug('tx_dict=%s', tx_dict)
 

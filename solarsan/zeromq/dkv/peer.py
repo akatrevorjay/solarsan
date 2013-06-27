@@ -39,7 +39,7 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
             ('_connected', 'connecting', 'greeting'),
             # TODO don't send during syncing as we've already greeted
             ('receive_greet', ('syncing', 'greeting'), 'syncing'),
-            ('_synced', 'syncing', 'ready'),
+            ('_on_synced', 'syncing', 'ready'),
 
             ('shutdown', [x[0] for x in states], 'dead')
         )
@@ -87,7 +87,9 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
         self.bind(self._on_node_syncing, 'node_syncing')
         self.bind(self._on_node_ready, 'node_ready')
 
-        self._node.add_peer(self)
+        self.bind(self._on_peer_synced, 'peer_synced')
+
+        gevent.spawn(self._node.add_peer, self)
 
     def _on_node_syncing(self, event, node):
         self.log.debug('Node is syncing!')
@@ -129,8 +131,13 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
         self.trigger(Event('peer_ready'), self)
 
     @xworkflows.transition()
-    def _synced(self):
+    def _on_synced(self):
         self.log.debug('Completed syncing %s', self)
+
+    def _on_peer_synced(self, event, peer):
+        if peer != self:
+            return
+        gevent.spawn_later(1, self._on_synced)
 
     @xworkflows.transition()
     def shutdown(self):

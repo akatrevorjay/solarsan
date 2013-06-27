@@ -205,36 +205,36 @@ class Greeter(_BaseManager):
     def _on_peer_connected(self, event, peer):
         self.log.debug('Event: %s is connected', peer)
         gevent.spawn(self.greet, peer)
+        #gevent.spawn(self.greet_loop, peer)
 
     """ Greet """
 
-    # def greet_loop(self, peer, is_reply=False, timeout=10):
-    #    peer._greeter_running = True
-    #    x = 0
-    #    while getattr(peer, '_greeter_running', None):
-    #        self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
-    #        self.unicast(peer, 'greet', is_reply, self._node.uuid)
-    #        gevent.sleep(1)
-    #        if is_reply:
-    #            break
-    #        if bool(timeout) and x > timeout:
-    # TODO Why won't peers DIE
-    # gevent.spawn_later(1, peer.shutdown)
-    #            break
-    #        x += 1
-    #    if hasattr(peer, '_greeter_running'):
-    #        delattr(peer, '_greeter_running')
+    def greet_loop(self, peer, is_reply=False, timeout=10):
+        peer._greeter_running = True
+        x = 0
+        while getattr(peer, '_greeter_running', None):
+            self.greet(peer, is_reply)
+            gevent.sleep(1)
+            if is_reply:
+                break
+            if bool(timeout) and x > timeout:
+                # TODO Why won't peers DIE
+                peer.shutdown()
+                break
+            x += 1
+        if hasattr(peer, '_greeter_running'):
+            delattr(peer, '_greeter_running')
 
-    # def _on_peer_syncing(self, event, peer):
-    #    self.log.debug('Peer %s is syncing, stopping greeting')
-    #
-    #    if hasattr(peer, '_greeter_running'):
-    #        peer._greeter_running = False
+    def _on_peer_syncing(self, event, peer):
+        self.log.debug('Peer %s is syncing, stopping greeting')
+
+        if hasattr(peer, '_greeter_running'):
+            peer._greeter_running = False
 
     def greet(self, peer, is_reply=False, timeout=10):
         self.log.debug('Greeting %s is_reply=%s', peer, is_reply)
         self.unicast(peer, 'greet', is_reply, self._node.uuid)
-        # gevent.sleep(1)
+        #gevent.sleep(1)
 
     def receive_greet(self, peer, is_reply, node_uuid, *args, **kwargs):
         # Temp hackery for debug log
@@ -246,9 +246,8 @@ class Greeter(_BaseManager):
 
         peer.receive_greet()
 
-        # if not is_reply:
-        if True:
-            self.greet(peer, is_reply=True)
+        if not is_reply:
+            gevent.spawn(self.greet, peer, is_reply=True)
 
 
 class Syncer(_BaseManager):
@@ -267,13 +266,26 @@ class Syncer(_BaseManager):
     def peer_sync(self, peer):
         self.log.debug('Syncing %s', peer)
 
-        sync = self._node.kv.store.copy()
-        self.log.debug('sync=%s', sync)
+        sync = self._node.kv._export()
+        self._debug('sync=%s', sync)
         self.unicast(peer, 'sync', sync)
 
     def receive_sync(self, peer, sync, *args, **kwargs):
         self.log.debug(
             'Received SYNC from %s: sync=%s args=%s kwargs=%s', peer, sync, args, kwargs)
 
+        if sync.get('data'):
+            # TODO Check to see which is more up to date and such
+            # TODO Where does this belong?
+            sync_seq = sync.get('seq')
+            sync_seq_cur = sync_seq.get('cur', 0)
+
+            cur = self._node.seq.seq['cur']
+
+            if sync_seq_cur <= cur:
+                self.log.warning('Not syncing as sync_seq_cur=%s <= cur=%s', sync_seq_cur, cur)
+            else:
+                self.log.info('Syncing as sync_seq_cur=%s > cur=%s', sync_seq_cur, cur)
+                self._node.kv._import(sync)
+
         self.trigger(Event('peer_synced'), peer)
-        gevent.spawn_later(2, peer._synced)

@@ -8,7 +8,7 @@ from ..base import _BaseDict
 from collections import Counter, OrderedDict, defaultdict, deque
 from gevent.queue import Queue, LifoQueue, PriorityQueue, JoinableQueue
 
-# from ..message import Message
+from ..message import Message
 
 from datetime import datetime
 
@@ -84,8 +84,8 @@ class KeyValueStorage(dict, LogMixin):
             timestamp = datetime.now()
         self.ktimestamps[k] = timestamp
 
-        if self.debug:
-            self.log.debug('Set %s=%s (kseq=%s, ts=%s)', k, v, seq, timestamp)
+        #if self.debug:
+        #    self.log.debug('Set %s=%s (kseq=%s, ts=%s)', k, v, seq, timestamp)
 
     __setitem__ = set
 
@@ -97,6 +97,33 @@ class KeyValueStorage(dict, LogMixin):
             del self.ktimestamps[k]
 
     __delitem__ = remove
+
+    def clear(self):
+        dict.clear(self)
+        self.kseqs.clear()
+        self.ktimestamps.clear()
+
+    def _export(self):
+        #data = {k: v.__dict__ for k, v in self.copy().iteritems()}
+        data = self.copy()
+        kseqs = self.kseqs.copy()
+        ktimestamps = self.ktimestamps.copy()
+        return dict(data=data, kseqs=kseqs, ktimestamps=ktimestamps)
+
+    def _import(self, data):
+        store = data['data']
+        kseqs = data['kseqs']
+        ktimestamps = data['ktimestamps']
+
+        self.clear()
+        store = {k: Message(v) for k, v in store.iteritems()}
+        self.update(store)
+
+        self.kseqs.clear()
+        self.kseqs.update(kseqs)
+
+        self.ktimestamps.clear()
+        self.ktimestamps.update(ktimestamps)
 
 
 class KeyValueManager(_BaseManager):
@@ -120,11 +147,28 @@ class KeyValueManager(_BaseManager):
             raise SolarSanError(
                 "Sequence=%s is not greater than current=%s", seq, cur)
         self.store[k] = v
+
         # TODO HACK THIS DOESNT BELONG HERE
         self._node.seq.seq['cur'] = seq
 
     def pop(self, k, d=None):
         return self.store.pop(k, d)
+
+    def _export(self):
+        ret = self.store._export()
+
+        ret['seq'] = self._node.seq.seq.copy()
+
+        return ret
+
+    def _import(self, data):
+        seq = data.pop('seq')
+
+        self.store._import(data)
+
+        self._node.seq.seq.clear()
+        #self._node.seq.seq.update(seq)
+        self._node.seq.seq['cur'] = seq['cur']
 
     # def update(self, data):
     #    self.store.update(data)

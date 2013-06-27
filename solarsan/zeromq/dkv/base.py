@@ -1,7 +1,7 @@
 
 class _BaseDict(dict):
-    def __init__(self, **kwargs):
-        dict.__init__(self, **kwargs)
+    #def __init__(self, *args, **kwargs):
+    #    dict.__init__(self, *args, **kwargs)
 
     def __repr__(self):
         return '<%s %s>' % (self.__class__.__name__, dict.__repr__(self))
