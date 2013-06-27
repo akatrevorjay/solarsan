@@ -172,3 +172,32 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
 
     def unicast(self, channel, message_type, *parts, **kwargs):
         return self._node.unicast(self, channel, message_type, *parts, **kwargs)
+
+
+#class PeerContainer(_BaseDict):
+#
+#    def __init__(self, node, *args, **kwargs):
+#        self._node = node
+#        _BaseDict.__init__(self, *args, **kwargs)
+#
+#    def add(self, peer):
+#        self[peer.uuid] = peer
+#
+#    __append__ = add
+#
+#    def remove(self, peer_or_uuid):
+#        if isinstance(peer, basestring):
+#            uuid = peer
+#        else:
+#            uuid = str(peer.uuid)
+#        del peer
+#        self.pop(uuid, None)
+#
+#
+#class Peers(_BaseDict):
+#
+#    def __init__(self, node):
+#        self._node = node
+#
+#        self.connected = PeerContainer(node)
+#        #self.ready = PeerContainer(node)

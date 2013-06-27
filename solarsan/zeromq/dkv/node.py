@@ -9,32 +9,26 @@ import gevent.event
 
 import zmq.green as zmq
 from uuid import uuid4
-# from datetime import datetime
-# from functools import partial
-import weakref
 import xworkflows
 
-# from reflex.base import Reactor, Binding, Ruleset
 from reflex.data import Event
 from reflex.base import Reactor
-# from reflex.control import EventManager as _BaseEventManager
 from reflex.control import EventManager
-from reflex.control import PackageBattery, ReactorBattery, RulesetBattery
+# from reflex.base import Reactor, Binding, Ruleset
+# from reflex.control import PackageBattery, ReactorBattery, RulesetBattery
 
-# from .message import MessageContainer
-# from .channel import Channel
 from .encoder import EJSONEncoder
 from .peer import Peer
+from .utils import ZmqEndpoint
 
 from .managers.heartbeat import Heart
 from .managers.sequence import Sequencer
 from .managers.transaction import TransactionManager
 from .managers.debugger import Debugger
 from .managers.keyvalue import KeyValueManager
-from .managers.greeter import Greeter, Syncer, Discovery
-
-from .utils import ZmqEndpoint
-from .base import _BaseDict
+from .managers.greeter import Greeter
+from .managers.syncer import Syncer
+from .managers.discovery import Discovery
 
 
 class _DispatcherMixin(Reactor):
@@ -104,11 +98,11 @@ class _DispatcherMixin(Reactor):
 
         # Reactor
         gevent.spawn(self.trigger,
-            Event('receive', [
-                ('type', message_type),
-                ('channel', channel_name),
-            ]),
-            *parts)
+                     Event('receive', [
+                          ('type', message_type),
+                           ('channel', channel_name),
+                     ]),
+                     *parts)
 
         # Dispatch
         handlers = self.handlers.get(channel_name, None)
@@ -174,42 +168,13 @@ class _ManagersMixin:
         gevent.sleep(0)
 
 
-class PeerContainer(_BaseDict):
-
-    def __init__(self, node, *args, **kwargs):
-        self._node = node
-        _BaseDict.__init__(self, *args, **kwargs)
-
-    def add(self, peer):
-        self[peer.uuid] = peer
-
-    __append__ = add
-
-    def remove(self, peer_or_uuid):
-        if isinstance(peer, basestring):
-            uuid = peer
-        else:
-            uuid = str(peer.uuid)
-        del peer
-        self.pop(uuid, None)
-
-
-class Peers(_BaseDict):
-
-    def __init__(self, node):
-        self._node = node
-
-        self.connected = PeerContainer(node)
-        #self.ready = PeerContainer(node)
-
-
 class _PeersMixin:
     debug_peers = False
     peers = None
 
     def __init__(self):
         self.peers = dict()
-        #self.peers = Peers(self)
+        # self.peers = Peers(self)
 
         self.bind(self._on_peer_ready, 'peer_ready')
 
@@ -253,11 +218,11 @@ class _PeersMixin:
 
         # Connect sub
         self.log.debug('Connecting to peer PUBLISHER: %s', peer)
-        #gevent.spawn_later(self.sub.connect, peer.pub_addr)
+        # gevent.spawn_later(self.sub.connect, peer.pub_addr)
         gevent.spawn(self.sub.connect, peer.pub_addr)
 
         # Add subscriber socket to our sock repertoire
-        #self._add_sock(peer.sub, self._on_sub_received)
+        # self._add_sock(peer.sub, self._on_sub_received)
 
         # Set timeout
         # t = gevent.Timeout(seconds=30)
@@ -280,8 +245,8 @@ class _PeersMixin:
     def disconnect_peer(self, peer):
         """Disconnects from peer"""
         self.log.info('Disconnecting from peer: %s', peer)
-        self.sub.disconnect(peer.pub_addr)
-        self.rtr.disconnect(peer.rtr_addr)
+        #self.sub.disconnect(peer.pub_addr)
+        #self.rtr.disconnect(peer.rtr_addr)
 
     def get_peer(self, peer_or_uuid, exception=PeerUnknown):
         peer = None
@@ -316,7 +281,7 @@ class _DiscoveryMixin:
         peer.rtr_port = int(peer_endpoint.port)
         peer.pub_port = int(peer_endpoint.port) + 1
 
-        #peer.connect(self)
+        # peer.connect(self)
         gevent.spawn(peer.connect, self)
 
 
@@ -353,7 +318,6 @@ class _CommunicationsMixin:
         sub = self.sub = self._ctx.socket(zmq.SUB)
         sub.setsockopt(zmq.SUBSCRIBE, b'')
         self._add_sock(sub, self._on_sub_received)
-
 
         for sock in (self.rtr, self.pub, self.sub):
             sock.linger = 0
@@ -531,12 +495,12 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
         while self.running:
             socks = dict(self._poller.poll(timeout=0))
             if socks:
-                #self.log.debug('socks=%s', socks)
+                # self.log.debug('socks=%s', socks)
                 for s, sv in self._socks.iteritems():
                     cb, flags = sv
                     if s in socks and socks[s] == flags:
                         gevent.spawn(cb, s.recv_multipart())
-                        #cb(s.recv_multipart())
+                        # cb(s.recv_multipart())
             gevent.sleep(0.1)
 
     @xworkflows.transition()
