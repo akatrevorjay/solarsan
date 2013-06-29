@@ -247,7 +247,7 @@ class _PeersMixin:
         """Disconnects from peer"""
         self.log.info('Disconnecting from peer: %s', peer)
         self.sub.disconnect(peer.pub_addr)
-        #self.rtr.disconnect(peer.rtr_addr)
+        self.rtr.disconnect(peer.rtr_addr)
 
     def get_peer(self, peer_or_uuid, exception=PeerUnknown):
         peer = None
@@ -324,7 +324,15 @@ class _CommunicationsMixin:
         for sock in (self.rtr, self.pub, self.sub):
             #sock.linger = 0
             sock.setsockopt(zmq.LINGER, 100)
+
             #sock.setsockopt(zmq.RECONNECT_IVL, 0)
+
+            #sock.setsockopt(zmq.PLAIN_SERVER, 1)
+            #sock.setsockopt(zmq.PLAIN_USERNAME, 'solarsan')
+            #sock.setsockopt(zmq.PLAIN_PASSWORD, 'solarpass')
+
+            #sock.setsockopt(zmq.CURVE_SERVER, 1)
+            #sock.setsockopt(zmq.CURVE_SECRETKEY, '8E0BDD697628B91D8F245587EE95C5B04D48963F79259877B49CD9063AEAD3B7')
 
     def broadcast(self, channel_name, message_type, *parts):
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
@@ -360,8 +368,10 @@ class _CommunicationsMixin:
                 peer = self.peers.get(from_uuid)
                 if peer:
                     self.log.debug('New connection on ROUTER from EXISTING peer: peer=%s parts=%s', peer, raw_parts)
+                    self.trigger(Event('peer_connection_rtr'), peer)
                 else:
-                    self.log.debug('New connection on ROUTER from NEW peer: from_uuid=%s parts=%s', from_uuid, raw_parts)
+                    self.log.debug('New connection on ROUTER from UNKNOWN peer: from_uuid=%s parts=%s', from_uuid, raw_parts)
+                    self.trigger(Event('unknown_peer_connection_rtr'), from_uuid)
             else:
                 self.log.debug('Received odd packet: %s', raw_parts)
             return

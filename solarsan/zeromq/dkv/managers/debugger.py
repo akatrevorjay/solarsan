@@ -33,7 +33,15 @@ class Debugger(_BaseManager):
         host, port = self.backdoor_listen.split(':', 1)
         port = int(port)
 
-        self.bd = BackdoorServer((host, port), locals=dict(node=self._node))
+        self.bd = BackdoorServer((host, port), locals=dict(
+            pp=pp,
+            n=self._node,
+            ms=self._node.managers,
+            ps=self._node.peers,
+            kv=self._node.kv,
+            seq=self._node.seq,
+        ))
+
         self.bd.start()
         self.log.debug('Initialized backdoor %s', self.bd)
 
@@ -53,7 +61,9 @@ class Debugger(_BaseManager):
             if channel.startswith(c):
                 return
 
-        #self.log.debug('Debugger [%s] %s: parts=%s kwargs=%s', channel, key, parts, kwargs)
+        # self.log.debug('Debugger [%s] %s: parts=%s kwargs=%s', channel, key,
+        # parts, kwargs)
         print ""
-        pp([dict(channel=channel, from_peer=peer, key=key, parts=parts, kwargs=kwargs)])
+        pp([dict(channel=channel, from_peer=peer,
+           key=key, parts=parts, kwargs=kwargs)])
         print ""

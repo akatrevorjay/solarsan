@@ -36,18 +36,19 @@ class Discovery(_BaseManager):
     def __init__(self, node):
         _BaseManager.__init__(self, node)
 
+        self.bind(self._on_unknown_peer_connection_rtr, '_on_unknown_peer_connection_rtr')
+
         self._node.discovery = self
 
     def _tick(self):
         self._send_beacon()
 
-    def discovered_peer(self, uuid):
-        self.log.debug('Discovered peer')
+    def discovered_peer(self, uuid, endpoint):
+        #self.log.debug('Discovered peer')
+        gevent.spawn(self.trigger, Event('peer_discovered'), uuid, endpoint)
 
-        # TODO create Peer, add to node
-        peer = 'TODO'
-
-        self.trigger(Event('peer_discovered'), peer)
+    def _on_unknown_peer_connection_rtr(self, event, peer_uuid):
+        pass
 
     """ Beacon """
 
@@ -162,10 +163,11 @@ class Discovery(_BaseManager):
         if peer_uuid in self._node.peers:
             # We already have this peer
             return
+
         peer_endpoint = ZmqEndpoint(
             transport=socket_transport, host=socket_host, port=socket_port, socket_type=socket_type)
-        gevent.spawn(self.trigger, Event(
-            'peer_discovered'), peer_uuid, peer_endpoint)
+
+        self.discovered_peer(peer_uuid, peer_endpoint)
 
     def _check_for_losts(self):
         # check for losts
