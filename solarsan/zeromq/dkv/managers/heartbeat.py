@@ -12,7 +12,7 @@ from reflex.data import Event
 
 class Heart(_BaseManager):
 
-    debug = False
+    #debug = True
     tick_length = 1.0
     tick_timeout = 5.0
     tick_wait_until_node_ready = False
@@ -25,9 +25,6 @@ class Heart(_BaseManager):
     """ Run """
 
     def _tick(self):
-        if self.debug:
-            self.log.debug('Tick')
-
         self.beat()
 
         if self._node.is_connected:
@@ -47,14 +44,9 @@ class Heart(_BaseManager):
 
     def beat(self):
         meta = self._meta
-        if self.debug:
-            self.log.debug('Sending heartbeat: meta=%s', meta)
         self.broadcast('beat', meta)
-        del meta
 
     def receive_beat(self, peer, meta):
-        if self.debug:
-            self.log.debug('Heartbeat from %s: meta=%s', peer, meta)
         peer.last_heartbeat_at = datetime.now()
         if getattr(peer, 'receive_beat', None):
             peer.receive_beat(meta)

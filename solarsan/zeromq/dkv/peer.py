@@ -38,7 +38,7 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
             ('connect', ('init', 'connecting'), 'connecting'),
             ('_mark_connected', 'connecting', 'greeting'),
             # TODO don't send during syncing as we've already greeted
-            ('receive_greet', ('syncing', 'greeting'), 'syncing'),
+            ('syncing', ('syncing', 'greeting'), 'syncing'),
             ('_on_synced', 'syncing', 'ready'),
 
             ('shutdown', [x[0] for x in states], 'dead')
@@ -132,13 +132,12 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
     def _after_connected(self, r):
         self.trigger(Event('peer_connected'), self)
 
-    @xworkflows.transition()
     def receive_greet(self):
-        if self.state.is_syncing:
+        if self.state.is_syncing or self.state.is_connecting:
             self.log.warning(
-                'Received greet from %s while already syncing', self)
-            raise xworkflows.AbortTransition
+                'Received greet from %s while state=%s', self, self.state)
         self.log.debug('Received greet from %s', self)
+        self.syncing()
 
     @xworkflows.on_enter_state('syncing')
     def _on_enter_syncing(self, r):
@@ -176,13 +175,13 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
 
     """ Helpers """
 
-    rtr_port = conf.ports.dkv_rtr
+    rtr_port = None
 
     @property
     def rtr_addr(self):
         return 'tcp://%s:%s' % (self.cluster_addr, self.rtr_port)
 
-    pub_port = conf.ports.dkv_pub
+    pub_port = None
 
     @property
     def pub_addr(self):

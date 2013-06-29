@@ -1,4 +1,5 @@
 
+from solarsan import LogMixin
 import ejson
 
 
@@ -37,7 +38,7 @@ def deserialize_message(data):
 #    return ret
 
 
-class EJSONEncoder (object):
+class EJSONEncoder(LogMixin):
     def encode(self, node_uuid, message_type, parts):
         header = dict()
 
@@ -58,7 +59,7 @@ class EJSONEncoder (object):
         try:
             parts = [ejson.loads(j) for j in jparts]
         except ValueError:
-            print 'Invalid JSON: ', jparts
+            self.log.error('Could not decode invalid JSON: %s', jparts)
             return
 
         header = parts[0]

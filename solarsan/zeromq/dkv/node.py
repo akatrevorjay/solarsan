@@ -52,32 +52,32 @@ class _DispatcherMixin(Reactor):
 
     """ Handlers """
 
-    def add_handler(self, channel_name, handler):
-        if not channel_name in self.handlers:
+    def add_handler(self, channel, handler):
+        if not channel in self.handlers:
             if self.debug_channel:
-                self._debug('Add channel: %s', channel_name)
-            self.handlers[channel_name] = list()
+                self._debug('Add channel: %s', channel)
+            self.handlers[channel] = list()
 
-        if handler not in self.handlers[channel_name]:
+        if handler not in self.handlers[channel]:
             # handler = weakref.proxy(handler)
             if self.debug_handler:
                 self._debug(
-                    'Add handler: %s chan=%s', handler, channel_name)
-            self.handlers[channel_name].append(handler)
+                    'Add handler: %s chan=%s', handler, channel)
+            self.handlers[channel].append(handler)
 
-    def remove_handler(self, channel_name, handler):
-        if channel_name in self.handlers:
-            if handler in self.handlers[channel_name]:
+    def remove_handler(self, channel, handler):
+        if channel in self.handlers:
+            if handler in self.handlers[channel]:
                 if self.debug_handler:
                     self._debug(
-                        'Remove handler: %s chan=%s', handler, channel_name)
-                self.handlers[channel_name].remove(handler)
-            if not self.handlers[channel_name]:
+                        'Remove handler: %s chan=%s', handler, channel)
+                self.handlers[channel].remove(handler)
+            if not self.handlers[channel]:
                 if self.debug_channel:
-                    self._debug('Remove channel: %s', channel_name)
-                self.handlers.pop(channel_name)
+                    self._debug('Remove channel: %s', channel)
+                self.handlers.pop(channel)
 
-    def _dispatch(self, from_peer, channel_name, message_type, parts, one_shot=False, _looped=None):
+    def _dispatch(self, from_peer, channel, message_type, parts, one_shot=False, _looped=None):
         peer = self.get_peer(from_peer, exception=None)
         if peer is None:
             self.log.error(
@@ -85,28 +85,29 @@ class _DispatcherMixin(Reactor):
             return
 
         if self.debug_dispatch and not _looped:
-            self._debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
-                           peer, channel_name, message_type, parts)
+            self._debug(
+                'Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
+                peer, channel, message_type, parts)
 
         kwargs = dict()
 
         # Handle wildcard channel
         if not _looped:
             self._dispatch(
-                peer, '*', message_type, parts, _looped=channel_name)
+                peer, '*', message_type, parts, _looped=channel)
         else:
             kwargs['channel'] = _looped
 
         # Reactor
         gevent.spawn(self.trigger,
                      Event('receive', [
-                          ('type', message_type),
-                           ('channel', channel_name),
+                           ('type', message_type),
+                    ('channel', channel),
                      ]),
                      *parts)
 
         # Dispatch
-        handlers = self.handlers.get(channel_name, None)
+        handlers = self.handlers.get(channel, None)
         if handlers:
             for h in handlers:
                 f = getattr(h, 'receive_' + message_type, None)
@@ -211,6 +212,7 @@ class _PeersMixin:
         """Connects to peer"""
 
         self.log.info('Connecting to peer: %s', peer)
+
         gevent.sleep(1)
 
         # Connect router
@@ -219,20 +221,7 @@ class _PeersMixin:
 
         # Connect sub
         self._debug('Connecting to peer PUBLISHER: %s', peer)
-        # gevent.spawn_later(self.sub.connect, peer.pub_addr)
         gevent.spawn(self.sub.connect, peer.pub_addr)
-
-        # Add subscriber socket to our sock repertoire
-        # self._add_sock(peer.sub, self._on_sub_received)
-
-        # Set timeout
-        # t = gevent.Timeout(seconds=30)
-
-        # Greet peer
-        # >> If timeout hits here, try again <<
-        # Upon greet received, connect to pub_addr specified
-
-        gevent.sleep(0.1)
 
     def remove_peer(self, peer):
         self.log.info('Removing peer: %s', peer)
@@ -322,77 +311,75 @@ class _CommunicationsMixin:
         self._add_sock(sub, self._on_sub_received)
 
         for sock in (self.rtr, self.pub, self.sub):
-            #sock.linger = 0
+            # sock.linger = 0
             sock.setsockopt(zmq.LINGER, 100)
 
-            #sock.setsockopt(zmq.RECONNECT_IVL, 0)
+            # sock.setsockopt(zmq.RECONNECT_IVL, 0)
 
-            #sock.setsockopt(zmq.PLAIN_SERVER, 1)
-            #sock.setsockopt(zmq.PLAIN_USERNAME, 'solarsan')
-            #sock.setsockopt(zmq.PLAIN_PASSWORD, 'solarpass')
+            # sock.setsockopt(zmq.PLAIN_SERVER, 1)
+            # sock.setsockopt(zmq.PLAIN_USERNAME, 'solarsan')
+            # sock.setsockopt(zmq.PLAIN_PASSWORD, 'solarpass')
 
-            #sock.setsockopt(zmq.CURVE_SERVER, 1)
-            #sock.setsockopt(zmq.CURVE_SECRETKEY, '8E0BDD697628B91D8F245587EE95C5B04D48963F79259877B49CD9063AEAD3B7')
+            # sock.setsockopt(zmq.CURVE_SERVER, 1)
+            # sock.setsockopt(zmq.CURVE_SECRETKEY,
+            # '8E0BDD697628B91D8F245587EE95C5B04D48963F79259877B49CD9063AEAD3B7')
 
-    def broadcast(self, channel_name, message_type, *parts):
+    def broadcast(self, channel, message_type, *parts):
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
             parts = parts[0]
-        l = ['solarsan', str(channel_name)]
-        l.extend(self.encoder.encode(self.uuid, message_type, parts))
-        self.pub.send_multipart(l)
+        m = [str(channel)]
+        m.extend(self.encoder.encode(self.uuid, message_type, parts))
+        self.pub.send_multipart(m)
 
-    def unicast(self, peer, channel_name, message_type, *parts):
+    def unicast(self, peer, channel, message_type, *parts):
         peer = self.get_peer(peer)
 
+        # Handle messages to self
         if peer.uuid == self.uuid:
             self.dispatch(
-                self.uuid, channel_name, message_type, parts)
+                self.uuid, channel, message_type, parts)
             return
 
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
             parts = parts[0]
-
-        l = [str(peer.uuid), str(channel_name)]
-        l.extend(self.encoder.encode(self.uuid, message_type, parts))
-
-        self.rtr.send_multipart(l)
+        m = [str(peer.uuid), str(channel)]
+        m.extend(self.encoder.encode(self.uuid, message_type, parts))
+        self.rtr.send_multipart(m)
 
     def _on_rtr_received(self, raw_parts):
-        # discard source address. We'll use the one embedded in the message
-        # for consistency
-        # self.log.info('raw_parts=%s', raw_parts)
-        from_uuid = raw_parts[0]
-
+        # TODO validate count
         if len(raw_parts) < 3:
+            from_uuid = raw_parts[0]
             if len(raw_parts) == 2 and raw_parts[1] == '':
                 peer = self.peers.get(from_uuid)
                 if peer:
-                    self.log.debug('New connection on ROUTER from EXISTING peer: peer=%s parts=%s', peer, raw_parts)
+                    self.log.debug(
+                        'New connection on ROUTER from EXISTING peer: peer=%s parts=%s', peer, raw_parts)
                     self.trigger(Event('peer_connection_rtr'), peer)
                 else:
-                    self.log.debug('New connection on ROUTER from UNKNOWN peer: from_uuid=%s parts=%s', from_uuid, raw_parts)
-                    self.trigger(Event('unknown_peer_connection_rtr'), from_uuid)
+                    self.log.debug(
+                        'New connection on ROUTER from UNKNOWN peer: from_uuid=%s parts=%s', from_uuid, raw_parts)
+                    self.trigger(Event(
+                        'unknown_peer_connection_rtr'), from_uuid)
             else:
-                self.log.debug('Received odd packet: %s', raw_parts)
+                self.log.error('Received odd packet: %s', raw_parts)
             return
 
-        channel_name = raw_parts[1]
-        message_from, message_type, parts = self.encoder.decode(raw_parts[2:])
-        self._dispatch(from_uuid, channel_name, message_type, parts)
+        channel = raw_parts[1]
+        from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
+        self._dispatch(from_uuid, channel, message_type, parts)
 
     def _on_sub_received(self, raw_parts):
-        # discard the message header. Can address targeted subscriptions
-        # later
-        # self.log.info('raw_parts=%s', raw_parts)
-        key = raw_parts[0]
+        channel = raw_parts[0]
 
-        if key != 'solarsan':
-            self.log.debug('Received odd packet: %s', raw_parts)
+        # TODO validate count
+        if len(raw_parts) < 2:
+            self.log.error('Received odd packet: %s', raw_parts)
             return
 
-        channel_name = raw_parts[1]
-        message_from, message_type, parts = self.encoder.decode(raw_parts[2:])
-        self._dispatch(message_from, channel_name, message_type, parts)
+        from_uuid, message_type, parts = self.encoder.decode(
+            raw_parts[1:])
+        self._dispatch(from_uuid, channel, message_type, parts)
 
     # def receive_discovery(self, peer_uuid, peer_router):
     #    """Connects to discovered peer"""
@@ -425,12 +412,12 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
            _ManagersMixin,
            DebugLogMixin):
 
-    #debug = True
+    # debug = True
 
     _default_encoder_cls = EJSONEncoder
     _default_managers = [
         Heart, Sequencer, TransactionManager, KeyValueManager, Greeter, Syncer, Discovery]
-    #if debug:
+    # if debug:
     if True:
         _default_managers += [Debugger]
 
