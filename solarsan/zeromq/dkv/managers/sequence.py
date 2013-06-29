@@ -51,7 +51,7 @@ class Sequencer(_BaseManager, xworkflows.WorkflowEnabled):
                                                  ))
 
     def receive_sequence_beat(self, peer, data):
-        self.log.debug('Received sequence beat: %s', data)
+        self._debug('Received sequence beat: %s', data)
 
     """ Machine """
 
@@ -111,16 +111,16 @@ class Sequencer(_BaseManager, xworkflows.WorkflowEnabled):
                     self.pending[ret] = tx
                     break
 
-        self.log.debug('Allocated sequence=%s for pending_tx=%s', ret, tx)
+        self._debug('Allocated sequence=%s for pending_tx=%s', ret, tx)
         return ret
 
     def allocate_pending(self):
-        self.log.debug('Waiting for semaphore')
+        self._debug('Waiting for semaphore')
         if not self.pending_sem.acquire(timeout=1):
             return 999
         # with self.pending_sem:
         if True:
-            self.log.debug('Got semaphore')
+            self._debug('Got semaphore')
             cur = self.current
             ret = cur
             while True:
@@ -128,19 +128,19 @@ class Sequencer(_BaseManager, xworkflows.WorkflowEnabled):
                 if ret not in self.pending:
                     break
             self.pending[ret] = True
-            self.log.debug('Allocated pending seq=%s', ret)
+            self._debug('Allocated pending seq=%s', ret)
             return ret
 
     def release_pending(self, seq):
         if seq in self.pending:
-            self.log('Releasing pending seq=%s', seq)
+            self._debug('Releasing pending seq=%s', seq)
             self.pending.pop(seq)
             #self.pending_sem.release()
 
     """ Events """
 
     def on_active(self):
-        self.log.debug
+        self._debug
         self.start()
 
     def on_syncing(self):

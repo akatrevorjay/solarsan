@@ -7,6 +7,7 @@ from functools import partial
 class Debugger(_BaseManager):
     channel = '*'
     ignore_channels = ('Heart', 'Transaction')
+    ignore_channel_prefixes = ('Transaction', )
 
     backdoor = True
     backdoor_listen = '127.0.0.1:0'
@@ -47,6 +48,10 @@ class Debugger(_BaseManager):
 
         if channel in self.ignore_channels:
             return
+
+        for c in self.ignore_channel_prefixes:
+            if channel.startswith(c):
+                return
 
         #self.log.debug('Debugger [%s] %s: parts=%s kwargs=%s', channel, key, parts, kwargs)
         print ""

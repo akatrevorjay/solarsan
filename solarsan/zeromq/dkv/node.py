@@ -20,6 +20,7 @@ from reflex.control import EventManager
 from .encoder import EJSONEncoder
 from .peer import Peer
 from .utils import ZmqEndpoint
+from .mixins import DebugLogMixin
 
 from .managers.heartbeat import Heart
 from .managers.sequence import Sequencer
@@ -54,13 +55,13 @@ class _DispatcherMixin(Reactor):
     def add_handler(self, channel_name, handler):
         if not channel_name in self.handlers:
             if self.debug_channel:
-                self.log.debug('Add channel: %s', channel_name)
+                self._debug('Add channel: %s', channel_name)
             self.handlers[channel_name] = list()
 
         if handler not in self.handlers[channel_name]:
             # handler = weakref.proxy(handler)
             if self.debug_handler:
-                self.log.debug(
+                self._debug(
                     'Add handler: %s chan=%s', handler, channel_name)
             self.handlers[channel_name].append(handler)
 
@@ -68,12 +69,12 @@ class _DispatcherMixin(Reactor):
         if channel_name in self.handlers:
             if handler in self.handlers[channel_name]:
                 if self.debug_handler:
-                    self.log.debug(
+                    self._debug(
                         'Remove handler: %s chan=%s', handler, channel_name)
                 self.handlers[channel_name].remove(handler)
             if not self.handlers[channel_name]:
                 if self.debug_channel:
-                    self.log.debug('Remove channel: %s', channel_name)
+                    self._debug('Remove channel: %s', channel_name)
                 self.handlers.pop(channel_name)
 
     def _dispatch(self, from_peer, channel_name, message_type, parts, one_shot=False, _looped=None):
@@ -84,7 +85,7 @@ class _DispatcherMixin(Reactor):
             return
 
         if self.debug_dispatch and not _looped:
-            self.log.debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
+            self._debug('Dispatch: peer=%s chan=%s msg_type=%s parts=%s',
                            peer, channel_name, message_type, parts)
 
         kwargs = dict()
@@ -111,7 +112,7 @@ class _DispatcherMixin(Reactor):
                 f = getattr(h, 'receive_' + message_type, None)
                 if f:
                     if self.debug_dispatch:
-                        self.log.debug('Dispatching to: %s', h)
+                        self._debug('Dispatching to: %s', h)
 
                     gevent.spawn(f, peer, *parts, **kwargs)
 
@@ -134,7 +135,7 @@ class _ManagersMixin:
 
         for cls in managers:
             if self.debug_managers:
-                self.log.debug('Loading manager %s', cls)
+                self._debug('Loading manager %s', cls)
             cls(self)
 
     def add_manager(self, manager, name=None):
@@ -162,7 +163,7 @@ class _ManagersMixin:
         for k, v in managers:
             if not getattr(v, 'started', None):
                 # if self.debug_managers:
-                self.log.debug('Spawning Manager %s: %s', k, v)
+                self._debug('Spawning Manager %s: %s', k, v)
                 v.link(self.remove_manager)
                 v.start()
         gevent.sleep(0)
@@ -192,7 +193,7 @@ class _PeersMixin:
 
     def add_peer(self, peer):
         if self.debug_peers:
-            self.log.debug('Adding peer: %s', peer)
+            self._debug('Adding peer: %s', peer)
         uuid = str(peer.uuid)
 
         # TODO I don't believe this is the correct way of handling this.
@@ -213,11 +214,11 @@ class _PeersMixin:
         gevent.sleep(1)
 
         # Connect router
-        self.log.debug('Connecting to peer ROUTER: %s', peer)
+        self._debug('Connecting to peer ROUTER: %s', peer)
         gevent.spawn(self.rtr.connect, peer.rtr_addr)
 
         # Connect sub
-        self.log.debug('Connecting to peer PUBLISHER: %s', peer)
+        self._debug('Connecting to peer PUBLISHER: %s', peer)
         # gevent.spawn_later(self.sub.connect, peer.pub_addr)
         gevent.spawn(self.sub.connect, peer.pub_addr)
 
@@ -245,7 +246,7 @@ class _PeersMixin:
     def disconnect_peer(self, peer):
         """Disconnects from peer"""
         self.log.info('Disconnecting from peer: %s', peer)
-        #self.sub.disconnect(peer.pub_addr)
+        self.sub.disconnect(peer.pub_addr)
         #self.rtr.disconnect(peer.rtr_addr)
 
     def get_peer(self, peer_or_uuid, exception=PeerUnknown):
@@ -260,8 +261,8 @@ class _PeersMixin:
 
     def _on_peer_ready(self, event, peer):
         # TODO THIS IS SPAGHETTI BULLSHIT. CLEAN IT UP, NAMES IN PARTICULAR!
-        self.log.debug('Peer ready: %s', peer)
-        self.log.debug('Event: %s', event)
+        self._debug('Peer ready: %s', peer)
+        self._debug('Event: %s', event)
         if not self.is_ready:
             self.synced()
 
@@ -308,6 +309,7 @@ class _CommunicationsMixin:
         # router socket
         rtr = self.rtr = self._ctx.socket(zmq.ROUTER)
         rtr.setsockopt(zmq.IDENTITY, self.uuid)
+        rtr.setsockopt(zmq.PROBE_ROUTER, 1)
         self._add_sock(rtr, self._on_rtr_received)
 
         # publisher socket
@@ -320,7 +322,9 @@ class _CommunicationsMixin:
         self._add_sock(sub, self._on_sub_received)
 
         for sock in (self.rtr, self.pub, self.sub):
-            sock.linger = 0
+            #sock.linger = 0
+            sock.setsockopt(zmq.LINGER, 100)
+            #sock.setsockopt(zmq.RECONNECT_IVL, 0)
 
     def broadcast(self, channel_name, message_type, *parts):
         if len(parts) == 1 and isinstance(parts[0], (list, tuple)):
@@ -349,6 +353,18 @@ class _CommunicationsMixin:
         # discard source address. We'll use the one embedded in the message
         # for consistency
         # self.log.info('raw_parts=%s', raw_parts)
+        from_uuid = raw_parts[0]
+        if len(raw_parts) < 3:
+            if len(raw_parts) == 2 and raw_parts[1] == '':
+                from_uuid = str(from_uuid)
+                peer = self.peers.get(from_uuid)
+                if peer:
+                    self.log.debug('New connection on ROUTER from EXISTING peer: peer=%s parts=%s', peer, raw_parts)
+                else:
+                    self.log.debug('New connection on ROUTER from NEW peer: from_uuid=%s parts=%s', from_uuid, raw_parts)
+            else:
+                self.log.debug('Received odd packet: %s', raw_parts)
+            return
         channel_name = raw_parts[1]
         from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
         self._dispatch(from_uuid, channel_name, message_type, parts)
@@ -390,14 +406,15 @@ class _CommunicationsMixin:
 class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
            _DispatcherMixin, _PeersMixin, _CommunicationsMixin, _DiscoveryMixin,
            _ManagersMixin,
-           LogMixin):
+           DebugLogMixin):
 
-    debug = True
+    #debug = True
 
     _default_encoder_cls = EJSONEncoder
     _default_managers = [
         Heart, Sequencer, TransactionManager, KeyValueManager, Greeter, Syncer, Discovery]
-    if debug:
+    #if debug:
+    if True:
         _default_managers += [Debugger]
 
     events = None
@@ -495,7 +512,7 @@ class Node(gevent.Greenlet, xworkflows.WorkflowEnabled,
         while self.running:
             socks = dict(self._poller.poll(timeout=0))
             if socks:
-                # self.log.debug('socks=%s', socks)
+                # self._debug('socks=%s', socks)
                 for s, sv in self._socks.iteritems():
                     cb, flags = sv
                     if s in socks and socks[s] == flags:

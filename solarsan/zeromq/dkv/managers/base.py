@@ -4,6 +4,7 @@ logger = logging.getLogger(__name__)
 
 import gevent
 from reflex.base import Reactor
+from ..mixins import DebugLogMixin
 
 
 """
@@ -11,13 +12,7 @@ Manager
 """
 
 
-class _BaseManager(gevent.Greenlet, Reactor, LogMixin):
-    debug = False
-
-    def _debug(self, *args, **kwargs):
-        if self.debug:
-            return self.log.debug(*args, **kwargs)
-
+class _BaseManager(gevent.Greenlet, Reactor, DebugLogMixin):
     def __init__(self, node, **kwargs):
         if hasattr(self, 'pre_init'):
             self.pre_init(node, **kwargs)

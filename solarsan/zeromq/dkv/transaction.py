@@ -10,9 +10,10 @@ from datetime import datetime, timedelta
 # import weakref
 import xworkflows
 from .message import Message
+from .mixins import DebugLogMixin
 
 
-class _BaseTransaction(gevent.Greenlet, LogMixin):
+class _BaseTransaction(gevent.Greenlet, DebugLogMixin):
 
     """Transaction class that handles any updates on their path toward good,
     or evil."""
@@ -55,13 +56,31 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
         self._run_timeout = gevent.Timeout(seconds=self._timeout.seconds)
         self._run_timeout.start()
 
+        try:
+            gevent.spawn(self._main).join()
+
+            self.event_done.get()
+            self._run_timeout.cancel()
+        except gevent.Timeout as e:
+            gevent.spawn(self._on_timeout, e).join()
+
+    def _main(self):
+        pass
+
+    def _on_timeout(self, e):
+        pass
+
     @classmethod
     def _stop(cls, self):
-        # self.log.debug('Stopping tx %s', self)
+        self._debug('Stopping tx %s', self)
         if self.sequence:
             self._node.seq.release_pending(self.sequence)
         self._remove_handler()
         #self.kill()
+
+    def done(self):
+        #self._debug('Done with tx %s.', self)
+        self.event_done.set()
 
     """ Tofro dict """
 
@@ -94,7 +113,7 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
         payload = self.payload
         self._node.kv.set(payload['key'], payload, seq=self.sequence)
 
-        self.log.debug('Stored tx %s', self)
+        self._debug('Stored tx %s', self)
 
     """ Helpers """
 
@@ -109,31 +128,25 @@ class _BaseTransaction(gevent.Greenlet, LogMixin):
     """ Events """
 
     def receive_debug(self, *args, **kwargs):
-        self.log.debug('args=%s; kwargs=%s;', args, kwargs)
+        self._debug('args=%s; kwargs=%s;', args, kwargs)
 
 
 class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     class State(xworkflows.Workflow):
-        initial_state = 'init'
+        #initial_state = 'init'
+        initial_state = 'proposal'
         states = (
-            ('init',        'Initial state'),
-            #('start',       'Start'),
             ('proposal',    'Proposal'),
             ('voting',      'Voting'),
             ('commit',      'Commit'),
             ('abort',       'Aborted'),
-            ('done',        'Done'),
         )
         transitions = (
-            ('propose', 'init', 'proposal'),
-            #('receive_vote', 'proposal', 'voting'),
             ('voting', ('proposal', 'voting'), 'voting'),
             # Careful when in proposal state, thats only valid if peerless
             ('commit', ('proposal', 'voting'), 'commit'),
-
-            ('abort', ('init', 'proposal', 'voting', 'commit'), 'abort'),
-            ('done', ('abort', 'commit'), 'done'),
+            ('abort', ('proposal', 'voting', 'commit'), 'abort'),
         )
 
     state = State()
@@ -153,28 +166,22 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
         self._post_init()
 
-    def _run(self):
-        _BaseTransaction._run(self)
-
-        try:
-            # gevent.spawn(self.propose).join()
-
-            self.propose()
-            self.event_done.get()
-            self._run_timeout.cancel()
-        except gevent.Timeout as e:
-            self.log.error(
-                'Timeout waiting for votes on tx %s: %s', self, e)
-            self.abort()
-
     def __repr__(self):
-        return "<%s uuid='%s'>" % (self.__class__.__name__, getattr(self, 'uuid', None))
+        return "<%s uuid='%s' is_peerless=%s>" % (self.__class__.__name__, getattr(self, 'uuid', None), self.is_peerless)
+
+    def _main(self):
+        return self.propose()
+
+    def _on_timeout(self, e):
+        # transaction
+        self.log.error(
+            'Timeout waiting for votes on tx %s: %s', self, e)
+        self.abort()
 
     """ Actions """
 
     is_peerless = None
 
-    @xworkflows.transition()
     def propose(self):
         """Flood peers with proposal for us to get stored."""
 
@@ -191,11 +198,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
         else:
             # Without any peers, we simply commit.
             self.is_peerless = True
-
-    @xworkflows.after_transition('propose')
-    def _after_propose(self, r):
-        if self.is_peerless:
-            self.log.debug('Committing tx %s as it is peerless.', self)
+            self._debug('Committing tx %s as it is peerless.', self)
             self.commit()
 
     @xworkflows.transition()
@@ -203,31 +206,25 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
         """Abort (proposed) tx."""
         self.log.warning('Aborting tx %s', self)
         self.broadcast('abort', channel=self.channel_tx)
-        self._run_timeout.cancel()
-        #self.done()
 
     @xworkflows.transition()
     def commit(self):
         """Commit (proposed) tx."""
 
         # If we're in an proposal state, and not peerless, suicide
-        if self.state.is_proposal:
-            if not self.is_peerless:
-                raise xworkflows.InvalidTransitionError
+        if self.state.is_proposal and not self.is_peerless:
+            raise xworkflows.InvalidTransitionError
 
         self.log.info('Committing tx %s', self)
         self.broadcast('commit', self.sequence, channel=self.channel_tx)
         self.store()
 
     @xworkflows.on_enter_state('commit')
-    def enter_commit(self, r):
-        self.done()
-
-    #@xworkflows.transition()
-    @xworkflows.on_enter_state('done')
-    def enter_done(self, r):
-        #self.log.debug('Done with tx %s.', self.uuid)
-        self.event_done.set()
+    @xworkflows.on_enter_state('abort')
+    def done(self, r):
+        #if not (self.state.is_commit or self.state.is_abort):
+        #    raise TransactionError("Cannot be done if not in commit or abort state")
+        return _BaseTransaction.done(self)
 
     """ Handlers """
 
@@ -239,7 +236,7 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
         self.log.info(
             'Received vote on %s from %s: accept=%s meta=%s',
             self, peer, accept, meta)
-        # self.log.debug('meta=%s', meta)
+        # self._debug('meta=%s', meta)
 
         self._votes[peer] = dict(
             accept=accept,
@@ -247,11 +244,11 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
             cur_sequence=meta['cur_sequence'],
         )
 
-        self.check_if_done()
+        self.check_if_done_voting()
 
     #@xworkflows.after_transition('receive_vote')
-    def check_if_done(self, *args):
-        # self.log.debug('args=%s', args)
+    def check_if_done_voting(self, *args):
+        # self._debug('args=%s', args)
         if len(self._votes) == len(self._node.peers):
             for k, v in self._votes.iteritems():
                 if not v['accept']:
@@ -276,28 +273,21 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
                     return
             self.commit()
 
-    def __repr__(self):
-        return "<%s uuid='%s'>" % (self.__class__.__name__, getattr(self, 'uuid', None))
-
 
 class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     class State(xworkflows.Workflow):
-        #initial_state = 'prepare'
         initial_state = 'proposal'
         states = (
-            #('prepare',     'Prepare'),
             ('proposal',    'Proposal'),
             ('voting',      'Voting'),
             ('commit',      'Commit'),
             ('abort',       'Aborted'),
-            ('done',        'Done'),
         )
         transitions = (
             ('vote', 'proposal', 'voting'),
             ('commit', 'voting', 'commit'),
             ('abort', ('proposal', 'voting', 'commit'), 'abort'),
-            ('done', ('abort', 'commit'), 'done'),
         )
 
     state = State()
@@ -308,16 +298,12 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
 
         self._post_init()
 
-    def _run(self):
-        _BaseTransaction._run(self)
+    def _main(self):
+        return self.vote()
 
-        try:
-            gevent.spawn(self.vote)
-            self.event_done.get()
-            self._run_timeout.cancel()
-        except gevent.Timeout as e:
-            self.log.error(
-                'Timeout waiting for votes on tx %s: %s', self, e)
+    def _on_timeout(self, e):
+        self.log.error(
+            'Timeout waiting for commit/abort on tx %s: %s', self, e)
 
     def __repr__(self):
         return "<%s uuid='%s'>" % (self.__class__.__name__, getattr(self, 'uuid', None))
@@ -338,7 +324,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
         #accept = self.sequence > self._node.seq.current
         accept = self.sequence == self._node.seq.current + 1
         meta = self._vote_meta
-        self.log.debug(
+        self._debug(
             'Sending vote for tx %s: accept=%s meta=%s', self, accept, meta)
         #self.unicast(self.sender, 'vote', self.uuid, accept, meta, channel=self.channel_tx)
         self.broadcast('vote', accept, meta, channel=self.channel_tx)
@@ -347,8 +333,6 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     def abort(self):
         self.log.warning('Aborting tx %s from %s (sequence=%s).',
                          self, self.sender, self.sequence)
-        self._run_timeout.cancel()
-        self.done()
 
     @xworkflows.transition()
     def commit(self):
@@ -356,15 +340,12 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
                       self, self.sequence)
         self.store()
 
-    #@xworkflows.after_transition('commit')
     @xworkflows.on_enter_state('commit')
-    def enter_commit(self, r):
-        self.done()
-
-    @xworkflows.on_enter_state('done')
-    def enter_done(self, r):
-        # self.log.debug('Done with tx %s.', self)
-        self.event_done.set()
+    @xworkflows.on_enter_state('abort')
+    def done(self, r):
+        #if not (self.state.is_commit or self.state.is_abort):
+        #    raise TransactionError("Cannot be done if not in commit or abort state")
+        return _BaseTransaction.done(self)
 
     """ Handlers """
 

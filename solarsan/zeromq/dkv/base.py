@@ -18,5 +18,3 @@ class _BaseDict(dict):
             return dict.__getitem__(self, k)
         except KeyError:
             raise AttributeError
-
-
