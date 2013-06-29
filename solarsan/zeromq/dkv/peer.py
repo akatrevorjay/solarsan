@@ -36,7 +36,7 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
         transitions = (
             ('start', 'init', 'connecting'),
             ('connect', ('init', 'connecting'), 'connecting'),
-            ('_connected', 'connecting', 'greeting'),
+            ('_mark_connected', 'connecting', 'greeting'),
             # TODO don't send during syncing as we've already greeted
             ('receive_greet', ('syncing', 'greeting'), 'syncing'),
             ('_on_synced', 'syncing', 'ready'),
@@ -88,6 +88,7 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
         self.bind(self._on_node_ready, 'node_ready')
 
         self.bind(self._on_peer_synced, 'peer_synced')
+        self.bind(self._on_peer_connection_rtr, 'peer_connection_rtr')
 
         gevent.spawn(self._node.add_peer, self)
 
@@ -97,20 +98,37 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
     def _on_node_ready(self, event, node):
         self.log.debug('Node is ready!')
 
+    _connected_sub = None
+    _connected_rtr = None
+
+    # Tests SUB
     def receive_beat(self, meta):
         """ Heartbeat """
         self._debug('Got beat')
         if not self.connected:
             self._node.wait_until_syncing()
-            gevent.spawn(self._connected)
-            # self._connected()
+            self._connected_sub = True
+            gevent.spawn(self.check_if_connected)
+
+    # Tests RTR
+    def _on_peer_connection_rtr(self, event, peer):
+        if peer != self:
+            return
+        if not self.connected:
+            self._node.wait_until_syncing()
+            self._connected_rtr = True
+            gevent.spawn(self.check_if_connected)
+
+    def check_if_connected(self):
+        if self._connected_rtr and self._connected_sub:
+            self._mark_connected()
 
     @xworkflows.transition()
-    def _connected(self):
+    def _mark_connected(self):
         self.log.info('Connected to %s', self)
         self.connected = True
 
-    @xworkflows.after_transition('_connected')
+    @xworkflows.after_transition('_mark_connected')
     def _after_connected(self, r):
         self.trigger(Event('peer_connected'), self)
 
@@ -153,6 +171,8 @@ class Peer(xworkflows.WorkflowEnabled, Reactor, LogMixin):
     def _disconnect(self):
         # self.log.debug('Disconnecting from peer: %s', self)
         self.connected = False
+        self._connected_rtr = False
+        self._connected_sub = False
 
     """ Helpers """
 
