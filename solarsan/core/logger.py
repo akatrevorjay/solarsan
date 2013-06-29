@@ -129,10 +129,15 @@ LogMeta = LogMetaAttr
 
 
 class LogMixin(object):
+    log_class_name = False
+
     @property
     def log(self):
         if not hasattr(self, '__log'):
-            self.__log = logging.getLogger('%s.%s' % (_get_caller_module_name(), self.__class__.__name__))
+            if self.log_class_name:
+                self.__log = logging.getLogger('%s.%s' % (_get_caller_module_name(), self.__class__.__name__))
+            else:
+                self.__log = logging.getLogger('%s' % (_get_caller_module_name(), ))
         return self.__log
 
 

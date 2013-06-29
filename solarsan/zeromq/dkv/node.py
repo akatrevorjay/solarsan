@@ -354,9 +354,9 @@ class _CommunicationsMixin:
         # for consistency
         # self.log.info('raw_parts=%s', raw_parts)
         from_uuid = raw_parts[0]
+
         if len(raw_parts) < 3:
             if len(raw_parts) == 2 and raw_parts[1] == '':
-                from_uuid = str(from_uuid)
                 peer = self.peers.get(from_uuid)
                 if peer:
                     self.log.debug('New connection on ROUTER from EXISTING peer: peer=%s parts=%s', peer, raw_parts)
@@ -365,17 +365,24 @@ class _CommunicationsMixin:
             else:
                 self.log.debug('Received odd packet: %s', raw_parts)
             return
+
         channel_name = raw_parts[1]
-        from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
+        message_from, message_type, parts = self.encoder.decode(raw_parts[2:])
         self._dispatch(from_uuid, channel_name, message_type, parts)
 
     def _on_sub_received(self, raw_parts):
         # discard the message header. Can address targeted subscriptions
         # later
         # self.log.info('raw_parts=%s', raw_parts)
+        key = raw_parts[0]
+
+        if key != 'solarsan':
+            self.log.debug('Received odd packet: %s', raw_parts)
+            return
+
         channel_name = raw_parts[1]
-        from_uuid, message_type, parts = self.encoder.decode(raw_parts[2:])
-        self._dispatch(from_uuid, channel_name, message_type, parts)
+        message_from, message_type, parts = self.encoder.decode(raw_parts[2:])
+        self._dispatch(message_from, channel_name, message_type, parts)
 
     # def receive_discovery(self, peer_uuid, peer_router):
     #    """Connects to discovered peer"""

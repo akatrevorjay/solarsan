@@ -1,8 +1,8 @@
 
 import ejson
 
-import uuid
 
+import uuid
 
 @ejson.register_serializer(uuid.UUID)
 def serialize_uuid(instance):
@@ -15,7 +15,6 @@ def deserialize_uuid(data):
 
 from . import message
 
-
 @ejson.register_serializer(message.Message)
 def serialize_message(instance):
     return dict(instance)
@@ -25,18 +24,17 @@ def deserialize_message(data):
     return message.Message(data)
 
 
-from .managers import keyvalue
+#from .managers import keyvalue
 
+#@ejson.register_serializer(keyvalue.KeyValueStorage)
+#def serialize_KeyValueStorage(instance):
+#    return instance._export()
 
-@ejson.register_serializer(keyvalue.KeyValueStorage)
-def serialize_KeyValueStorage(instance):
-    return instance._export()
-
-@ejson.register_deserializer(keyvalue.KeyValueStorage)
-def deserialize_KeyValueStorage(data):
-    ret = keyvalue.KeyValueStorage()
-    ret._import(data)
-    return ret
+#@ejson.register_deserializer(keyvalue.KeyValueStorage)
+#def deserialize_KeyValueStorage(data):
+#    ret = keyvalue.KeyValueStorage()
+#    ret._import(data)
+#    return ret
 
 
 class EJSONEncoder (object):
