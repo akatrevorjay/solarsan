@@ -30,18 +30,22 @@ class _BaseTransaction(gevent.Greenlet, DebugLogMixin):
 
     """ Base """
 
-    def __init__(self, node, **kwargs):
+    def __init__(self, node, *args, **kwargs):
         gevent.Greenlet.__init__(self)
         self.link(self._stop)
+
         self._node = node
         self.event_done = gevent.event.AsyncResult()
 
         if kwargs:
             self._update(kwargs)
 
-    def _post_init(self):
+        self.init(*args, **kwargs)
+
         self._add_handler()
-        #return
+
+    def init(self, *args, **kwargs):
+        pass
 
     def _update(self, datadict):
         if not datadict:
@@ -76,7 +80,6 @@ class _BaseTransaction(gevent.Greenlet, DebugLogMixin):
         if self.sequence:
             self._node.seq.release_pending(self.sequence)
         self._remove_handler()
-        #self.kill()
 
     def done(self):
         #self._debug('Done with tx %s.', self)
@@ -153,18 +156,16 @@ class Transaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin):
 
     _votes = None
 
-    def __init__(self, node, **kwargs):
-        _BaseTransaction.__init__(self, node, **kwargs)
+    def init(self, **kwargs):
         self.sender = str(self._node.uuid)
 
         if not self.uuid:
             self.uuid = uuid4().get_hex()
+
         if not self.ts:
             self.ts = datetime.now()
 
         self._votes = {}
-
-        self._post_init()
 
     def __repr__(self):
         return "<%s uuid='%s' is_peerless=%s>" % (self.__class__.__name__, getattr(self, 'uuid', None), self.is_peerless)
@@ -292,11 +293,8 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
 
     state = State()
 
-    def __init__(self, node, sender, **kwargs):
-        _BaseTransaction.__init__(self, node, **kwargs)
+    def init(self, sender, **kwargs):
         self.sender = sender
-
-        self._post_init()
 
     def _main(self):
         return self.vote()
@@ -350,7 +348,7 @@ class ReceiveTransaction(_BaseTransaction, xworkflows.WorkflowEnabled, LogMixin)
     """ Handlers """
 
     def receive_abort(self, peer):
-        """Sent by sender to indicate abortlation of this tx"""
+        """Sent by sender to indicate abortion of this tx"""
         if peer != self.sender:
             return
         self.abort()
