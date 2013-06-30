@@ -82,6 +82,45 @@ class BaseDevice(object):
         return list(ret)
 
     """
+    Id fields
+    """
+
+    @property
+    def id_label(self):
+        """Label; For ZFS this is the Pool name"""
+        return self._backend_device.IdLabel
+
+    zpool_name = id_label
+
+    @property
+    def id_type(self):
+        """Type; For ZFS members this is, surprisingly, zfs_member"""
+        return self._backend_device.IdType
+
+    @property
+    def is_zfs_member(self):
+        return self.id_type == 'zfs_member'
+
+    @property
+    def id_usage(self):
+        """Usage; For ZFS members this is raid"""
+        return self._backend_device.IdUsage
+
+    @property
+    def id_uuid(self):
+        """UUID: For ZFS members this is the root vdev guid of the Pool"""
+        return self._backend_device.IdUuid
+
+    zpool_root_vdev_guid = id_uuid
+
+    @property
+    def id_version(self):
+        """Version: For ZFS members this is the pool version"""
+        return self._backend_device.IdVersion
+
+    zpool_version = id_version
+
+    """
     SMART
     """
 
