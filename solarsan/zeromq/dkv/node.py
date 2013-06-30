@@ -98,13 +98,13 @@ class _DispatcherMixin(Reactor):
         else:
             kwargs['channel'] = _looped
 
-        # Reactor
-        gevent.spawn(self.trigger,
-                     Event('receive', [
-                           ('type', message_type),
-                    ('channel', channel),
-                     ]),
-                     *parts)
+        ## Reactor
+        #gevent.spawn(self.trigger,
+        #             Event('receive', [
+        #                   ('type', message_type),
+        #            ('channel', channel),
+        #             ]),
+        #             *parts)
 
         # Dispatch
         handlers = self.handlers.get(channel, None)
