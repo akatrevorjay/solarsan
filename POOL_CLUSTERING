@@ -1,0 +1,13 @@
+
+On bootup, wait up to 60s for other node to come online.
+If node does not come online, proceed as if it's down.
+
+Find out if other node is currently primary
+If node is primary, export disks that are part of clustered pool and notify other node they are available, causing a resync (zpool clear and/or online)
+
+If node is not primary, become primary
+If other node is up, notify other node and wait for it to export it's disks and notify us that they are available
+
+Import pool, do a clear/online to initiate a resync if it's needed.
+
+Continue on as primary; export luns, shiz like that
