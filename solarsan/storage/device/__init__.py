@@ -297,6 +297,12 @@ class Devices(DeviceQuerySet):
     pass
 
 
+class ZfsDevices(DeviceQuerySet):
+    _base_filter = {
+        'is_zfs_member': True
+    }
+
+
 class Disks(DeviceQuerySet):
     _base_filter = {
         'is_drive': True,

@@ -76,7 +76,12 @@ class QuerySet(object):
         """This method can be overridden to specify how to get the list of obj if none are specified during inits"""
         return []
 
-    def __init__(self, objs=None, base_filter=None, base_filter_replace=False, *args):
+    def __init__(self, objs=None, base_filter=None, base_filter_replace=False, *args, **kwargs):
+        if kwargs:
+            if not base_filter:
+                base_filter = dict()
+            base_filter.update(kwargs)
+
         if base_filter:
             if base_filter_replace:
                 self._base_filter = base_filter

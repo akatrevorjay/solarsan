@@ -14,7 +14,7 @@ from pypercube.expression import Sum, Min, Max, Median, Distinct
 '''
 
 from .base import Base, BaseProperty
-#from . import device
+from . import device
 from .parsers.pool import zpool_status_parse2
 
 
@@ -163,7 +163,6 @@ class PoolProperties(object):
     #    """
 
 
-# TODO Enumerate devices on pool from status
 class Pool(Base):
     """Storage Pool object
     """
@@ -337,6 +336,18 @@ class Pool(Base):
 
         """
         return self.status(devices=True).get('devices')
+
+    def get_devices_alt(self):
+        """Returns devices of storage pool, but doesn't require the pool to be imported.
+
+        Caveat: It also gets any devices that WERE in a pool of the same name that have not been
+        used otherwise yet.
+
+        pool = Pool('dpool')
+        pool.get_devices_alt()
+
+        """
+        return list(device.ZfsDevices(id_label=self.name))
 
     def iostat(self, capture_length=30):
         """Returns iostat of storage pool.
