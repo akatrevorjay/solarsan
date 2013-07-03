@@ -341,12 +341,13 @@ class Pool(Base):
         """Returns devices of storage pool, but doesn't require the pool to be imported.
 
         Caveat: It also gets any devices that WERE in a pool of the same name that have not been
-        used otherwise yet.
+        used otherwise yet. TODO use guid as well to avoid this.
 
         pool = Pool('dpool')
         pool.get_devices_alt()
 
         """
+        # TODO Keep track of pool names and pool guids, use both here.
         return list(device.ZfsDevices(id_label=self.name))
 
     def iostat(self, capture_length=30):

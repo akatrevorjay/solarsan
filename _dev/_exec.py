@@ -37,6 +37,7 @@ import solarsan.target.rtsutils
 
 # devices
 from solarsan.storage.device import Device, BaseDevice, Disk, Cache, Log, Spare, Mirror, Devices, Disks, Partition, Partitions
+from solarsan.storage import device
 
 # logs
 from solarsan.logs.models import Syslog

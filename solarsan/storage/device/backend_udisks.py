@@ -111,7 +111,8 @@ class BaseDevice(object):
         """UUID: For ZFS members this is the root vdev guid of the Pool"""
         return self._backend_device.IdUuid
 
-    zpool_root_vdev_guid = id_uuid
+    #zpool_root_vdev_guid = id_uuid
+    zpool_guid = id_uuid
 
     @property
     def id_version(self):

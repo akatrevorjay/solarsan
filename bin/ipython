@@ -1,2 +1,0 @@
-#!/bin/bash
-exec ~/.virtualenvs/solarsan/bin/ipython --deep-reload --pprint --debug -i "/opt/solarsan/_exec.py" "$@"
