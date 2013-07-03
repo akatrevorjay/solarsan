@@ -1,5 +1,36 @@
 
-On bootup, wait up to 60s for other node to come online.
+Keep track of pools, their associated guids
+
+
+If we want to completely avoid split brain, there is a rather cheap idea:
+Small third device for quorum that handles keeping track of the above (and txg) in the cluster with the cluster.
+This is only needed in the rare occurrence of:
+    1. One node goes down before another
+    2. That same node that went down first comes online before the latest primary, data was updated and it either was or became primary at that point.
+    3. The latest data node comes online later than the timeout period of startup wait time (600s below)
+
+Could be any ethernet connected device, say a 0gdroid even (~$100), or a third san, etc
+It would be just a quorom keeping machine that would provide the magic of majority
+quorum.
+That said, this is such a rare occurrence that it would only matter in a rare, rare situation that a smart tech would avoid to begin with. It's worth mentioning that in our current setup, even with drbd, this already is the case, so I don't think we need to worry too hard on it for now, but it's worth looking into
+the only real world situations what could cause it that I can think of are:
+    1. forgetting to power on the second san at the same time
+    2. hardware failure at the time of power on after number 1 above, which is highly unlikely given that we recommend plugging both sans into two of the same UPSes
+
+
+Get list of disks in pool via:
+    In [2]: p = Pool.list()[0] = Pool.list()[0]
+
+    In [3]: p
+    Out[3]: <Pool: dpool>
+
+    In [4]: zd = device.ZfsDevices(zpool_name=p.name, zpool_guid=p.properties['guid'].value)ies['gui>
+
+    In [5]: zd
+    Out[5]: <ZfsDevices([<Partition('scsi-23078323334380000-part1')>, <Partition('scsi-23078323334370000-part1')>])>
+
+
+On bootup, wait up to 600s for other node to come online.
 If node does not come online, proceed as if it's down.
 
 Find out if other node is currently primary
